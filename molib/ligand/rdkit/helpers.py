@@ -1,7 +1,6 @@
 from typing import Dict, List, Optional
 
 from decologr import Decologr as log
-
 from molib.ligand.pdb.info import PDBLigandInfo
 from molib.ligand.pdb.parser import PDBLigandData
 
@@ -335,7 +334,9 @@ def generate_clean_smiles(mol: "Chem.Mol") -> str:
         try:
             test_mol = Chem.MolFromSmiles(smiles)
             if test_mol is None:
-                log.warning(f"⚠️ PDBLigandParser: Generated SMILES is invalid: {smiles}")
+                log.warning(
+                    f"⚠️ PDBLigandParser: Generated SMILES is invalid: {smiles}"
+                )
                 return ""
 
             log.info(f"✅ PDBLigandParser: Valid SMILES generated: {smiles}")

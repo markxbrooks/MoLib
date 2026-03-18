@@ -11,6 +11,7 @@ from typing import NamedTuple
 
 class Color(NamedTuple):
     """Color"""
+
     spec: int
     x: float
     y: float

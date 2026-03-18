@@ -10,11 +10,7 @@ from typing import List
 
 import pandas as pd
 from decologr import Decologr as log
-
-from molib.ligand.file.detect import (
-    detect_delimiter,
-    detect_smiles_and_name_columns,
-)
+from molib.ligand.file.detect import detect_delimiter, detect_smiles_and_name_columns
 
 try:
     from rdkit import Chem

@@ -8,6 +8,7 @@ from molib.ligand.pdb.spec import PDBLineSpec
 
 class PDBLayout:
     """PDB Layout class - Pure Python class for PDB-type and PDB-type"""
+
     record_type = PDBLineSpec("record_type", 0, 6)
     atom_serial = PDBLineSpec("atom_serial", 6, 11, int)
     atom_name = PDBLineSpec("atom_name", 12, 16)
@@ -40,9 +41,12 @@ class PDBLayout:
             cls.element,
         ]
 
+
 class PDBSecStruct:
     """PDB Sec Struct"""
+
     ATOM = "ATOM"
+
 
 def parse_pdb_coordinates_from_file(file_path: str):
     """

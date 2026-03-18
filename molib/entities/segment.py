@@ -19,8 +19,9 @@ from typing import Dict, List
 
 from molib.entities.atom import Atom3D
 from molib.entities.model import Model3D
-from elmo.gl.renderers.molecule import MoleculeRenderer
 from molib.entities.residue import Res3D
+
+from elmo.gl.renderers.molecule import MoleculeRenderer
 
 
 @dataclass

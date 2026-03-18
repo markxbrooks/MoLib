@@ -8,7 +8,9 @@ for secondary structures in ElMo.
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../ElMo/elmo/ui", "..", ".."))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "../../../../ElMo/elmo/ui", "..", "..")
+)
 
 from molib.core.color.color import Color
 from molib.core.color.map import ColorMap

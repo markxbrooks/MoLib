@@ -7,10 +7,9 @@ Represents a single Model (there may be many) in a PDB file
 from typing import Dict, List, Optional, Union
 
 from decologr import Decologr as log
-
+from molib.core.color.strategy import ColorScheme
 from molib.entities.bond import Bond3D
 from molib.entities.chain import Chain3D
-from molib.core.color.strategy import ColorScheme
 
 
 class Model3D:

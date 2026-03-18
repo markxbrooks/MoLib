@@ -7,7 +7,6 @@ from __future__ import annotations
 from typing import Iterator, Optional, Tuple
 
 import numpy as np
-
 from molib.entities.secondary_structure_type import SecondaryStructureType
 
 

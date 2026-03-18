@@ -9,12 +9,11 @@ from typing import Optional, Union
 
 import numpy as np
 from decologr import Decologr as log
-
-from molib.entities.secondary_structure_type import SecondaryStructureType
-from molib.entities.structure import Structure3D
 from molib.core.color.helpers import get_color_scheme
 from molib.core.color.map import ColorMap
 from molib.core.color.strategy import ColorScheme
+from molib.entities.secondary_structure_type import SecondaryStructureType
+from molib.entities.structure import Structure3D
 
 # Performance optimization: Cache color scheme mappings
 _COLOR_SCHEME_CACHE = {}

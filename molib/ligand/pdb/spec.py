@@ -10,7 +10,7 @@ extract substrings using these specifications.
 """
 
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Any, Callable
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class PDBLineSpec:
     converter: Callable[[str], Any] | None = None
 
     def parse(self, line: str):
-        raw = line[self.start_pos:self.stop_pos].strip()
+        raw = line[self.start_pos : self.stop_pos].strip()
         if self.converter and raw:
             return self.converter(raw)
         return raw

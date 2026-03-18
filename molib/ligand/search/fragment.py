@@ -11,10 +11,8 @@ import pandas as pd
 import requests
 from decologr import Decologr as log
 from decologr import setup_logging
+from molib.ligand import PDBLigandInfo, PDBLigandParser
 from rdkit import Chem
-
-from molib.ligand import PDBLigandInfo
-from molib.ligand import PDBLigandParser
 
 
 @lru_cache(maxsize=1)

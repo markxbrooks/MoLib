@@ -30,9 +30,11 @@ except ImportError:
 
 from decologr import Decologr as log
 
+
 @dataclass
 class PDBLigandData:
     """PDBLigandData"""
+
     res_name: str
     chain_id: str
     res_seq: int
@@ -76,7 +78,13 @@ class PDBLigandParser:
 
         for ligand_key, group in ligand_groups.items():
             try:
-                pdb_ligand_data = PDBLigandData(res_name=group.res_name, chain_id=group.chain_id, res_seq=group.res_seq, insertion_code=group.insertion_code, atoms=group.atoms)
+                pdb_ligand_data = PDBLigandData(
+                    res_name=group.res_name,
+                    chain_id=group.chain_id,
+                    res_seq=group.res_seq,
+                    insertion_code=group.insertion_code,
+                    atoms=group.atoms,
+                )
                 pdb_ligand = create_pdb_ligand_info(pdb_ligand_data)
 
                 if pdb_ligand is not None:

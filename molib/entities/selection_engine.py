@@ -11,8 +11,9 @@ from __future__ import annotations
 from typing import List, Optional, Sequence
 
 from molib.entities.atom import Atom3D
-from elmo.gl.renderers.molecule import MoleculeRenderer
 from molib.entities.residue import Res3D
+
+from elmo.gl.renderers.molecule import MoleculeRenderer
 
 
 def select_residue_range(

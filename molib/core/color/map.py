@@ -5,7 +5,6 @@ Color Palettes with strategies for coloring
 from typing import Callable, Union
 
 import numpy as np
-
 from molib.core.color.color import Color
 from molib.core.color.strategy import ColorScheme
 
@@ -57,9 +56,7 @@ class ColorMap:
         # Monochrome map - grayscale based on structure type
         cls._ss_color_maps["monochrome"] = {
             "H": Color(spec=0, x=0.9, y=0.9, z=0.9),  # Light gray for helix
-            "G": Color(
-                spec=0, x=0.8, y=0.8, z=0.8
-            ),  # Medium light gray for 3-10 helix
+            "G": Color(spec=0, x=0.8, y=0.8, z=0.8),  # Medium light gray for 3-10 helix
             "I": Color(spec=0, x=0.7, y=0.7, z=0.7),  # Medium gray for pi helix
             "E": Color(spec=0, x=0.6, y=0.6, z=0.6),  # Dark gray for strand
             "B": Color(spec=0, x=0.5, y=0.5, z=0.5),  # Darker gray for beta bridge

@@ -12,10 +12,9 @@ SMILES, and molecular properties.
 from dataclasses import dataclass
 from typing import Optional
 
-from rdkit import Chem
-
 from molib.ligand.attrs import LigandAttrs
 from molib.ligand.file.parser import Crippen, Descriptors, rdMolDescriptors
+from rdkit import Chem
 
 
 @dataclass

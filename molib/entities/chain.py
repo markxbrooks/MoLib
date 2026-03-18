@@ -6,7 +6,6 @@ from typing import List, Optional, Union
 
 import numpy as np
 from decologr import Decologr as log
-
 from molib.core.color.strategy import ColorScheme
 
 

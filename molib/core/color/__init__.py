@@ -11,7 +11,6 @@ Imported Classes:
 - ChainColorManager: Manages chains of colors to coordinate various elements.
 """
 
+from .manager import ChainColorManager
 from .map import ColorMap
 from .strategy import ColorScheme
-from .manager import ChainColorManager
-

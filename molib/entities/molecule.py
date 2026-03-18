@@ -6,14 +6,14 @@ from typing import Generator, Iterator, Optional
 
 import numpy as np
 from decologr import Decologr as log
-
-from elmo.pdb.coordinate.data import CoordinateData
+from molib.core.color.manager import ChainColorManager
+from molib.core.color.strategy import ColorScheme
 from molib.entities.atom import Atom3D
 from molib.entities.model import Model3D
 from molib.entities.residue import Res3D
 from molib.entities.selection import CoordinateSelection
-from molib.core.color.manager import ChainColorManager
-from molib.core.color.strategy import ColorScheme
+
+from elmo.pdb.coordinate.data import CoordinateData
 
 # Standard polypeptide residue names (PDB 3-letter). Used to exclude ligands/HETATM
 # from ribbon backbone so ribbons follow only the protein chain.
