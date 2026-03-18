@@ -1,0 +1,7 @@
+# .gitignore file
+# PDB database files and directories
+*.cif.gz
+*.cif
+*.pdb
+*.pdb.gz
+[a-z][0-9]/

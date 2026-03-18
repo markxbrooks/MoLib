@@ -1,0 +1,622 @@
+"""
+Ribbon Geometry
+
+Example Usage:
+==============
+>>>ca_coords = np.data([res.ca_position for res in residues])  # shape (N, 3)
+...mesh_data = generate_ribbon_geometry_per_chain(ca_coords)
+
+This module supports two ribbon generation methods:
+1. Catmull-Rom splines (original Elmo/Molscript approach) - fast but less accurate
+2. B-splines (Ribbons approach) - more accurate, uses peptide plane geometry
+
+"""
+
+from typing import Any, Optional
+
+import numpy as np
+from molib.calc.geometry.ribbons_bspline import (
+    calculate_frenet_frame,
+    calculate_guide_points,
+    evaluate_bspline_chain,
+    generate_ribbon_geometry_ribbons_style,
+)
+from molib.calc.geometry.spline import catmull_rom_chain
+from numpy import dtype, ndarray
+from OpenGL.GL import glBegin, glEnd, glVertex3fv
+from OpenGL.raw.GL.VERSION.GL_1_0 import GL_QUADS, GL_TRIANGLES
+
+# from OpenGL.GL import *
+from picogl.renderer import MeshData
+
+# B-spline ribbon effective half-width is 0.5 * get_width(ss) * width (guide-point factor).
+# Legacy ribbons use constant half-width 0.5. To match, use width so 0.5*0.6*width ≈ 0.5 → width ≈ 1.67.
+RIBBON_WIDTH_LEGACY_MATCH = 1.7
+
+
+def generate_ribbon_geometry_per_chain_color_by_ca(
+    all_ca_coords: np.ndarray,
+    all_chain_ids: list,
+    all_ca_colors: np.ndarray,
+    use_ribbons_style: bool = True,
+    all_o_coords: Optional[np.ndarray] = None,
+    all_ss_types: Optional[np.ndarray] = None,
+) -> dict[Any, MeshData]:
+    """
+    Generate ribbon geometry for each chain separately, with per-CA colors.
+
+    Uses Ribbons-style B-splines by default for better visual accuracy.
+
+    Args:
+        all_ca_coords: (N, 3) array of all CA coordinates
+        all_chain_ids: list of chain IDs, length N
+        all_ca_colors: (N, 3) array of RGB colors per CA
+        use_ribbons_style: If True, use B-spline approach (default), else Catmull-Rom
+        all_o_coords: Optional (N, 3) array of O coordinates for better accuracy
+        all_ss_types: Optional (N,) array of secondary structure types
+    """
+    from collections import defaultdict
+
+    # Group CA coordinates, colors, O coords, and SS types by chain
+    coords_by_chain = defaultdict(list)
+    colors_by_chain = defaultdict(list)
+    o_coords_by_chain = defaultdict(list)
+    ss_types_by_chain = defaultdict(list)
+
+    for i, (coord, color, chain_id) in enumerate(
+        zip(all_ca_coords, all_ca_colors, all_chain_ids)
+    ):
+        coords_by_chain[chain_id].append(coord)
+        colors_by_chain[chain_id].append(color)
+        if all_o_coords is not None:
+            o_coords_by_chain[chain_id].append(all_o_coords[i])
+        if all_ss_types is not None:
+            ss_types_by_chain[chain_id].append(all_ss_types[i])
+
+    ribbon_data = {}
+
+    for chain_id, coords in coords_by_chain.items():
+        ca_array = np.array(coords, dtype=np.float32)
+        color_array = np.array(colors_by_chain[chain_id], dtype=np.float32)
+        chain_id_list = [chain_id] * len(ca_array)
+
+        o_array = None
+        if all_o_coords is not None and chain_id in o_coords_by_chain:
+            o_array = np.array(o_coords_by_chain[chain_id], dtype=np.float32)
+
+        ss_array = None
+        if all_ss_types is not None and chain_id in ss_types_by_chain:
+            ss_array = np.array(ss_types_by_chain[chain_id])
+
+        verts, norms, inds, colors, _ = generate_ribbon_geometry_with_colors(
+            ca_array,
+            color_array,
+            chain_id_list,
+            use_ribbons_style=use_ribbons_style,
+            o_coords=o_array,
+            ss_types=ss_array,
+        )
+
+        ribbon_data[chain_id] = MeshData(
+            vbo=verts,
+            nbo=norms,
+            ebo=inds,
+            cbo=colors,
+        )
+
+    return ribbon_data
+
+
+def generate_arrow_geometry(
+    p1: np.ndarray,
+    p2: np.ndarray,
+    width: float = 0.3,
+    color: tuple = (1.0, 1.0, 1.0),
+    ribbon_plane_normal: Optional[np.ndarray] = None,
+    ribbon_binormal: Optional[np.ndarray] = None,
+    ribbon_left_edge: Optional[np.ndarray] = None,
+    ribbon_right_edge: Optional[np.ndarray] = None,
+    arrow_base_width: Optional[float] = None,
+    arrow_head_width: Optional[float] = None,
+    num_samples: int = 8,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Generate vertex/normal/index/colour arrays for a beta-sheet arrow
+    that follows the ribbon plane (Ribbons-style).
+
+    This implements Ribbons' ArrowLines approach, which modifies the ribbon
+    edges to create an arrowhead that naturally follows the ribbon plane.
+
+    Args:
+        p1: Start point of arrow (base, typically end of ribbon)
+        p2: End point of arrow (tip direction)
+        width: Base width of arrow (if ribbon edges not provided)
+        color: RGB color tuple
+        ribbon_plane_normal: Normal to ribbon plane (for proper orientation)
+        ribbon_binormal: Binormal vector (width direction in ribbon plane)
+        ribbon_left_edge: Left edge point of ribbon at arrow base (preferred)
+        ribbon_right_edge: Right edge point of ribbon at arrow base (preferred)
+        arrow_base_width: Width at arrow base (defaults to width)
+        arrow_head_width: Width at arrow head (defaults to 0.0 for point)
+        num_samples: Number of samples along arrow length
+
+    Returns:
+        Tuple of (vertices, normals, indices, colors) arrays
+    """
+    p1 = np.asarray(p1, dtype=np.float32)
+    p2 = np.asarray(p2, dtype=np.float32)
+
+    # Direction vector (arrow direction)
+    direction = p2 - p1
+    length = np.linalg.norm(direction)
+    if length < 1e-6:
+        return (
+            np.zeros((0, 3)),
+            np.zeros((0, 3)),
+            np.zeros((0,), dtype=np.uint32),
+            np.zeros((0, 3)),
+        )
+
+    direction = direction / length
+
+    # Helper function to normalize vectors
+    def normalize(v):
+        norm = np.linalg.norm(v)
+        if norm < 1e-6:
+            return v
+        return v / norm
+
+    # If ribbon edges are provided, use them (Ribbons approach)
+    if ribbon_left_edge is not None and ribbon_right_edge is not None:
+        # Use actual ribbon edges to determine arrow plane
+        left_edge = np.asarray(ribbon_left_edge, dtype=np.float32)
+        right_edge = np.asarray(ribbon_right_edge, dtype=np.float32)
+
+        # Calculate ribbon center and width from edges
+        ribbon_center = 0.5 * (left_edge + right_edge)
+        ribbon_width_vec = right_edge - left_edge
+        ribbon_width = np.linalg.norm(ribbon_width_vec)
+
+        # Calculate binormal (width direction) from ribbon edges
+        if ribbon_binormal is not None:
+            binormal = normalize(np.asarray(ribbon_binormal, dtype=np.float32))
+        else:
+            binormal = normalize(ribbon_width_vec)
+
+        # Calculate normal (perpendicular to ribbon plane)
+        if ribbon_plane_normal is not None:
+            normal = normalize(np.asarray(ribbon_plane_normal, dtype=np.float32))
+        else:
+            # Calculate normal from cross product of direction and binormal
+            normal = np.cross(direction, binormal)
+            if np.linalg.norm(normal) < 1e-6:
+                # Fallback: use cross product of binormal and direction
+                normal = np.cross(binormal, direction)
+            normal = normalize(normal)
+
+        # Arrow base width from ribbon width
+        base_width = (
+            arrow_base_width if arrow_base_width is not None else ribbon_width * 0.5
+        )
+        head_width = arrow_head_width if arrow_head_width is not None else 0.0
+
+    else:
+        # Fallback: calculate plane from direction and provided vectors
+        if ribbon_binormal is not None:
+            binormal = normalize(np.asarray(ribbon_binormal, dtype=np.float32))
+        else:
+            # Calculate binormal from direction and a hint vector
+            up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+            binormal = np.cross(direction, up)
+            if np.linalg.norm(binormal) < 1e-6:
+                up = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+                binormal = np.cross(direction, up)
+            binormal = normalize(binormal)
+
+        if ribbon_plane_normal is not None:
+            normal = normalize(np.asarray(ribbon_plane_normal, dtype=np.float32))
+        else:
+            # Calculate normal from cross product
+            normal = np.cross(binormal, direction)
+            normal = normalize(normal)
+
+        base_width = arrow_base_width if arrow_base_width is not None else width
+        head_width = arrow_head_width if arrow_head_width is not None else 0.0
+
+    # Generate arrow geometry using Ribbons' approach
+    # Create samples along arrow length, tapering from base_width to head_width
+    vertices = []
+    vertex_normals = []
+    indices = []
+
+    # Ribbons' ArrowLines approach: taper width along the arrow
+    for i in range(num_samples + 1):
+        t = i / num_samples  # Parameter from 0 (base) to 1 (tip)
+
+        # Taper width from base to head
+        current_width = base_width * (1.0 - t) + head_width * t
+
+        # Position along arrow
+        pos = p1 + direction * (length * t)
+
+        # Calculate left and right edges at this position
+        # Using binormal for width direction
+        half_width = current_width * 0.5
+        left = pos - binormal * half_width
+        right = pos + binormal * half_width
+
+        vertices.append(left)
+        vertices.append(right)
+
+        # Calculate normals (pointing outward from arrow center)
+        # Normal should be perpendicular to arrow surface
+        if i == 0:
+            # Base: normals point along binormal
+            vertex_normals.append(-binormal)
+            vertex_normals.append(binormal)
+        elif i == num_samples:
+            # Tip: normals point along direction
+            vertex_normals.append(normalize(left - pos))
+            vertex_normals.append(normalize(right - pos))
+        else:
+            # Middle: average of binormal and direction
+            left_normal = normalize(left - pos)
+            right_normal = normalize(right - pos)
+            vertex_normals.append(left_normal)
+            vertex_normals.append(right_normal)
+
+    # Add arrow tip (point)
+    tip = p2
+    vertices.append(tip)
+    # Tip normal points along direction
+    vertex_normals.append(direction)
+
+    vertices = np.array(vertices, dtype=np.float32)
+    vertex_normals = np.array(vertex_normals, dtype=np.float32)
+
+    # Generate triangle indices
+    # Body: quad strips connecting adjacent samples
+    for i in range(num_samples):
+        base = i * 2
+        # Quad as two triangles
+        indices.extend([base, base + 1, base + 2])  # Triangle 1
+        indices.extend([base + 1, base + 3, base + 2])  # Triangle 2
+
+    # Arrow head: triangle connecting last sample to tip
+    tip_idx = len(vertices) - 1
+    last_base = num_samples * 2
+    indices.extend([last_base, last_base + 1, tip_idx])
+
+    indices = np.array(indices, dtype=np.uint32)
+
+    # Color buffer
+    colors = np.tile(color, (len(vertices), 1)).astype(np.float32)
+
+    return vertices, vertex_normals, indices, colors
+
+
+def generate_ribbon_geometry_per_chain_test(
+    all_ca_coords: np.ndarray,
+    all_chain_ids: list,
+    chain_colors: dict[str, tuple],
+    add_arrow: bool = True,
+) -> dict[str, MeshData]:
+    """
+    Generate ribbon geometry for each chain separately,
+    and optionally add a beta-arrow at the end.
+    """
+    from collections import defaultdict
+
+    coords_by_chain = defaultdict(list)
+    for coord, chain_id in zip(all_ca_coords, all_chain_ids):
+        coords_by_chain[chain_id].append(coord)
+
+    ribbon_mesh_by_chain: dict[str, MeshData] = {}
+
+    for chain_id, coords in coords_by_chain.items():
+        ca_array = np.array(coords, dtype=np.float32)
+        chain_id_list = [chain_id] * len(ca_array)
+
+        verts, norms, inds, _ = generate_ribbon_geometry(ca_array, chain_id_list)
+
+        # Base colors
+        color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
+        colors = np.tile(color, (len(verts), 1)).astype(np.float32)
+
+        # --- Add arrow geometry at chain end ---
+        if add_arrow and len(ca_array) >= 2:
+            arrow_v, arrow_n, arrow_i, arrow_c = generate_arrow_geometry(
+                ca_array[-2], ca_array[-1], color=color
+            )
+
+            # Reindex arrow indices to append correctly
+            arrow_i = arrow_i + len(verts)
+
+            # Concatenate
+            verts = np.vstack([verts, arrow_v])
+            norms = np.vstack([norms, arrow_n])
+            colors = np.vstack([colors, arrow_c])
+            inds = np.concatenate([inds, arrow_i])
+
+        ribbon_mesh_by_chain[chain_id] = MeshData(
+            vbo=verts,
+            nbo=norms,
+            ebo=inds,
+            cbo=colors,
+        )
+
+    return ribbon_mesh_by_chain
+
+
+def generate_ribbon_geometry_per_chain(
+    all_ca_coords: np.ndarray, all_chain_ids: list, chain_colors: dict[str, tuple]
+) -> dict[str, MeshData]:
+    """
+    Generate ribbon geometry for each chain separately.
+    """
+    from collections import defaultdict
+
+    # Group CA coordinates by chain
+    coords_by_chain = defaultdict(list)
+    for coord, chain_id in zip(all_ca_coords, all_chain_ids):
+        coords_by_chain[chain_id].append(coord)
+
+    ribbon_mesh_by_chain: dict[str, MeshData] = {}
+
+    for chain_id, coords in coords_by_chain.items():
+        # Skip chains with insufficient C-alpha atoms for spline interpolation
+        if len(coords) < 4:
+            print(
+                f"⚠️ Skipping chain {chain_id}: insufficient C-alpha atoms ({len(coords)} < 4 required for spline)"
+            )
+            continue
+
+        ca_array = np.array(coords, dtype=np.float32)
+        chain_id_list = [chain_id] * len(ca_array)
+
+        try:
+            verts, norms, inds, _ = generate_ribbon_geometry(ca_array, chain_id_list)
+
+            # Build per-chain colour buffer
+            color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
+            colors = np.tile(color, (len(verts), 1)).astype(np.float32)
+
+            ribbon_mesh_by_chain[chain_id] = MeshData(
+                vbo=verts,
+                nbo=norms,
+                ebo=inds,
+                cbo=colors,
+            )
+        except Exception as ex:
+            print(f"⚠️ Error generating ribbon for chain {chain_id}: {ex}")
+            continue
+
+    return ribbon_mesh_by_chain
+
+
+def generate_ribbon_geometry_with_colors(
+    ca_coords: np.ndarray,
+    ca_colors: np.ndarray,
+    chain_ids: list[str],
+    width: float = 0.5,
+    use_ribbons_style: bool = True,
+    o_coords: Optional[np.ndarray] = None,
+    ss_types: Optional[np.ndarray] = None,
+) -> tuple[
+    np.ndarray,  # vertices
+    np.ndarray,  # normals
+    np.ndarray,  # indices
+    np.ndarray,  # colors
+    list[str],  # vertex_chain_ids
+]:
+    """
+    Generate ribbon geometry with per-CA colors.
+
+    Uses Ribbons-style B-splines by default for better accuracy, or falls back
+    to Catmull-Rom for compatibility.
+
+    :param ca_coords: np.ndarray of shape (N, 3)
+    :param ca_colors: np.ndarray of shape (N, 3) - RGB colors per CA
+    :param chain_ids: list[str], len N
+    :param width: float, ribbon half-width
+    :param use_ribbons_style: bool, if True use B-spline approach (default), else Catmull-Rom
+    :param o_coords: Optional (N, 3) array of O (oxygen) coordinates for better accuracy
+    :param ss_types: Optional (N,) array of secondary structure types ('H', 'S', 'T', etc.)
+    """
+    if use_ribbons_style:
+        # Use Ribbons-style B-spline approach for better accuracy.
+        # B-spline uses get_width(ss)*width and a 0.5 factor in guide points, so effective
+        # half-width is smaller than legacy (constant 0.5). Use RIBBON_WIDTH_LEGACY_MATCH
+        # so modern ribbons match legacy visibility (helix half-width ~0.5).
+        try:
+            vertices, normals, indices, _, ribbon_edges, ribbon_frenet = (
+                generate_ribbon_geometry_ribbons_style(
+                    ca_coords,
+                    o_coords=o_coords,
+                    ss_types=ss_types,
+                    width=RIBBON_WIDTH_LEGACY_MATCH,
+                    samples_per_segment=4,  # Fewer samples = less smoothing (helix stays tighter)
+                    style="square",  # Use square (3D rectangular blocks) like Ribbons
+                    num_threads=8,
+                )
+            )
+
+            # Map colors to vertices (interpolate along the ribbon)
+            # For now, use the color of the nearest CA atom
+            n_vertices = len(vertices)
+            colors = np.zeros((n_vertices, 3), dtype=np.float32)
+            vertex_chain_ids = []
+
+            # Calculate which CA each vertex is closest to
+            for i, vertex in enumerate(vertices):
+                # Find nearest CA
+                distances = np.linalg.norm(ca_coords - vertex, axis=1)
+                nearest_ca_idx = np.argmin(distances)
+                colors[i] = ca_colors[nearest_ca_idx]
+                vertex_chain_ids.append(chain_ids[nearest_ca_idx])
+
+            return vertices, normals, indices, colors, vertex_chain_ids
+
+        except Exception as e:
+            print(f"Warning: Ribbons-style ribbon generation failed: {e}")
+            print("Falling back to Catmull-Rom approach")
+            use_ribbons_style = False
+
+    # Fallback to original Catmull-Rom approach
+    from numpy import cross, gradient, linalg
+
+    # Check if we have enough points for Catmull-Rom spline
+    if len(ca_coords) < 4:
+        raise ValueError(
+            f"At least 4 C-alpha atoms required for ribbon generation, got {len(ca_coords)}"
+        )
+
+    spline = catmull_rom_chain(ca_coords)  # (M, 3)
+    spline_colors = catmull_rom_chain(ca_colors)  # interpolate colors (M, 3)
+    spline_chain_ids = [
+        chain_ids[min(i, len(chain_ids) - 1)] for i in range(len(spline))
+    ]
+
+    tangents = gradient(spline, axis=0)
+    tangents = tangents / linalg.norm(tangents, axis=1, keepdims=True)
+
+    up_hint = np.array([0, 0, 1], dtype=np.float32)
+    vertices, normals, indices, colors, vertex_chain_ids = [], [], [], [], []
+
+    for i, (p, t, col, chain_id) in enumerate(
+        zip(spline, tangents, spline_colors, spline_chain_ids)
+    ):
+        n = cross(t, up_hint)
+        if linalg.norm(n) < 1e-3:
+            up_hint = np.array([1, 0, 0], dtype=np.float32)
+            n = cross(t, up_hint)
+        n = n / linalg.norm(n)
+
+        offset = n * width
+        left = p - offset
+        right = p + offset
+
+        # Add vertices
+        vertices.extend([left, right])
+        normals.extend([n, n])
+
+        # Add colors for both sides of the ribbon at this spline point
+        colors.extend([col, col])
+        vertex_chain_ids.extend([chain_id, chain_id])
+
+    for i in range(len(spline) - 1):
+        base = i * 2
+        indices.extend([base, base + 1, base + 2, base + 1, base + 3, base + 2])
+
+    return (
+        np.array(vertices, dtype=np.float32),
+        np.array(normals, dtype=np.float32),
+        np.array(indices, dtype=np.uint32),
+        np.array(colors, dtype=np.float32),
+        vertex_chain_ids,
+    )
+
+
+def generate_ribbon_geometry(
+    ca_coords: np.ndarray, chain_ids: list[str], width=0.5
+) -> tuple[
+    ndarray[Any, dtype[Any]],
+    ndarray[Any, dtype[Any]],
+    ndarray[Any, dtype[Any]],
+    list[str],
+]:
+    """
+    generate_ribbon_geometry
+
+    :param ca_coords: np.ndarray
+    :param chain_ids: list[str]
+    :param width:
+    :return: tuple[
+    ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], list[str]]
+    """
+    from numpy import cross, gradient, linalg
+
+    # Check if we have enough points for Catmull-Rom spline
+    if len(ca_coords) < 4:
+        raise ValueError(
+            f"At least 4 C-alpha atoms required for ribbon generation, got {len(ca_coords)}"
+        )
+
+    spline = catmull_rom_chain(ca_coords)
+    tangents = gradient(spline, axis=0)
+    tangents = tangents / linalg.norm(tangents, axis=1, keepdims=True)
+
+    up_hint = np.array([0, 0, 1])
+    vertices, normals, indices, vertex_chain_ids = [], [], [], []
+
+    for i, (p, t) in enumerate(zip(spline, tangents)):
+        n = cross(t, up_hint)
+        if linalg.norm(n) < 1e-3:
+            up_hint = np.array([1, 0, 0])
+            n = cross(t, up_hint)
+        n = n / linalg.norm(n)
+
+        offset = n * width
+        left = p - offset
+        right = p + offset
+
+        chain_id = chain_ids[min(i, len(chain_ids) - 1)]
+
+        vertices.extend([left, right])
+        normals.extend([n, n])
+        vertex_chain_ids.extend([chain_id, chain_id])
+
+    for i in range(len(spline) - 1):
+        base = i * 2
+        indices.extend([base, base + 1, base + 2, base + 1, base + 3, base + 2])
+
+    return (
+        np.array(vertices, dtype=np.float32),
+        np.array(normals, dtype=np.float32),
+        np.array(indices, dtype=np.uint32),
+        vertex_chain_ids,
+    )
+
+
+def draw_beta_arrow(p1: tuple, p2: tuple, width: float = 0.3) -> None:
+    """
+    draw_beta_arrow
+
+    :param p1: tuple coordinate_data_main for position_array 1
+    :param p2: tuple coordinate_data_main for position_array 2
+    :param width: float
+    :return: None
+    Draw an arrow from p1 to p2
+    """
+    p1 = np.array(p1, dtype=np.float32)
+    p2 = np.array(p2, dtype=np.float32)
+
+    direction = p2 - p1
+    length = np.linalg.norm(direction)
+    if length == 0:
+        return
+    direction /= length
+
+    # Use up vector to define a normal plane
+    up = np.array([0, 0, 1])
+    side = np.cross(direction, up)
+    if np.linalg.norm(side) < 1e-3:
+        up = np.array([1, 0, 0])
+        side = np.cross(direction, up)
+    side = side / np.linalg.norm(side) * width
+
+    # Body
+    glBegin(GL_QUADS)
+    glVertex3fv(p1 - side)
+    glVertex3fv(p1 + side)
+    glVertex3fv(p2 + side * 0.5)
+    glVertex3fv(p2 - side * 0.5)
+    glEnd()
+
+    # Head (triangle)
+    glBegin(GL_TRIANGLES)
+    tip = p2 + direction * width * 0.5
+    glVertex3fv(p2 + side * 0.5)
+    glVertex3fv(p2 - side * 0.5)
+    glVertex3fv(tip)
+    glEnd()
