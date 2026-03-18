@@ -27,6 +27,9 @@ class Atom3D(Structure3D):
         self,
         # PDB-style identifiers
         name: str = "",
+        serial: Optional[int] = None,
+        res_name: Optional[str] = None,
+        res_seq: Optional[int] = None,
         alt_loc: Optional[str] = None,
         chain_id: Optional[str] = None,
         segment_id: Optional[str] = None,
