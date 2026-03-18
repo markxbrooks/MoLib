@@ -1,5 +1,4 @@
 import numpy as np
-
 from molib.entities.molecule import Molecule3D
 from molib.entities.residue import Res3D
 from molib.entities.secondary_structure_type import SecondaryStructureType
@@ -7,7 +6,9 @@ from molib.entities.secondary_structure_type import SecondaryStructureType
 MOL3D_INIT_SECSTRUC = True
 
 
-def _convert_secstruc_to_enum(secstruc_value: str | SecondaryStructureType) -> SecondaryStructureType:
+def _convert_secstruc_to_enum(
+    secstruc_value: str | SecondaryStructureType,
+) -> SecondaryStructureType:
     """Convert various secstruc representations to SecondaryStructureType enum."""
     if isinstance(secstruc_value, SecondaryStructureType):
         return secstruc_value
@@ -86,9 +87,7 @@ def mol3d_secstruc_ca_geom(mol: Molecule3D):
             residues[i].secstruc = SecondaryStructureType.COIL
 
 
-def set_secondary_structure(
-    mol: Molecule3D, ss_mode: str, coil_mode: bool
-) -> None:
+def set_secondary_structure(mol: Molecule3D, ss_mode: str, coil_mode: bool) -> None:
     """
     set_secondary_structure
 

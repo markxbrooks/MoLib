@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import numpy as np
 from _hashlib import openssl_sha1
 from _sha1 import sha1
-
-import numpy as np
 
 
 def hash_atoms(atoms: list["Atom3D"]) -> str:

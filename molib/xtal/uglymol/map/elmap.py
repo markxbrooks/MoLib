@@ -67,8 +67,6 @@ import re
 from typing import Iterable, SupportsBytes, SupportsIndex
 
 import numpy as np
-from typing_extensions import Buffer
-
 from molib.xtal.ccp4.map.globals import (
     CCP4_HEADER_SIZE,
     CCP4_LABEL_SIZE,
@@ -86,6 +84,7 @@ from molib.xtal.uglymol.map.helpers import (
 )
 from molib.xtal.uglymol.math.helpers import calculate_stddev
 from molib.xtal.uglymol.unit_cell import UnitCell
+from typing_extensions import Buffer
 
 
 class ElMap:

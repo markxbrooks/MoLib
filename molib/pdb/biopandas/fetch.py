@@ -8,7 +8,6 @@ from typing import Optional
 import gemmi
 from biopandas.pdb import PandasPdb
 from decologr import Decologr as log
-
 from molib.xtal.cif import validate_structure
 
 

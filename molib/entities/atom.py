@@ -328,5 +328,3 @@ class Atom3D(Structure3D):
                 silent=True,
             )
             return self._color_by_element()
-
-

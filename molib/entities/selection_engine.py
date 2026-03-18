@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import List, Optional, Sequence
 
 from molib.entities.atom import Atom3D
+
 # from molib.entities.molecule import Molecule3D
 from molib.entities.residue import Res3D
 

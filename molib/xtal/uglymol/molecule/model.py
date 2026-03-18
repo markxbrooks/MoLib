@@ -3,7 +3,6 @@
 import math
 
 import numpy as np
-
 from molib.xtal.uglymol.cubicles import Cubicles
 from molib.xtal.uglymol.molecule.atom import Atom
 from molib.xtal.uglymol.unit_cell import UnitCell

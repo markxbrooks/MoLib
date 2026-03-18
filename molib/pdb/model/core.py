@@ -31,6 +31,7 @@ from molib.entities.residue import Res3D
 @dataclass
 class AtomModel:
     """Atom Model"""
+
     name: str
     element: Optional[str]
     coords: Tuple[float, float, float]
@@ -46,6 +47,7 @@ class AtomModel:
 @dataclass
 class ResidueModel:
     """Residue Model"""
+
     residue_number: int
     name: str
     chain_id: str
@@ -55,6 +57,7 @@ class ResidueModel:
 @dataclass
 class ChainModel:
     """Chain Model"""
+
     chain_id: str
     residues: List[ResidueModel] = field(default_factory=list)
 
@@ -62,6 +65,7 @@ class ChainModel:
 @dataclass
 class ModelModel:
     """Model Model"""
+
     model_id: int
     chains: Dict[str, ChainModel] = field(default_factory=dict)
 
@@ -69,6 +73,7 @@ class ModelModel:
 @dataclass
 class MoleculeModel:
     """Molecule Model"""
+
     name: str
     models: List[ModelModel] = field(default_factory=list)
 

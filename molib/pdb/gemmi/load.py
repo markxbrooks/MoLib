@@ -15,9 +15,8 @@ from typing import Any, Optional
 
 import gemmi
 import pandas as pd
-from molib.core.entity import MolEntityType
-
 from decologr import Decologr as log
+from molib.core.entity import MolEntityType
 
 # Column names expected by coordinate generator and mol3d parser
 _ATOM_COLUMNS = [

@@ -9,7 +9,6 @@ from typing import Optional, Tuple
 
 import numpy as np
 from decologr import Decologr as log
-
 from molib.xtal.uglymol.map.elmap import ElMap
 from molib.xtal.uglymol.map.helpers import parse_symmetry_operator_to_matrix
 

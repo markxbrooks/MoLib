@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 import numpy as np
-
 from molib.xtal.uglymol.map.grid_array import GridArray
 from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,

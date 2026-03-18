@@ -11,7 +11,6 @@ from typing import Callable, Dict, Optional, Tuple
 import gemmi
 import numpy as np
 from decologr import Decologr as log
-
 from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
     parse_symmetry_operator_to_matrix,
