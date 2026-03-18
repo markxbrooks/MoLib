@@ -2,8 +2,6 @@
 Parser
 """
 
-from elmo.ui.state.entity import MolEntityType
-
 from molib.entities.atom import Atom3D
 from molib.ligand.pdb.spec import PDBLineSpec
 

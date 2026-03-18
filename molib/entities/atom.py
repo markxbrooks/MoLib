@@ -8,7 +8,7 @@ from hashlib import sha1
 from typing import Optional, Union
 
 import numpy as np
-from decologr.logger import Decologr as log
+from decologr import Decologr as log
 
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from molib.entities.structure import Structure3D

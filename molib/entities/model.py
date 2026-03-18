@@ -6,7 +6,7 @@ Represents a single Model (there may be many) in a PDB file
 
 from typing import Dict, List, Optional, Union
 
-from decologr.logger import Decologr as log
+from decologr import Decologr as log
 
 from molib.entities.bond import Bond3D
 from molib.entities.chain import Chain3D

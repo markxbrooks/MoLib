@@ -5,7 +5,7 @@ Chain class
 from typing import List, Optional, Union
 
 import numpy as np
-from decologr.logger import Decologr as log
+from decologr import Decologr as log
 
 from molib.core.color.strategy import ColorScheme
 

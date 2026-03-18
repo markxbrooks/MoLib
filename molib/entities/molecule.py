@@ -5,7 +5,7 @@ Molecule 3D class
 from typing import Generator, Iterator, Optional
 
 import numpy as np
-from decologr.logger import Decologr as log
+from decologr import Decologr as log
 
 from elmo.pdb.coordinate.data import CoordinateData
 from molib.entities.atom import Atom3D
