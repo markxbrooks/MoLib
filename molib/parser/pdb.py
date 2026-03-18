@@ -40,6 +40,10 @@ class PDBLayout:
             cls.element,
         ]
 
+class PDBSecStruct:
+    """PDB Sec Struct"""
+    ATOM = "ATOM"
+
 def parse_pdb_coordinates_from_file(file_path: str):
     """
     parse_pdb_coordinates_from_file
@@ -51,7 +55,7 @@ def parse_pdb_coordinates_from_file(file_path: str):
 
     with open(file_path, "r", encoding="utf-8") as file:
         for line in file:
-            if line.startswith("ATOM"):
+            if line.startswith(PDBSecStruct.ATOM):
                 x = PDBLayout.x.parse(line)
                 y = PDBLayout.y.parse(line)
                 z = PDBLayout.z.parse(line)
@@ -65,7 +69,7 @@ def parse_pdb_atoms(file_path: str) -> list[Atom3D]:
 
     with open(file_path, "r", encoding="utf-8") as file:
         for line in file:
-            if not line.startswith("ATOM"):
+            if not line.startswith(PDBSecStruct.ATOM):
                 continue
 
             x = PDBLayout.x.parse(line)
