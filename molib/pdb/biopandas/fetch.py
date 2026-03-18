@@ -9,7 +9,7 @@ import gemmi
 from biopandas.pdb import PandasPdb
 from decologr import Decologr as log
 
-from elmo.xtal.cif import validate_structure
+from molib.xtal.cif import validate_structure
 
 
 def fetch_pdb_biopandas(

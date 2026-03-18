@@ -21,8 +21,6 @@ from molib.entities.atom import Atom3D
 from molib.entities.model import Model3D
 from molib.entities.residue import Res3D
 
-from elmo.gl.renderers.molecule import MoleculeRenderer
-
 
 @dataclass
 class Segment3D:
@@ -66,7 +64,7 @@ def build_segments_for_model(model: Model3D) -> Dict[str, Segment3D]:
 
 
 def build_segments_for_molecule(
-    mol: MoleculeRenderer,
+    mol: "Molecule3D",
 ) -> Dict[int, Dict[str, Segment3D]]:
     """
     Build Segment3D objects for all models in a Molecule3D.

@@ -24,13 +24,13 @@ from typing import Dict, List, Optional, Tuple
 from molib.entities.atom import Atom3D
 from molib.entities.chain import Chain3D
 from molib.entities.model import Model3D
+from molib.entities.molecule import Molecule3D
 from molib.entities.residue import Res3D
-
-from elmo.gl.renderers.molecule import MoleculeRenderer
 
 
 @dataclass
 class AtomModel:
+    """Atom Model"""
     name: str
     element: Optional[str]
     coords: Tuple[float, float, float]
@@ -45,6 +45,7 @@ class AtomModel:
 
 @dataclass
 class ResidueModel:
+    """Residue Model"""
     residue_number: int
     name: str
     chain_id: str
@@ -53,18 +54,21 @@ class ResidueModel:
 
 @dataclass
 class ChainModel:
+    """Chain Model"""
     chain_id: str
     residues: List[ResidueModel] = field(default_factory=list)
 
 
 @dataclass
 class ModelModel:
+    """Model Model"""
     model_id: int
     chains: Dict[str, ChainModel] = field(default_factory=dict)
 
 
 @dataclass
 class MoleculeModel:
+    """Molecule Model"""
     name: str
     models: List[ModelModel] = field(default_factory=list)
 
@@ -113,7 +117,7 @@ def model3d_to_model(model: Model3D) -> ModelModel:
     return ModelModel(model_id=model.model_id, chains=chains)
 
 
-def molecule3d_to_model(mol: MoleculeRenderer) -> MoleculeModel:
+def molecule3d_to_model(mol: Molecule3D) -> MoleculeModel:
     """
     Convert a Molecule3D (rendering-aware) into a pure MoleculeModel.
 

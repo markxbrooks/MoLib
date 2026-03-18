@@ -11,13 +11,12 @@ from __future__ import annotations
 from typing import List, Optional, Sequence
 
 from molib.entities.atom import Atom3D
+# from molib.entities.molecule import Molecule3D
 from molib.entities.residue import Res3D
-
-from elmo.gl.renderers.molecule import MoleculeRenderer
 
 
 def select_residue_range(
-    mol: MoleculeRenderer,
+    mol: "Molecule3D",
     chain_id: str,
     start_resi: int,
     end_resi: int,
@@ -36,7 +35,7 @@ def select_residue_range(
     return atoms
 
 
-def select_chain_atoms(mol: MoleculeRenderer, chain_id: str) -> List[Atom3D]:
+def select_chain_atoms(mol: "Molecule3D", chain_id: str) -> List[Atom3D]:
     """
     Return all atoms in a given chain across all models.
     """
@@ -50,7 +49,7 @@ def select_chain_atoms(mol: MoleculeRenderer, chain_id: str) -> List[Atom3D]:
     return atoms
 
 
-def select_segment_atoms(mol: MoleculeRenderer, segment_id: str) -> List[Atom3D]:
+def select_segment_atoms(mol: "Molecule3D", segment_id: str) -> List[Atom3D]:
     """
     Return all atoms whose segment_id matches the given identifier.
     """
@@ -62,7 +61,7 @@ def select_segment_atoms(mol: MoleculeRenderer, segment_id: str) -> List[Atom3D]
 
 
 def select_residue_objects(
-    mol: MoleculeRenderer,
+    mol: "Molecule3D",
     chain_id: Optional[str] = None,
     residue_numbers: Optional[Sequence[int]] = None,
 ) -> List[Res3D]:

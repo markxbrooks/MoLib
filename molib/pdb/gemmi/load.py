@@ -17,7 +17,7 @@ import gemmi
 import pandas as pd
 from molib.core.entity import MolEntityType
 
-from elmo.logger import Logger as log
+from decologr import Decologr as log
 
 # Column names expected by coordinate generator and mol3d parser
 _ATOM_COLUMNS = [

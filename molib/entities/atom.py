@@ -4,7 +4,6 @@ Atom class
 
 from __future__ import annotations
 
-from hashlib import sha1
 from typing import Optional, Union
 
 import numpy as np
@@ -128,19 +127,18 @@ class Atom3D(Structure3D):
         Retrieve this atom's chain colour from the top-level Molecule3D.
         Falls back gracefully if not found.
         """
+        from molib.entities.molecule import Molecule3D
+
         try:
             if self.chain_color is not None:
                 return self.chain_color
 
-            # Walk up until Molecule3D
-            from elmo.gl.renderers.molecule import MoleculeRenderer
-
             node = self.parent
-            while node is not None and not isinstance(node, MoleculeRenderer):
+            while node is not None and not isinstance(node, Molecule3D):
                 print("climbing:", type(node))
                 node = getattr(node, "parent", None)
 
-            if isinstance(node, MoleculeRenderer):
+            if isinstance(node, Molecule3D):
                 print("found Molecule3D", node)
                 color = node.chain_colors.get(self.chain_id, (1.0, 0.0, 0.0))
             else:
@@ -332,16 +330,3 @@ class Atom3D(Structure3D):
             return self._color_by_element()
 
 
-def hash_atoms(atoms: list[Atom3D]) -> str:
-    """
-    _hash_atoms
-
-    :param atoms: list[Atom3D]
-    :return: str
-    Generate a hash based on atom coordinate_data_main and element types
-    """
-    if len(atoms) == 0:
-        return ""
-    coords = np.concatenate([a.coords for a in atoms])
-    data = f"{coords.tobytes()}{''.join(a.element for a in atoms)}"
-    return sha1(data.encode()).hexdigest()

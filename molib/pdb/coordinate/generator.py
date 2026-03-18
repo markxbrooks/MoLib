@@ -16,8 +16,8 @@ from molib.core.entity import MolEntityType
 from molib.pdb.color import generate_chain_colors
 from molib.pdb.coordinate.data import CoordinateData
 
-from elmo.xtal.cif import get_unique_hetatm_cif_dicts
-from elmo.xtal.validate_hetatm import validate_hetatm_atom_names
+from molib.xtal.cif import get_unique_hetatm_cif_dicts
+from molib.xtal.validate_hetatm import validate_hetatm_atom_names
 
 
 def generate_coordinate_data(

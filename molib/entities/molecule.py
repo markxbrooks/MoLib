@@ -272,7 +272,7 @@ class Molecule3D:
             for chain in model.chains.values():
                 yield from chain.residues
 
-    def get_all_atoms(self) -> Generator[Atom3D | str, None, None]:
+    def get_all_atoms(self):
         """
         get_all_atoms
 

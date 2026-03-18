@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from molib.entities.atom import Atom3D
-
 
 class Bond3D:
     """
@@ -26,8 +24,8 @@ class Bond3D:
 
     def __init__(
         self,
-        atom1: Atom3D,
-        atom2: Atom3D,
+        atom1: "Atom3D",
+        atom2: "Atom3D",
         order: Optional[int] = None,
         length: Optional[float] = None,
         ideal_length: Optional[float] = None,
@@ -42,7 +40,7 @@ class Bond3D:
         self.delta = delta
         self.z_score = z_score
 
-    def other(self, atom: Atom3D) -> Atom3D:
+    def other(self, atom: "Atom3D") -> "Atom3D":
         """Return the atom at the other end of this bond."""
         if atom is self.atom1:
             return self.atom2

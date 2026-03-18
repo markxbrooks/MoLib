@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from decologr import Decologr as log
 from molib.entities.atom import Atom3D
 from molib.entities.chain import Chain3D
 from molib.entities.model import Model3D
@@ -8,20 +7,6 @@ from molib.entities.molecule import Molecule3D
 from molib.entities.residue import Res3D
 from molib.ligand.pdb.spec import PDBLineSpec
 from molib.pdb.coordinate.data import CoordinateData
-from picogl.mode import GLMode
-
-
-def _safe_int(slice_str: str) -> int | None:
-    """Convert to int safely."""
-    try:
-        return int(slice_str.strip())
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_char(line: str, idx: int) -> str:
-    """Safely extract a single character."""
-    return line[idx].strip() if len(line) > idx else ""
 
 
 class PDBRecordType:

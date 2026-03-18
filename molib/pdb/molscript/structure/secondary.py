@@ -1,13 +1,13 @@
 import numpy as np
+
+from molib.entities.molecule import Molecule3D
 from molib.entities.residue import Res3D
 from molib.entities.secondary_structure_type import SecondaryStructureType
-
-from elmo.gl.renderers.molecule import MoleculeRenderer
 
 MOL3D_INIT_SECSTRUC = True
 
 
-def _convert_secstruc_to_enum(secstruc_value) -> SecondaryStructureType:
+def _convert_secstruc_to_enum(secstruc_value: str | SecondaryStructureType) -> SecondaryStructureType:
     """Convert various secstruc representations to SecondaryStructureType enum."""
     if isinstance(secstruc_value, SecondaryStructureType):
         return secstruc_value
@@ -17,7 +17,7 @@ def _convert_secstruc_to_enum(secstruc_value) -> SecondaryStructureType:
         return SecondaryStructureType.COIL
 
 
-def _convert_secstruc_to_string(secstruc_value) -> str:
+def _convert_secstruc_to_string(secstruc_value: str | SecondaryStructureType) -> str:
     """Convert various secstruc representations to string."""
     if isinstance(secstruc_value, SecondaryStructureType):
         return secstruc_value.to_string()
@@ -27,7 +27,7 @@ def _convert_secstruc_to_string(secstruc_value) -> str:
         return " "
 
 
-def mol3d_secstruc_ca_geom(mol: MoleculeRenderer):
+def mol3d_secstruc_ca_geom(mol: Molecule3D):
     """
     mol3d_secstruc_ca_geom
 
@@ -87,7 +87,7 @@ def mol3d_secstruc_ca_geom(mol: MoleculeRenderer):
 
 
 def set_secondary_structure(
-    mol: MoleculeRenderer, ss_mode: str, coil_mode: bool
+    mol: Molecule3D, ss_mode: str, coil_mode: bool
 ) -> None:
     """
     set_secondary_structure
@@ -200,7 +200,7 @@ def at3d_lookup(res: Res3D, atom_name: str) -> str | None:
     return None
 
 
-def mol3d_secstruc_hbonds(mol: MoleculeRenderer) -> None:
+def mol3d_secstruc_hbonds(mol: Molecule3D) -> None:
     """
     mol3d_secstruc_hbonds
 
@@ -329,7 +329,7 @@ def output_secondary_structure(mol):
         prev = res
 
 
-def update_secondary_structure_geometry(pdb_mol3d: MoleculeRenderer):
+def update_secondary_structure_geometry(pdb_mol3d: Molecule3D):
     """
     update_secondary_structure_geometry
 
