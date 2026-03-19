@@ -20,7 +20,6 @@ from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style, RibbonStyle,
 )
 from molib.calc.geometry.spline import catmull_rom_chain
-from numpy import dtype, ndarray
 from OpenGL.GL import glBegin, glEnd, glVertex3fv
 from OpenGL.raw.GL.VERSION.GL_1_0 import GL_QUADS, GL_TRIANGLES
 
@@ -319,7 +318,10 @@ def generate_ribbon_geometry_per_chain_test(
         ca_array = np.array(coords, dtype=np.float32)
         chain_id_list = [chain_id] * len(ca_array)
 
-        verts, norms, inds, _ = generate_ribbon_geometry(ca_array, chain_id_list)
+        vertex_data = generate_ribbon_geometry(ca_array, chain_id_list)
+        verts = vertex_data.geom_data.vertices
+        norms = vertex_data.geom_data.normals
+        inds = vertex_data.geom_data.indices
 
         # Base colors
         color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
@@ -377,7 +379,10 @@ def generate_ribbon_geometry_per_chain(
         chain_id_list = [chain_id] * len(ca_array)
 
         try:
-            verts, norms, inds, _ = generate_ribbon_geometry(ca_array, chain_id_list)
+            vertex_data = generate_ribbon_geometry(ca_array, chain_id_list)
+            verts = vertex_data.geom_data.vertices
+            norms = vertex_data.geom_data.normals
+            inds = vertex_data.geom_data.indices
 
             # Build per-chain colour buffer
             color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
@@ -425,7 +430,8 @@ def generate_ribbon_geometry_with_colors(
         # half-width is smaller than legacy (constant 0.5). Use RIBBON_WIDTH_LEGACY_MATCH
         # so modern ribbons match legacy visibility (helix half-width ~0.5).
         try:
-            vertices, normals, indices, _, ribbon_edges, ribbon_frenet = (
+
+            geo_data, ribbon_edges, ribbon_frenet = (
                 generate_ribbon_geometry_ribbons_style(
                     ca_coords,
                     o_coords=o_coords,
@@ -436,6 +442,9 @@ def generate_ribbon_geometry_with_colors(
                     num_threads=8,
                 )
             )
+            vertices = geo_data.vertices
+            normals = geo_data.normals
+            indices = geo_data.indices
 
             # Map colors to vertices (interpolate along the ribbon)
             # For now, use the color of the nearest CA atom
@@ -515,12 +524,7 @@ def generate_ribbon_geometry_with_colors(
 
 def generate_ribbon_geometry(
     ca_coords: np.ndarray, chain_ids: list[str], width=0.5
-) -> tuple[
-    ndarray[Any, dtype[Any]],
-    ndarray[Any, dtype[Any]],
-    ndarray[Any, dtype[Any]],
-    list[str],
-]:
+) -> VertexData:
     """
     generate_ribbon_geometry
 
@@ -566,11 +570,8 @@ def generate_ribbon_geometry(
         base = i * 2
         indices.extend([base, base + 1, base + 2, base + 1, base + 3, base + 2])
 
-    return (
-        np.array(vertices, dtype=np.float32),
-        np.array(normals, dtype=np.float32),
-        np.array(indices, dtype=np.uint32),
-        vertex_chain_ids,
+    return VertexData(geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices),
+        meta_data=VertexMetadata(chain_ids=vertex_chain_ids),
     )
 
 

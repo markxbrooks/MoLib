@@ -12,10 +12,13 @@ Key differences from Catmull-Rom:
 - Generates 3D tube geometry with proper normals for lighting
 """
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 
 import numpy as np
 from numpy import ndarray
+
+from picogl.buffers.geometry import GeometryData
+
 
 class RibbonStyle:
     """Ribbon Style"""
@@ -439,6 +442,12 @@ def evaluate_bspline_chain(
 
     return np.array(result, dtype=np.float32)
 
+def smooth(vectors, alpha=0.2):
+    """Smooth vectors"""
+    out = vectors.copy()
+    for i in range(1, len(vectors)):
+        out[i] = normalize((1 - alpha) * out[i] + alpha * out[i - 1])
+    return out
 
 def calculate_frenet_frame_from_edges(
     left_edge: ndarray, centerline: ndarray, right_edge: ndarray
@@ -463,46 +472,66 @@ def calculate_frenet_frame_from_edges(
     binormals = np.zeros((n_points, 3), dtype=np.float32)
     widths = np.zeros(n_points, dtype=np.float32)
 
-    # Need previous point for tangent calculation
-    prev_center = None
-
     for i in range(n_points):
-        # Calculate tangent from centerline (like Ribbons: xv[2][j+1] - xv[2][j-1])
+        # --- Tangent ---
         if i == 0:
-            if n_points > 1:
-                t = centerline[1] - centerline[0]
-            else:
-                t = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+            t = centerline[1] - centerline[0]
         elif i == n_points - 1:
             t = centerline[-1] - centerline[-2]
         else:
             t = centerline[i + 1] - centerline[i - 1]
-
         t = normalize(t)
         tangents[i] = t
 
-        # Calculate binormal from edges (Ribbons: b = xv[3][j] - xv[1][j])
-        if i < len(left_edge) and i < len(right_edge):
-            b = right_edge[i] - left_edge[i]
-            width = np.linalg.norm(b)
-            widths[i] = width
-            b = normalize(b)
+        # --- Edge / binormal ---
+        edge_vec = right_edge[i] - left_edge[i]
+        width = np.linalg.norm(edge_vec)
+        widths[i] = width
+
+        if width < 1e-6:
+            edge_vec = binormals[i - 1] if i > 0 else np.array([0.0, 1.0, 0.0])
         else:
-            # Fallback if edges not available
-            b = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-            widths[i] = 0.5
+            edge_vec /= width
 
-        # Calculate normal: n = cross(t, b) (Ribbons approach)
+        if i > 0:
+            edge_vec = normalize(0.7 * edge_vec + 0.3 * binormals[i - 1])
+        b = edge_vec
+
+        # --- Normal ---
         n = cross(t, b)
-        n = normalize(n)
-        normals[i] = n
+        if np.linalg.norm(n) < 1e-6:
+            n = normals[i - 1] if i > 0 else np.array([0.0, 0.0, 1.0])
+        else:
+            n = normalize(n)
 
-        # Recalculate binormal: b = cross(t, n) for orthonormality
-        b = cross(t, n)
-        b = normalize(b)
+        # --- Recompute binormal ---
+        b = normalize(cross(t, n))
+
+        # --- Parallel transport / minimal rotation correction ---
+        if i > 0:
+            v = np.cross(tangents[i - 1], t)
+            s = np.linalg.norm(v)
+            if s > 1e-6:
+                c = np.dot(tangents[i - 1], t)
+                vx = np.array([[0, -v[2], v[1]],
+                               [v[2], 0, -v[0]],
+                               [-v[1], v[0], 0]], dtype=np.float32)
+                R = np.eye(3) + vx + vx @ vx * ((1 - c) / (s ** 2))
+                n = normalize(R @ normals[i - 1])
+                b = normalize(np.cross(t, n))
+
+        # --- Flip fix ---
+        if i > 0 and np.dot(n, normals[i - 1]) < 0:
+            n *= -1
+            b *= -1
+
+        normals[i] = n
         binormals[i] = b
 
-        prev_center = centerline[i]
+    # --- Smoothing pass (single pass, OUTSIDE loop) ---
+    for i in range(1, n_points):
+        normals[i] = normalize(0.8 * normals[i] + 0.2 * normals[i - 1])
+        binormals[i] = normalize(0.8 * binormals[i] + 0.2 * binormals[i - 1])
 
     return tangents, normals, binormals, widths
 
@@ -562,6 +591,52 @@ def calculate_frenet_frame(centerline: ndarray) -> Tuple[ndarray, ndarray, ndarr
     return tangents, normals, binormals
 
 
+def calculate_parallel_transport_frames(centerline: np.ndarray):
+    """calculate transport frame"""
+    n = len(centerline)
+
+    tangents = np.gradient(centerline, axis=0)
+    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
+
+    normals = np.zeros_like(tangents)
+    binormals = np.zeros_like(tangents)
+
+    # Initial normal (robust choice)
+    up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    if abs(np.dot(up, tangents[0])) > 0.9:
+        up = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+
+    normals[0] = np.cross(tangents[0], up)
+    normals[0] /= np.linalg.norm(normals[0])
+
+    binormals[0] = np.cross(tangents[0], normals[0])
+
+    for i in range(1, n):
+        v = np.cross(tangents[i - 1], tangents[i])
+        norm_v = np.linalg.norm(v)
+
+        if norm_v < 1e-6:
+            # No rotation needed (straight segment)
+            normals[i] = normals[i - 1]
+            binormals[i] = binormals[i - 1]
+            continue
+
+        v /= norm_v
+        angle = np.arccos(np.clip(np.dot(tangents[i - 1], tangents[i]), -1.0, 1.0))
+
+        # Rodrigues' rotation formula
+        def rotate(vec):
+            return (
+                vec * np.cos(angle)
+                + np.cross(v, vec) * np.sin(angle)
+                + v * np.dot(v, vec) * (1 - np.cos(angle))
+            )
+
+        normals[i] = rotate(normals[i - 1])
+        binormals[i] = rotate(binormals[i - 1])
+
+    return tangents, normals, binormals
+
 def generate_ribbon_geometry_ribbons_style(
     ca_coords: ndarray,
     o_coords: Optional[ndarray] = None,
@@ -571,14 +646,9 @@ def generate_ribbon_geometry_ribbons_style(
     samples_per_segment: int = 8,
     style: str = RibbonStyle.SQUARE,  # "flat", "circle", "square" - default to square for 3D blocks
     num_threads: int = 8,
-) -> Tuple[
-    ndarray,
-    ndarray,
-    ndarray,
-    ndarray,
-    Optional[Tuple[ndarray, ndarray]],
-    Optional[Tuple[ndarray, ndarray, ndarray]],
-]:
+) -> tuple[
+         ndarray, ndarray, ndarray, ndarray, tuple[ndarray, ndarray] | None, tuple[ndarray, ndarray, ndarray] | None] | \
+     tuple[GeometryData, tuple[float | Any, float | Any] | None | tuple[Any, Any], tuple[Any, Any, Any] | None]:
     """
     Generate ribbon geometry using Ribbons' B-spline approach.
 
@@ -619,6 +689,10 @@ def generate_ribbon_geometry_ribbons_style(
         tangents, normals, binormals, widths = calculate_frenet_frame_from_edges(
             p_spline, centerline, q_spline
         )
+        """
+        tangents, normals, binormals = calculate_parallel_transport_frames(centerline)
+        widths = np.ones(len(centerline), dtype=np.float32) * width
+        """
     except:
         # Fallback to centerline-only if edges don't match
         tangents, normals, binormals = calculate_frenet_frame(centerline)
@@ -830,6 +904,12 @@ def generate_ribbon_geometry_ribbons_style(
 
     vertices = np.array(vertices, dtype=np.float32)
     vertex_normals = np.array(vertex_normals, dtype=np.float32)
+    """
+    for i in range(1, len(vertex_normals)):
+        if np.dot(vertex_normals[i], vertex_normals[i - 1]) < 0:
+            vertex_normals[i] *= -1
+            binormals[i] *= -1
+    """
     indices = np.array(indices, dtype=np.uint32)
 
     # Colors (default to white, can be customized)
@@ -862,7 +942,7 @@ def generate_ribbon_geometry_ribbons_style(
                     binormals[last_idx],
                 )
 
-    elif style == "flat" and len(vertices) >= 2:
+    elif style == RibbonStyle.FLAT and len(vertices) >= 2:
         # For flat style, last two vertices are the edges
         ribbon_edges = (vertices[-2], vertices[-1])
 
@@ -879,8 +959,8 @@ def generate_ribbon_geometry_ribbons_style(
                     normals[last_idx],
                     binormals[last_idx],
                 )
-
-    return vertices, vertex_normals, indices, colors, ribbon_edges, ribbon_frenet
+    geo_data = GeometryData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
+    return geo_data, ribbon_edges, ribbon_frenet
 
 
 def generate_resgeom_flat(
