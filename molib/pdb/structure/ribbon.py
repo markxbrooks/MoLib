@@ -15,6 +15,8 @@ This module supports two ribbon generation methods:
 from typing import Any, Optional
 
 import numpy as np
+from numpy._typing import _64Bit
+
 from molib.calc.geometry.ribbons_bspline import (
     calculate_frenet_frame,
     calculate_guide_points,
@@ -22,7 +24,7 @@ from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style, RibbonStyle,
 )
 from molib.calc.geometry.spline import catmull_rom_chain
-from numpy import dtype, ndarray
+from numpy import dtype, ndarray, floating
 from OpenGL.GL import glBegin, glEnd, glVertex3fv
 from OpenGL.raw.GL.VERSION.GL_1_0 import GL_QUADS, GL_TRIANGLES
 
@@ -88,7 +90,8 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         if all_ss_types is not None and chain_id in ss_types_by_chain:
             ss_array = np.array(ss_types_by_chain[chain_id])
 
-        verts, norms, inds, colors, _ = generate_ribbon_geometry_with_colors(
+        #verts, norms, inds, colors, _ = generate_ribbon_geometry_with_colors(
+        vertex_data = generate_ribbon_geometry_with_colors(
             ca_array,
             color_array,
             chain_id_list,
@@ -98,10 +101,10 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         )
 
         ribbon_data[chain_id] = MeshData(
-            vbo=verts,
-            nbo=norms,
-            ebo=inds,
-            cbo=colors,
+            vbo=vertex_data.geom_data.vertices,
+            nbo=vertex_data.geom_data.normals,
+            ebo=vertex_data.geom_data.indices,
+            cbo=vertex_data.geom_data.colors,
         )
 
     return ribbon_data
@@ -393,6 +396,72 @@ def generate_ribbon_geometry_per_chain(
 
     return ribbon_mesh_by_chain
 
+class GeometryData:
+    """CPU side vertex data."""
+    __slots__ = ("vertices", "normals", "indices", "colors")
+    def __init__(self, vertices: np.ndarray | list, normals: np.ndarray | list, indices: np.ndarray | list, colors: np.ndarray| list):
+        self.vertices = vertices # (N, 3)
+        self.normals = normals   # (N, 3)
+        self.indices = indices   # (N, )
+        self.colors = colors     # (N, 3)
+
+
+class VertexMetadata:
+    """CPU side vertex data."""
+    __slots__ = ("chain_ids", "secondary_structure")
+
+    def __init__(self, chain_ids: Optional[list[str]] = None, secondary_structure: Optional[np.ndarray] = None):
+        self.chain_ids = chain_ids
+        self.secondary_structure = secondary_structure
+
+
+class VertexData:
+    """
+    CPU-side vertex container for rendering pipelines.
+
+    Separates:
+    - Geometry (GPU-bound)
+    - Metadata (CPU-only)
+    """
+
+    __slots__ = ("geom_data", "meta_data")
+
+    def __init__(
+        self,
+        geom_data: "GeometryData",
+        meta_data: Optional["VertexMetadata"] = None,
+    ):
+        if geom_data is None:
+            raise ValueError("geom_data must not be None")
+
+        self.geom_data = geom_data
+        self.meta_data = meta_data
+
+    def validate(self) -> None:
+        """Validate internal consistency."""
+        geom = self.geom_data
+
+        n = len(geom.vertices)
+
+        if geom.normals is not None and len(geom.normals) != n:
+            raise ValueError("Normals must match vertex count")
+
+        if geom.colors is not None and len(geom.colors) != n:
+            raise ValueError("Colors must match vertex count")
+
+        if self.meta_data is not None:
+            meta = self.meta_data
+
+            if meta.chain_ids is not None and len(meta.chain_ids) != n:
+                raise ValueError("chain_ids must match vertex count")
+
+    @property
+    def vertex_count(self) -> int:
+        return len(self.geom_data.vertices)
+
+    @property
+    def index_count(self) -> int:
+        return len(self.geom_data.indices)
 
 def generate_ribbon_geometry_with_colors(
     ca_coords: np.ndarray,
@@ -402,13 +471,7 @@ def generate_ribbon_geometry_with_colors(
     use_ribbons_style: bool = True,
     o_coords: Optional[np.ndarray] = None,
     ss_types: Optional[np.ndarray] = None,
-) -> tuple[
-    np.ndarray,  # vertices
-    np.ndarray,  # normals
-    np.ndarray,  # indices
-    np.ndarray,  # colors
-    list[str],  # vertex_chain_ids
-]:
+) -> VertexData:
     """
     Generate ribbon geometry with per-CA colors.
 
@@ -455,7 +518,9 @@ def generate_ribbon_geometry_with_colors(
                 colors[i] = ca_colors[nearest_ca_idx]
                 vertex_chain_ids.append(chain_ids[nearest_ca_idx])
 
-            return vertices, normals, indices, colors, vertex_chain_ids
+            return VertexData(
+                geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
+                meta_data=VertexMetadata(chain_ids=vertex_chain_ids))
 
         except Exception as e:
             print(f"Warning: Ribbons-style ribbon generation failed: {e}")
@@ -508,13 +573,8 @@ def generate_ribbon_geometry_with_colors(
         base = i * 2
         indices.extend([base, base + 1, base + 2, base + 1, base + 3, base + 2])
 
-    return (
-        np.array(vertices, dtype=np.float32),
-        np.array(normals, dtype=np.float32),
-        np.array(indices, dtype=np.uint32),
-        np.array(colors, dtype=np.float32),
-        vertex_chain_ids,
-    )
+    return VertexData(geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
+                      meta_data=VertexMetadata(chain_ids=vertex_chain_ids))
 
 
 def generate_ribbon_geometry(
