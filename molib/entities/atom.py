@@ -135,11 +135,9 @@ class Atom3D(Structure3D):
 
             node = self.parent
             while node is not None and not isinstance(node, Molecule3D):
-                print("climbing:", type(node))
                 node = getattr(node, "parent", None)
 
             if isinstance(node, Molecule3D):
-                print("found Molecule3D", node)
                 color = node.chain_colors.get(self.chain_id, (1.0, 0.0, 0.0))
             else:
                 color = (0.5, 0.5, 0.5)  # fallback
@@ -231,9 +229,18 @@ class Atom3D(Structure3D):
         )
 
     def _color_by_chain(self) -> "np.ndarray":
-        """Rainbow per chain (A, B, C...)."""
-        idx = (ord(self.chain_id.upper()) - ord("A")) % len(ColorMap.CHAIN_COLORS)
-        return np.array(ColorMap.CHAIN_COLORS[idx], dtype=np.float32)
+        """Per-chain color: same palette/order as ``generate_chain_colors`` / ribbon chain_colors."""
+        from molib.pdb.color import rgb_for_chain_id_among
+
+        res = self.parent
+        chain = getattr(res, "parent", None) if res is not None else None
+        model = getattr(chain, "parent", None) if chain is not None else None
+        if model is not None and getattr(model, "chains", None):
+            chain_ids = list(model.chains.keys())
+            rgb = rgb_for_chain_id_among(self.chain_id, chain_ids)
+        else:
+            rgb = rgb_for_chain_id_among(self.chain_id, [self.chain_id])
+        return np.array(rgb, dtype=np.float32)
 
     def _color_by_secondary(self) -> "np.ndarray":
         """

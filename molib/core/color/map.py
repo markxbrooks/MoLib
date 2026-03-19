@@ -10,6 +10,8 @@ from molib.core.color.strategy import ColorScheme
 
 
 class ColorMap:
+    # Legacy 6-color strip; :class:`ColorScheme.CHAIN` uses ``ColorMap.colors`` via
+    # ``molib.pdb.color.palette_rgb_at`` / ``generate_chain_colors`` instead.
     CHAIN_COLORS = [
         (0.9, 0.1, 0.1),  # red
         (0.1, 0.9, 0.1),  # green
