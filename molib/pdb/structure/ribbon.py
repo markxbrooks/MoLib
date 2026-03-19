@@ -12,9 +12,11 @@ This module supports two ribbon generation methods:
 
 """
 
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 import numpy as np
+from numpy import bool_, dtype, ndarray
+
 from decologr import Decologr as log
 from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style, RibbonStyle,
@@ -258,19 +260,11 @@ def generate_arrow_geometry(
         # Calculate normals (pointing outward from arrow center)
         # Normal should be perpendicular to arrow surface
         if i == 0:
-            # Base: normals point along binormal
-            vertex_normals.append(-binormal)
-            vertex_normals.append(binormal)
+            _calculate_normals_along_binormal(binormal, vertex_normals)
         elif i == num_samples:
-            # Tip: normals point along direction
-            vertex_normals.append(normalize(left - pos))
-            vertex_normals.append(normalize(right - pos))
+            _calculate_normals_along_direction(left, normalize, pos, right, vertex_normals)
         else:
-            # Middle: average of binormal and direction
-            left_normal = normalize(left - pos)
-            right_normal = normalize(right - pos)
-            vertex_normals.append(left_normal)
-            vertex_normals.append(right_normal)
+            _calculate_normals_along_binormal_and_direction(left, normalize, pos, right, vertex_normals)
 
     # Add arrow tip (point)
     tip = p2
@@ -300,6 +294,31 @@ def generate_arrow_geometry(
     colors = np.tile(color, (len(vertices), 1)).astype(np.float32)
 
     return vertices, vertex_normals, indices, colors
+
+
+def _calculate_normals_along_binormal_and_direction(left: float | Any, normalize: Callable[..., {__truediv__} | Any],
+                                                    pos: ndarray[Any, dtype[bool_]] | Any,
+                                                    right: ndarray[Any, dtype[bool_]] | float | Any,
+                                                    vertex_normals: list[Any]):
+    """Middle: average of binormal and direction"""
+    left_normal = normalize(left - pos)
+    right_normal = normalize(right - pos)
+    vertex_normals.append(left_normal)
+    vertex_normals.append(right_normal)
+
+
+def _calculate_normals_along_direction(left: float | Any, normalize: Callable[..., {__truediv__} | Any],
+                                       pos: ndarray[Any, dtype[bool_]] | Any,
+                                       right: ndarray[Any, dtype[bool_]] | float | Any, vertex_normals: list[Any]):
+    """Tip: normals point along direction"""
+    vertex_normals.append(normalize(left - pos))
+    vertex_normals.append(normalize(right - pos))
+
+
+def _calculate_normals_along_binormal(binormal: {__truediv__} | Any, vertex_normals: list[Any]):
+    """Base: normals point along binormal"""
+    vertex_normals.append(-binormal)
+    vertex_normals.append(binormal)
 
 
 def generate_ribbon_geometry_per_chain_test(
