@@ -30,8 +30,8 @@ from picogl.renderer import MeshData
 
 # B-spline ribbon effective half-width is 0.5 * get_width(ss) * width (guide-point factor).
 # Legacy ribbons use constant half-width 0.5. To match, use width so 0.5*0.6*width ≈ 0.5 → width ≈ 1.67.
-# RIBBON_WIDTH_LEGACY_MATCH = 1.7
-RIBBON_WIDTH_LEGACY_MATCH = 2.7
+# RIBBON_WIDTH_SCALE = 1.7
+RIBBON_WIDTH_SCALE = 2.7
 
 
 def generate_ribbon_geometry_per_chain_color_by_ca(
@@ -41,6 +41,8 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
     use_ribbons_style: bool = True,
     all_o_coords: Optional[np.ndarray] = None,
     all_ss_types: Optional[np.ndarray] = None,
+    style: str = RibbonStyle.SQUARE,
+    ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
 ) -> dict[Any, MeshData]:
     """
     Generate ribbon geometry for each chain separately, with per-CA colors.
@@ -54,6 +56,8 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         use_ribbons_style: If True, use B-spline approach (default), else Catmull-Rom
         all_o_coords: Optional (N, 3) array of O coordinates for better accuracy
         all_ss_types: Optional (N,) array of secondary structure types
+        style: Ribbon cross-section style ("flat", "circle", "square", "ellipse")
+        ribbon_width_scale: B-spline ribbon width factor (see RIBBON_WIDTH_SCALE)
     """
     from collections import defaultdict
 
@@ -96,6 +100,8 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
             use_ribbons_style=use_ribbons_style,
             o_coords=o_array,
             ss_types=ss_array,
+            style=style,
+            ribbon_width_scale=ribbon_width_scale,
         )
 
         ribbon_data[chain_id] = MeshData(
@@ -353,7 +359,11 @@ def generate_ribbon_geometry_per_chain_test(
 
 
 def generate_ribbon_geometry_per_chain(
-    all_ca_coords: np.ndarray, all_chain_ids: list, chain_colors: dict[str, tuple]
+    all_ca_coords: np.ndarray,
+    all_chain_ids: list,
+    chain_colors: dict[str, tuple],
+    style: str = RibbonStyle.SQUARE,
+    ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
 ) -> dict[str, MeshData]:
     """
     Generate ribbon geometry for each chain separately.
@@ -379,14 +389,23 @@ def generate_ribbon_geometry_per_chain(
         chain_id_list = [chain_id] * len(ca_array)
 
         try:
-            vertex_data = generate_ribbon_geometry(ca_array, chain_id_list)
+            # Use generate_ribbon_geometry_with_colors for B-spline/Ribbons-style geometry
+            # with per-chain flat color (tile chain color for each CA)
+            color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
+            ca_colors = np.tile(color, (len(ca_array), 1)).astype(np.float32)
+
+            vertex_data = generate_ribbon_geometry_with_colors(
+                ca_array,
+                ca_colors,
+                chain_id_list,
+                use_ribbons_style=True,
+                style=style,
+                ribbon_width_scale=ribbon_width_scale,
+            )
             verts = vertex_data.geom_data.vertices
             norms = vertex_data.geom_data.normals
             inds = vertex_data.geom_data.indices
-
-            # Build per-chain colour buffer
-            color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
-            colors = np.tile(color, (len(verts), 1)).astype(np.float32)
+            colors = vertex_data.geom_data.colors
 
             ribbon_mesh_by_chain[chain_id] = MeshData(
                 vbo=verts,
@@ -395,7 +414,8 @@ def generate_ribbon_geometry_per_chain(
                 cbo=colors,
             )
         except Exception as ex:
-            print(f"⚠️ Error generating ribbon for chain {chain_id}: {ex}")
+            log.message(f"⚠️ Error generating ribbon for chain {chain_id}: {ex}",
+                        scope="generate_ribbon_geometry_per_chain")
             continue
 
     return ribbon_mesh_by_chain
@@ -409,6 +429,8 @@ def generate_ribbon_geometry_with_colors(
     use_ribbons_style: bool = True,
     o_coords: Optional[np.ndarray] = None,
     ss_types: Optional[np.ndarray] = None,
+    style: str = RibbonStyle.SQUARE,
+    ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
 ) -> VertexData:
     """
     Generate ribbon geometry with per-CA colors.
@@ -423,11 +445,12 @@ def generate_ribbon_geometry_with_colors(
     :param use_ribbons_style: bool, if True use B-spline approach (default), else Catmull-Rom
     :param o_coords: Optional (N, 3) array of O (oxygen) coordinates for better accuracy
     :param ss_types: Optional (N,) array of secondary structure types ('H', 'S', 'T', etc.)
+    :param ribbon_width_scale: B-spline width factor passed to Ribbons-style generator
     """
     if use_ribbons_style:
         # Use Ribbons-style B-spline approach for better accuracy.
         # B-spline uses get_width(ss)*width and a 0.5 factor in guide points, so effective
-        # half-width is smaller than legacy (constant 0.5). Use RIBBON_WIDTH_LEGACY_MATCH
+        # half-width is smaller than legacy (constant 0.5). Use ribbon_width_scale
         # so modern ribbons match legacy visibility (helix half-width ~0.5).
         try:
 
@@ -436,9 +459,9 @@ def generate_ribbon_geometry_with_colors(
                     ca_coords,
                     o_coords=o_coords,
                     ss_types=ss_types,
-                    width=RIBBON_WIDTH_LEGACY_MATCH,
+                    width=ribbon_width_scale,
                     samples_per_segment=4,  # Fewer samples = less smoothing (helix stays tighter)
-                    style=RibbonStyle.SQUARE,  # Use square (3D rectangular blocks) like Ribbons
+                    style=style,
                     num_threads=8,
                 )
             )

@@ -25,6 +25,7 @@ class RibbonStyle:
     FLAT = "flat"
     CIRCLE = "circle"
     SQUARE = "square"
+    ELLIPSE = "ellipse"
 
 
 # B-spline basis matrices (from Ribbons makeguide.C)
@@ -644,7 +645,7 @@ def generate_ribbon_geometry_ribbons_style(
     ss_types: Optional[ndarray] = None,
     width: float = 0.5,
     samples_per_segment: int = 8,
-    style: str = RibbonStyle.SQUARE,  # "flat", "circle", "square" - default to square for 3D blocks
+    style: str = RibbonStyle.SQUARE,  # "flat", "circle", "square", "ellipse" - default to square for 3D blocks
     num_threads: int = 8,
 ) -> tuple[
          ndarray, ndarray, ndarray, ndarray, tuple[ndarray, ndarray] | None, tuple[ndarray, ndarray, ndarray] | None] | \
@@ -662,8 +663,8 @@ def generate_ribbon_geometry_ribbons_style(
         ss_types: (N,) array of secondary structure types, optional
         width: Ribbon width (half-width for flat, radius for circle)
         samples_per_segment: Samples per B-spline segment
-        style: "flat" (default), "circle", or "square" - ribbon cross-section style
-        num_threads: Number of threads around circular tube (only for "circle" style)
+        style: "flat", "circle", "square", or "ellipse" - ribbon cross-section style
+        num_threads: Number of points around tube cross-section (for "circle" and "ellipse" styles)
 
     Returns:
         Tuple of (vertices, normals, indices, colors) arrays
@@ -889,6 +890,43 @@ def generate_ribbon_geometry_ribbons_style(
             indices.extend([base1 + 3, base2 + 3, base1 + 0])
             indices.extend([base1 + 0, base2 + 3, base2 + 0])
 
+    elif style == RibbonStyle.ELLIPSE:
+        # Elliptical tube - like CIRCLE but with major (width) and minor (depth) axes
+        depth = width * 0.4
+
+        for i in range(n_points):
+            center = centerline[i]
+            t = tangents[i]
+            n = normals[i]  # minor axis (depth direction)
+            b = binormals[i]  # major axis (width direction)
+
+            actual_width = widths[i] if i < len(widths) else width
+            actual_depth = depth
+            rmaj = 0.5 * actual_width
+            rmin = 0.5 * actual_depth
+
+            # Generate ellipse of points around the centerline
+            for j in range(num_threads):
+                angle = 2.0 * np.pi * j / num_threads
+                # Parametric ellipse: offset = rmaj*cos*binormal + rmin*sin*normal
+                offset = b * (rmaj * np.cos(angle)) + n * (rmin * np.sin(angle))
+                vertex = center + offset
+                vertex_normal = normalize(offset)
+
+                vertices.append(vertex)
+                vertex_normals.append(vertex_normal)
+
+        # Generate triangle indices (connect adjacent ellipses)
+        for i in range(n_points - 1):
+            base1 = i * num_threads
+            base2 = (i + 1) * num_threads
+
+            for j in range(num_threads):
+                j_next = (j + 1) % num_threads
+
+                indices.extend([base1 + j, base2 + j, base1 + j_next])
+                indices.extend([base1 + j_next, base2 + j, base2 + j_next])
+
     else:  # default to square
         # Default to square for 3D blocks
         return generate_ribbon_geometry_ribbons_style(
@@ -941,6 +979,47 @@ def generate_ribbon_geometry_ribbons_style(
                     normals[last_idx],
                     binormals[last_idx],
                 )
+
+    elif style == RibbonStyle.ELLIPSE and len(centerline) > 0:
+        # For ellipse, use last cross-section extremes along major axis
+        last_idx = len(centerline) - 1
+        if (
+            last_idx < len(tangents)
+            and last_idx < len(normals)
+            and last_idx < len(binormals)
+        ):
+            center = centerline[last_idx]
+            b = binormals[last_idx]
+            rmaj = 0.5 * (widths[last_idx] if last_idx < len(widths) else width)
+            depth = width * 0.4
+            left_edge = center + b * rmaj
+            right_edge = center - b * rmaj
+            ribbon_edges = (left_edge, right_edge)
+            ribbon_frenet = (
+                tangents[last_idx],
+                normals[last_idx],
+                binormals[last_idx],
+            )
+
+    elif style == RibbonStyle.CIRCLE and len(centerline) > 0:
+        # For circle, use last cross-section extremes along major axis
+        last_idx = len(centerline) - 1
+        if (
+            last_idx < len(tangents)
+            and last_idx < len(normals)
+            and last_idx < len(binormals)
+        ):
+            center = centerline[last_idx]
+            b = binormals[last_idx]
+            tube_radius = widths[last_idx] if last_idx < len(widths) else width
+            left_edge = center + b * tube_radius
+            right_edge = center - b * tube_radius
+            ribbon_edges = (left_edge, right_edge)
+            ribbon_frenet = (
+                tangents[last_idx],
+                normals[last_idx],
+                binormals[last_idx],
+            )
 
     elif style == RibbonStyle.FLAT and len(vertices) >= 2:
         # For flat style, last two vertices are the edges
