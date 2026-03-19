@@ -30,6 +30,7 @@ temp_factor : PDBLineSpec
 element : PDBLineSpec
     Field specification for the chemical element symbol.
 """
+from molib.ligand.pdb.spec import PDBLineSpec
 
 
 class PDBFileLayout:
