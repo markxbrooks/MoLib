@@ -19,7 +19,7 @@ from molib.calc.geometry.ribbons_bspline import (
     calculate_frenet_frame,
     calculate_guide_points,
     evaluate_bspline_chain,
-    generate_ribbon_geometry_ribbons_style,
+    generate_ribbon_geometry_ribbons_style, RibbonStyle,
 )
 from molib.calc.geometry.spline import catmull_rom_chain
 from numpy import dtype, ndarray
@@ -436,7 +436,7 @@ def generate_ribbon_geometry_with_colors(
                     ss_types=ss_types,
                     width=RIBBON_WIDTH_LEGACY_MATCH,
                     samples_per_segment=4,  # Fewer samples = less smoothing (helix stays tighter)
-                    style="square",  # Use square (3D rectangular blocks) like Ribbons
+                    style=RibbonStyle.SQUARE,  # Use square (3D rectangular blocks) like Ribbons
                     num_threads=8,
                 )
             )

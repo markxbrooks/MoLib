@@ -17,6 +17,13 @@ from typing import Optional, Tuple
 import numpy as np
 from numpy import ndarray
 
+class RibbonStyle:
+    """Ribbon Style"""
+    FLAT = "flat"
+    CIRCLE = "circle"
+    SQUARE = "square"
+
+
 # B-spline basis matrices (from Ribbons makeguide.C)
 # Standard cubic B-spline matrix
 BS_MAT = np.array(
@@ -562,7 +569,7 @@ def generate_ribbon_geometry_ribbons_style(
     ss_types: Optional[ndarray] = None,
     width: float = 0.5,
     samples_per_segment: int = 8,
-    style: str = "square",  # "flat", "circle", "square" - default to square for 3D blocks
+    style: str = RibbonStyle.SQUARE,  # "flat", "circle", "square" - default to square for 3D blocks
     num_threads: int = 8,
 ) -> Tuple[
     ndarray,
@@ -622,7 +629,7 @@ def generate_ribbon_geometry_ribbons_style(
     vertex_normals = []
     indices = []
 
-    if style == "flat":
+    if style == RibbonStyle.FLAT:
         # Flat ribbon (like Ribbons' RIB_FLAT) - use actual edge splines
         # This gives better accuracy than offsetting from centerline
         for i in range(n_points):
@@ -662,7 +669,7 @@ def generate_ribbon_geometry_ribbons_style(
             # Triangle 2: right1, right2, left2
             indices.extend([base + 1, base + 3, base + 2])
 
-    elif style == "circle":
+    elif style == RibbonStyle.CIRCLE:
         # Circular tube (like Ribbons' RIB_CIRCLE)
         tube_radius = width
         for i in range(n_points):
@@ -694,7 +701,7 @@ def generate_ribbon_geometry_ribbons_style(
                 indices.extend([base1 + j, base2 + j, base1 + j_next])
                 indices.extend([base1 + j_next, base2 + j, base2 + j_next])
 
-    elif style == "square":
+    elif style == RibbonStyle.SQUARE:
         # Rectangular block (like Ribbons' RIB_SQUARE) - 4 corners
         # Uses depth for thickness (perpendicular to width). Use 0.4 so ribbons
         # are clearly visible (legacy-style width scale makes width large; depth follows).
@@ -817,7 +824,7 @@ def generate_ribbon_geometry_ribbons_style(
             ss_types,
             width,
             samples_per_segment,
-            "square",
+            RibbonStyle.SQUARE,
             num_threads,
         )
 
@@ -833,7 +840,7 @@ def generate_ribbon_geometry_ribbons_style(
     ribbon_edges = None
     ribbon_frenet = None
 
-    if style == "square" and len(vertices) >= 4:
+    if style == RibbonStyle.SQUARE and len(vertices) >= 4:
         # For square style, get the last 4 corners (last cross-section)
         last_corners = vertices[-4:]
         # Calculate left and right edges (average of opposite corners)
