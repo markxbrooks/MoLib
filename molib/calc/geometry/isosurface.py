@@ -18,7 +18,7 @@ def extract_isosurface(volume: np.ndarray, level: float = 1.0):
         vertices, faces, normals, _ = measure.marching_cubes(volume, level=level)
 
         # Compute better normals using PicoGL's method for improved lighting
-        from picogl.renderer.meshdata import compute_vertex_normals
+        from picogl.buffers.vertex.normals.compute import compute_vertex_normals
 
         normals = compute_vertex_normals(vertices, faces)
 
@@ -77,7 +77,7 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
         vertices, faces, normals, _ = measure.marching_cubes(volume, level=level)
 
         # Compute better normals using PicoGL's method for improved lighting
-        from picogl.renderer.meshdata import compute_vertex_normals
+        from picogl.buffers.vertex.normals.compute import compute_vertex_normals
 
         normals = compute_vertex_normals(vertices, faces)
 
@@ -257,7 +257,7 @@ def extract_isosurface_elmo(volume: np.ndarray, level: float = 1.0):
         faces = np.array(faces, dtype=np.int32)
 
         # Compute normals using PicoGL's method for improved lighting
-        from picogl.renderer.meshdata import compute_vertex_normals
+        from picogl.buffers.vertex.normals.compute import compute_vertex_normals
 
         normals = compute_vertex_normals(vertices, faces)
 

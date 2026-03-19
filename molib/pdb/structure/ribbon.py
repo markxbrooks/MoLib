@@ -15,25 +15,24 @@ This module supports two ribbon generation methods:
 from typing import Any, Optional
 
 import numpy as np
-from numpy._typing import _64Bit
-
+from decologr import Decologr as log
 from molib.calc.geometry.ribbons_bspline import (
-    calculate_frenet_frame,
-    calculate_guide_points,
-    evaluate_bspline_chain,
     generate_ribbon_geometry_ribbons_style, RibbonStyle,
 )
 from molib.calc.geometry.spline import catmull_rom_chain
-from numpy import dtype, ndarray, floating
+from numpy import dtype, ndarray
 from OpenGL.GL import glBegin, glEnd, glVertex3fv
 from OpenGL.raw.GL.VERSION.GL_1_0 import GL_QUADS, GL_TRIANGLES
 
-# from OpenGL.GL import *
+from picogl.buffers.geometry import GeometryData
+from picogl.buffers.vertex.data import VertexData
+from picogl.buffers.vertex.meta_data import VertexMetadata
 from picogl.renderer import MeshData
 
 # B-spline ribbon effective half-width is 0.5 * get_width(ss) * width (guide-point factor).
 # Legacy ribbons use constant half-width 0.5. To match, use width so 0.5*0.6*width ≈ 0.5 → width ≈ 1.67.
-RIBBON_WIDTH_LEGACY_MATCH = 1.7
+# RIBBON_WIDTH_LEGACY_MATCH = 1.7
+RIBBON_WIDTH_LEGACY_MATCH = 2.7
 
 
 def generate_ribbon_geometry_per_chain_color_by_ca(
@@ -396,72 +395,6 @@ def generate_ribbon_geometry_per_chain(
 
     return ribbon_mesh_by_chain
 
-class GeometryData:
-    """CPU side vertex data."""
-    __slots__ = ("vertices", "normals", "indices", "colors")
-    def __init__(self, vertices: np.ndarray | list, normals: np.ndarray | list, indices: np.ndarray | list, colors: np.ndarray| list):
-        self.vertices = vertices # (N, 3)
-        self.normals = normals   # (N, 3)
-        self.indices = indices   # (N, )
-        self.colors = colors     # (N, 3)
-
-
-class VertexMetadata:
-    """CPU side vertex data."""
-    __slots__ = ("chain_ids", "secondary_structure")
-
-    def __init__(self, chain_ids: Optional[list[str]] = None, secondary_structure: Optional[np.ndarray] = None):
-        self.chain_ids = chain_ids
-        self.secondary_structure = secondary_structure
-
-
-class VertexData:
-    """
-    CPU-side vertex container for rendering pipelines.
-
-    Separates:
-    - Geometry (GPU-bound)
-    - Metadata (CPU-only)
-    """
-
-    __slots__ = ("geom_data", "meta_data")
-
-    def __init__(
-        self,
-        geom_data: "GeometryData",
-        meta_data: Optional["VertexMetadata"] = None,
-    ):
-        if geom_data is None:
-            raise ValueError("geom_data must not be None")
-
-        self.geom_data = geom_data
-        self.meta_data = meta_data
-
-    def validate(self) -> None:
-        """Validate internal consistency."""
-        geom = self.geom_data
-
-        n = len(geom.vertices)
-
-        if geom.normals is not None and len(geom.normals) != n:
-            raise ValueError("Normals must match vertex count")
-
-        if geom.colors is not None and len(geom.colors) != n:
-            raise ValueError("Colors must match vertex count")
-
-        if self.meta_data is not None:
-            meta = self.meta_data
-
-            if meta.chain_ids is not None and len(meta.chain_ids) != n:
-                raise ValueError("chain_ids must match vertex count")
-
-    @property
-    def vertex_count(self) -> int:
-        return len(self.geom_data.vertices)
-
-    @property
-    def index_count(self) -> int:
-        return len(self.geom_data.indices)
 
 def generate_ribbon_geometry_with_colors(
     ca_coords: np.ndarray,
@@ -523,8 +456,8 @@ def generate_ribbon_geometry_with_colors(
                 meta_data=VertexMetadata(chain_ids=vertex_chain_ids))
 
         except Exception as e:
-            print(f"Warning: Ribbons-style ribbon generation failed: {e}")
-            print("Falling back to Catmull-Rom approach")
+            log.error(f"Warning: Ribbons-style ribbon generation failed: {e}")
+            log.error("Falling back to Catmull-Rom approach")
             use_ribbons_style = False
 
     # Fallback to original Catmull-Rom approach
@@ -573,7 +506,10 @@ def generate_ribbon_geometry_with_colors(
         base = i * 2
         indices.extend([base, base + 1, base + 2, base + 1, base + 3, base + 2])
 
-    return VertexData(geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
+    return VertexData(geom_data=GeometryData(vertices=vertices,
+                                             normals=normals,
+                                             indices=indices,
+                                             colors=colors),
                       meta_data=VertexMetadata(chain_ids=vertex_chain_ids))
 
 
