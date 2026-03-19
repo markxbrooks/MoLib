@@ -263,7 +263,7 @@ class Atom3D(Structure3D):
         )
 
         log.debug(
-            f"Atom {self.name} secstruc {secstruc_str} -> colour {color}", silent=True
+            f"Atom {self.name} secstruc {secstruc_str} -> colour {color}", silent=True, scope=self.__class__.__name__
         )
         return np.array(color, dtype=np.float32)
 
@@ -276,14 +276,14 @@ class Atom3D(Structure3D):
             color = ColorMap.b_factor_to_color(self.b_factor)
             log.debug(
                 f"Atom {self.name} B-factor {self.b_factor} -> colour {color}",
-                silent=True,
+                silent=True, scope=self.__class__.__name__
             )
             return np.array(color, dtype=np.float32)
         else:
             # Fallback to element colour if no B-factor
             log.debug(
                 f"Atom {self.name} using element colour (B-factor: {self.b_factor})",
-                silent=True,
+                silent=True, scope=self.__class__.__name__,
             )
             return self._color_by_element()
 
@@ -297,15 +297,15 @@ class Atom3D(Structure3D):
             if self.atom_validated:
                 # Valid atom - green
                 color = (0.0, 1.0, 0.0)  # Green
-                log.debug(f"Atom {self.name} validated -> green", silent=True)
+                log.debug(f"Atom {self.name} validated -> green", silent=True, scope=self.__class__.__name__ )
             else:
                 # Invalid atom - red
                 color = ColorMap.INVALID  # (1.0, 0.0, 0.0)  # Red
-                log.debug(f"Atom {self.name} not validated -> red", silent=True)
+                log.debug(f"Atom {self.name} not validated -> red", silent=True, scope=self.__class__.__name__ )
         else:
             # No validation data - gray
             color = (0.5, 0.5, 0.5)  # Gray
-            log.debug(f"Atom {self.name} no validation data -> gray")
+            log.debug(f"Atom {self.name} no validation data -> gray", scope=self.__class__.__name__, silent=True)
 
         return np.array(color, dtype=np.float32)
 
@@ -318,13 +318,13 @@ class Atom3D(Structure3D):
             color = ColorMap.contact_distance_to_color(self.atom_contact_distance)
             log.debug(
                 f"Atom {self.name} contact distance {self.atom_contact_distance} -> colour {color}",
-                silent=True,
+                silent=True, scope=self.__class__.__name__
             )
             return np.array(color, dtype=np.float32)
         else:
             # Fallback to element colour if no contact distance
             log.debug(
                 f"Atom {self.name} using element colour (contact distance: {self.atom_contact_distance})",
-                silent=True,
+                silent=True, scope=self.__class__.__name__
             )
             return self._color_by_element()
