@@ -301,7 +301,7 @@ def calculate_guide_points(
     # Extend end points in a straight line (similar to Ribbons)
     # Use no extra extension at the N-terminus to avoid visible overshoot,
     # but keep the original extension behavior at the C-terminus.
-    fact = 3.8
+    fact = 0.0
     head_fact = 0.0  # disable additional extrapolation before the first residue
 
     # First 2 fake planes (N-terminus)
@@ -316,15 +316,18 @@ def calculate_guide_points(
         q_points[1] += 0.5 * dprev
 
     # Last 2 fake planes (C-terminus)
+    # Keep C-tail extrapolation softer than the original Ribbons-style values
+    # to avoid a visibly wide/fat terminal cap when extension is enabled.
     if n_guides >= 4:
         c = 0.5 * (p_points[-1] + q_points[-1])
         a = 0.5 * (p_points[-2] + q_points[-2])
         b = 0.5 * (p_points[-3] + q_points[-3])
-        dprev = normalize(c - a) * fact
-        p_points[-1] += 1.5 * dprev
-        q_points[-1] += 1.5 * dprev
-        p_points[-2] += 0.5 * dprev
-        q_points[-2] += 0.5 * dprev
+        tail_fact = 0.5 * fact
+        dprev = normalize(c - a) * tail_fact
+        p_points[-1] += 0.75 * dprev
+        q_points[-1] += 0.75 * dprev
+        p_points[-2] += 0.25 * dprev
+        q_points[-2] += 0.25 * dprev
 
     return p_points, q_points
 
