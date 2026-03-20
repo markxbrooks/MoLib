@@ -75,8 +75,20 @@ class Res3D(Structure3D):
         return self.pos
 
     def has_ca(self) -> bool:
-        """Return True if CA coordinates are not all zeros."""
-        return not np.allclose(self.ca, 0.0)
+        """
+        Return True if this residue contains an actual ``CA`` atom with
+        non-zero coordinates.
+
+        Notes
+        -----
+        ``Res3D.ca`` falls back to ``self.pos`` when ``"CA"`` is missing.
+        If ``has_ca`` were based on that fallback, residues without a CA atom
+        would still be included in C-alpha traces, producing a "carbon-like"
+        backbone.
+        """
+        if "CA" not in self.atoms:
+            return False
+        return not np.allclose(self.atoms["CA"].pos, 0.0)
 
     def get_atom_positions(self) -> "np.ndarray":
         """Return all atom positions as a NumPy array."""

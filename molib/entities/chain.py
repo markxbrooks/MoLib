@@ -49,12 +49,18 @@ class Chain3D:
     def get_ca_data(self):
         """Get coordinates and colors for calphas in a chain"""
         data = [(res.ca, res.color) for res in self.residues if res.has_ca()]
+        if not data:
+            empty = np.zeros((0, 3), dtype=np.float32)
+            return empty, empty.copy()
         coords, colors = zip(*data)
         return np.array(coords, dtype=np.float32), np.array(colors, dtype=np.float32)
 
     def get_coord_data(self):
         """Get coordinates and colors for atoms in a chain."""
         data = [(atom.coords, atom.color) for res in self.residues for atom in res]
+        if not data:
+            empty = np.zeros((0, 3), dtype=np.float32)
+            return empty, empty.copy()
         coords, colors = zip(*data)
         return np.array(coords, dtype=np.float32), np.array(colors, dtype=np.float32)
 
