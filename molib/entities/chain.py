@@ -111,3 +111,8 @@ class Chain3D:
         """
         residue.parent = self
         self.residues.append(residue)
+
+    def set_color(self, r, g, b):
+        """set color"""
+        for residue in self.residues:
+            residue.set_color(r, g, b)
