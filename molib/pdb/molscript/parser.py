@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+
+from elmo.ui.constants import SSCode
 from molib.entities.atom import Atom3D
 from molib.entities.chain import Chain3D
 from molib.entities.model import Model3D
@@ -114,7 +116,7 @@ def parse_pdb_text_sec_str(pdb_text: str) -> Dict[Tuple[str, int], str]:
 
             if chain_start == chain_end:
                 for r in range(start, end + 1):
-                    sec_map[(chain_start, r)] = "H"
+                    sec_map[(chain_start, r)] = SSCode.HELIX
 
         # --- SHEET ---
         elif record == PDBSecondaryStruct.SHEET:
@@ -133,7 +135,7 @@ def parse_pdb_text_sec_str(pdb_text: str) -> Dict[Tuple[str, int], str]:
 
             if chain_start == chain_end:
                 for r in range(start, end + 1):
-                    sec_map[(chain_start, r)] = "E"
+                    sec_map[(chain_start, r)] = SSCode.STRAND
 
     return sec_map
 
@@ -200,7 +202,7 @@ def _apply_atom_validation(
 
 
 def _apply_residue_validation(residue, res_key, validation_data):
-
+    """apply residue validation to PDB-type, and PDB-type-type,"""
     if not validation_data:
         residue.residue_validated = None
         residue.residue_validation_error = None
@@ -260,7 +262,7 @@ def parse_pdb_atoms_to_mol3d(
     pdb_text: str = "",
     validation_report: dict | None = None,
 ) -> Molecule3D:
-
+    """Parse PDB Atoms to Mol3D"""
     mol = Molecule3D(coordinate_data=coordinate_data)
     model = Model3D(name="model_1")
     mol.add_model(model)
@@ -306,7 +308,7 @@ def parse_pdb_atoms_to_mol3d(
             chain_id=chain_id,
             type=str(res_name),
             coords=coords,
-            secstruc=sec_lookup.get(res_key, "C"),
+            secstruc=sec_lookup.get(res_key, SSCode.COIL),
             parent=chain,
         )
 
