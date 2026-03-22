@@ -9,6 +9,7 @@ from molib.entities.molecule import Molecule3D
 from molib.entities.residue import Res3D
 from molib.ligand.pdb.spec import PDBLineSpec
 from molib.pdb.coordinate.data import CoordinateData
+from picogl.utils.strenum import StrEnum
 
 
 class PDBRecordType:
@@ -241,9 +242,10 @@ def _prepare_validation_data(validation_report: dict) -> dict:
     }
 
 
-class PDBPandaColumns:
+class PDBPandaColumns(StrEnum):
     """PDB columns for pandas dataframe"""
-
+    RECORD_NAME = "record_name"
+    ATOM_NAME = "atom_name"
     CHAIN_ID = "chain_id"
     RESIDUE_NUMBER = "residue_number"
     RESIDUE_NAME = "residue_name"
@@ -262,93 +264,99 @@ def parse_pdb_atoms_to_mol3d(
     pdb_text: str = "",
     validation_report: dict | None = None,
 ) -> Molecule3D:
-    """Parse PDB Atoms to Mol3D"""
+
     mol = Molecule3D(coordinate_data=coordinate_data)
     model = Model3D(name="model_1")
     mol.add_model(model)
 
     sec_lookup = parse_pdb_text_sec_str(pdb_text)
-
     validation_data = _prepare_validation_data(validation_report)
 
     chain_map: dict[str, Chain3D] = {}
 
-    grouped = atom_df.groupby(
-        [PDBPandaColumns.CHAIN_ID, PDBPandaColumns.RESIDUE_NUMBER], sort=False
-    )
+    # ✅ Convert once to numpy (fast)
+    df = atom_df
 
-    for (chain_id, res_num), group in grouped:
+    chain_ids = df[PDBPandaColumns.CHAIN_ID].to_numpy()
+    res_nums = df[PDBPandaColumns.RESIDUE_NUMBER].to_numpy()
+    atom_names = df[PDBPandaColumns.ATOM_NAME].to_numpy()
+    res_names = df[PDBPandaColumns.RESIDUE_NAME].to_numpy()
+    xs = df[PDBPandaColumns.X_COORD].to_numpy(dtype=np.float32)
+    ys = df[PDBPandaColumns.Y_COORD].to_numpy(dtype=np.float32)
+    zs = df[PDBPandaColumns.Z_COORD].to_numpy(dtype=np.float32)
+    elements = df[PDBPandaColumns.ELEMENT_SYMBOL].to_numpy()
+    b_factors = df[PDBPandaColumns.B_FACTOR].to_numpy()
+    alt_locs = df[PDBPandaColumns.ALT_LOC].to_numpy()
+    segment_ids = df[PDBPandaColumns.SEGMENT_ID].to_numpy()
 
-        chain_id = chain_id.strip()
-        res_num = int(res_num)
+    current_chain_id = None
+    current_res_num = None
+    residue = None
 
-        # Ensure chain
-        if chain_id not in chain_map:
-            chain = Chain3D(name=chain_id, parent=model)
-            chain_map[chain_id] = chain
-            model.add_chain(chain_id, chain)
-        else:
-            chain = chain_map[chain_id]
+    for i in range(len(df)):
 
-        # Residue metadata (first row is enough)
-        first = group.iloc[0]
+        chain_id = chain_ids[i].strip()
+        res_num = int(res_nums[i])
 
-        res_name = first[PDBPandaColumns.RESIDUE_NAME].strip()
-        coords = (
-            float(first[PDBPandaColumns.X_COORD]),
-            float(first[PDBPandaColumns.Y_COORD]),
-            float(first[PDBPandaColumns.Z_COORD]),
-        )
+        # ✅ New chain
+        if chain_id != current_chain_id:
+            current_chain_id = chain_id
 
-        res_key = (chain_id, res_num)
+            if chain_id not in chain_map:
+                chain = Chain3D(name=chain_id, parent=model)
+                chain_map[chain_id] = chain
+                model.add_chain(chain_id, chain)
+            else:
+                chain = chain_map[chain_id]
 
-        residue = Res3D(
-            name=str(res_name),
-            residue_number=res_num,
-            chain_id=chain_id,
-            type=str(res_name),
-            coords=coords,
-            secstruc=sec_lookup.get(res_key, SSCode.COIL),
-            parent=chain,
-        )
+            current_res_num = None  # force residue reset
 
-        _apply_residue_validation(residue, res_key, validation_data)
+        # ✅ New residue
+        if res_num != current_res_num:
+            current_res_num = res_num
 
-        chain.add_residue(residue)
+            res_name = res_names[i].strip()
+            coords = (xs[i], ys[i], zs[i])
 
-        # Process atoms within residue
-        for row in group.itertuples(index=False):
+            res_key = (chain_id, res_num)
 
-            atom_name = row.atom_name.strip()
-
-            coords = np.array(
-                (row.x_coord, row.y_coord, row.z_coord),
-                dtype=float,
-            )
-
-            element = (
-                getattr(row, PDBPandaColumns.ELEMENT_SYMBOL, None) or atom_name[0]
-            ).strip()
-
-            atom = Atom3D(
-                name=atom_name,
-                alt_loc=getattr(row, PDBPandaColumns.ALT_LOC, "").strip(),
-                b_factor=float(row.b_factor),
-                segment_id=row.segment_id,
+            residue = Res3D(
+                name=str(res_name),
+                residue_number=res_num,
                 chain_id=chain_id,
-                element=element,
+                type=str(res_name),
                 coords=coords,
-                parent=residue,
+                secstruc=sec_lookup.get(res_key, SSCode.COIL),
+                parent=chain,
             )
 
-            _apply_atom_validation(
-                atom,
-                chain_id,
-                res_num,
-                atom_name,
-                validation_data,
-            )
+            _apply_residue_validation(residue, res_key, validation_data)
+            chain.add_residue(residue)
 
-            residue.atoms[atom_name] = atom
+        # ✅ Atom
+        atom_name = atom_names[i].strip()
+
+        element = elements[i] or atom_name[0]
+
+        atom = Atom3D(
+            name=atom_name,
+            alt_loc=(alt_locs[i] or "").strip(),
+            b_factor=float(b_factors[i]),
+            segment_id=segment_ids[i],
+            chain_id=chain_id,
+            element=element.strip(),
+            coords=(xs[i], ys[i], zs[i]),  # ✅ NO np.array
+            parent=residue,
+        )
+
+        _apply_atom_validation(
+            atom,
+            chain_id,
+            res_num,
+            atom_name,
+            validation_data,
+        )
+
+        residue.atoms[atom_name] = atom
 
     return mol

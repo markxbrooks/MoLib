@@ -103,15 +103,6 @@ class Chain3D:
         except Exception as ex:
             log.error(f"Error {ex} occurred applying atom coloring")
 
-    def add_residue(self, residue: "Res3D") -> None:
-        """
-        add_residue
-
-        :param residue: Res3D
-        """
-        residue.parent = self
-        self.residues.append(residue)
-
     def set_color(self, r, g, b):
         """set color"""
         for residue in self.residues:
