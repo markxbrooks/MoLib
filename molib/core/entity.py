@@ -12,9 +12,18 @@ class MolEntityType(str, Enum):
     ATOM_HETATM = "ATOM_HETATM"
     CALPHAS = "CALPHAS"
     HETATM = "HETATM"
-    LIGAND = "LIGAND"
     WATER = "WATER"
+    # Not-strict
     TEXT = "TEXT"
+    LIGAND = "LIGAND"
+
+    ALL = [
+        ATOM,
+        HETATM,
+        ATOM_HETATM,
+        CALPHAS,
+        WATER,
+    ]
 
     def __str__(self):
         return self.value
@@ -27,3 +36,4 @@ class MolEntityType(str, Enum):
 
     def get_display_name(self):
         return self.value + "_model"
+
