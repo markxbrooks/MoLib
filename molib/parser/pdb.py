@@ -13,6 +13,7 @@ class PDBLayout:
     record_type = PDBLineSpec("record_type", 0, 6)
     atom_serial = PDBLineSpec("atom_serial", 6, 11, int)
     atom_name = PDBLineSpec("atom_name", 12, 16)
+    alt_loc = PDBLineSpec("res_name", 16, 17)
     res_name = PDBLineSpec("res_name", 17, 20)
     chain_id = PDBLineSpec("chain_id", 21, 22)
     res_seq = PDBLineSpec("res_seq", 22, 26, int)
@@ -30,6 +31,7 @@ class PDBLayout:
             cls.record_type,
             cls.atom_serial,
             cls.atom_name,
+            cls.alt_loc,
             cls.res_name,
             cls.chain_id,
             cls.res_seq,
