@@ -136,9 +136,9 @@ class Atom3D(Structure3D):
             
         serial=PDBLayout.atom_serial.parse(line)
         name=PDBLayout.atom_name.parse(line)
-        alt_loc=PDBLayout.alt_loc.parse(line),
+        alt_loc=PDBLayout.alt_loc.parse(line)
         chain_id=PDBLayout.chain_id.parse(line)
-        element=PDBLayout.element.parse(line),
+        element=PDBLayout.element.parse(line)
         res_name=PDBLayout.res_name.parse(line)
         res_seq=PDBLayout.res_seq.parse(line)
         coords=np.array([x, y, z], dtype=np.float32)
