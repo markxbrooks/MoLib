@@ -117,7 +117,7 @@ class Atom3D(Structure3D):
             raise ValueError(f"Wrong record type: {rec_type}")
         self.name = pdb_line[12:16].strip()
         self.alt_loc = pdb_line[16:17].strip()
-        self.resname = pdb_line[17:20].strip()
+        self.res_seq = pdb_line[17:20].strip()
         self.chain = pdb_line[20:22].strip()
         self.seqid = pdb_line[22:27].strip()
         x = float(pdb_line[30:38])
