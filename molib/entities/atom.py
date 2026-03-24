@@ -113,7 +113,7 @@ class Atom3D(Structure3D):
         self.res_seq = res_seq
         # self.chain = ""
         # self.chain_index = -1
-        self.seqid = ""
+        # self.seqid = ""
         # self.xyz = [0, 0, 0]
         # self.occ = 1.0
         # self.b = 0
@@ -134,31 +134,22 @@ class Atom3D(Structure3D):
         y = PDBLayout.y.parse(line)
         z = PDBLayout.z.parse(line)
             
-        serial=PDBLayout.atom_serial.parse(line),
-        name=PDBLayout.atom_name.parse(line),
-        chain_id=PDBLayout.chain_id.parse(line),
+        serial=PDBLayout.atom_serial.parse(line)
+        name=PDBLayout.atom_name.parse(line)
+        alt_loc=PDBLayout.alt_loc.parse(line),
+        chain_id=PDBLayout.chain_id.parse(line)
         element=PDBLayout.element.parse(line),
-        res_name=PDBLayout.res_name.parse(line),
-        res_seq=PDBLayout.res_seq.parse(line),
-        coords=np.array([x, y, z], dtype=np.float32),
-        occupancy=PDBLayout.occupancy.parse(line) or 1.0,
-        b_factor=PDBLayout.temp_factor.parse(line) or 0.0,
+        res_name=PDBLayout.res_name.parse(line)
+        res_seq=PDBLayout.res_seq.parse(line)
+        coords=np.array([x, y, z], dtype=np.float32)
+        occupancy=PDBLayout.occupancy.parse(line) or 1.0
+        b_factor=PDBLayout.temp_factor.parse(line) or 0.0
         
         self.name = name
-        self.alt_loc = pdb_line[16:17].strip()
+        self.alt_loc = alt_loc
         self.res_seq = res_seq
         self.chain = chain_id
-        self.seqid = pdb_line[22:27].strip()
-        x = float(pdb_line[30:38])
-        y = float(pdb_line[38:46])
-        z = float(pdb_line[46:54])
         self.coords = (x, y, z)
-        self.occupancy = float(pdb_line[54:60])
-        self.b_factor = float(pdb_line[60:66])
-        if len(pdb_line) >= 78:
-            self.element = pdb_line[76:78].strip().upper()
-        # if len(pdb_line) >= 80:
-        #     self.charge = pdb_line[78:80].strip()
         self.is_ligand = self.resname not in NOT_LIGANDS
 
     # ------------------------------------------------------------------
