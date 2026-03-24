@@ -91,6 +91,19 @@ class Atom3D(Structure3D):
         self.set_element_color()
         if self.selected:
             self.color = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+            
+        # Further initializations
+        segment_id = segment_id
+        self.atom_validated = atom_validated
+        self.atom_validation_error = atom_validation_error
+        self.atom_contact_id = atom_contact_id
+        self.atom_contact_distance = atom_contact_distance
+        self.element = element
+        self.pqr_charge = pqr_charge
+        self.radius = radius
+        self.b_factor = b_factor
+        self.occupancy = occupancy
+        self.coords = coords
         
         # For comparison with uglymol
         # self.name = ""
