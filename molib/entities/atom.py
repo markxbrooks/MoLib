@@ -44,7 +44,7 @@ class Atom3D(Structure3D):
         b_factor: float = 0.0,
         occupancy: float = 1.0,
         # Coordinates
-        coords: Optional["np.ndarray"] = None,
+        coords: Optional["np.ndarray"] = None, # np.asarray(coords) if coords is not None else np.zeros(3)
         # Hierarchy
         parent: Optional["Res3D"] = None,
         # Visualization
