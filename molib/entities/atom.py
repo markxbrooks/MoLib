@@ -93,11 +93,12 @@ class Atom3D(Structure3D):
             self.color = np.array([1.0, 1.0, 1.0], dtype=np.float32)
         
         # For comparison with uglymol
-        #self.name = ""
-        #self.altloc = ""
-        self.resname = ""
-        #self.chain = ""
-        #self.chain_index = -1
+        # self.name = ""
+        # self.altloc = ""
+        self.res_name = res_name
+        self.res_seq = res_seq
+        # self.chain = ""
+        # self.chain_index = -1
         self.seqid = ""
         # self.xyz = [0, 0, 0]
         # self.occ = 1.0
