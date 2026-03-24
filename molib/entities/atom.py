@@ -90,6 +90,21 @@ class Atom3D(Structure3D):
         self.set_element_color()
         if self.selected:
             self.color = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+        
+        # For comparison with uglymol
+        #self.name = ""
+        #self.altloc = ""
+        self.resname = ""
+        #self.chain = ""
+        #self.chain_index = -1
+        self.seqid = ""
+        # self.xyz = [0, 0, 0]
+        # self.occ = 1.0
+        # self.b = 0
+        # self.element = ""
+        self.i_seq = -1
+        self.is_ligand = None
+        self.bonds = []
 
     # ------------------------------------------------------------------
     # PyMOL-like convenience accessors
