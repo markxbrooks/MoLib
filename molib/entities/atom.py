@@ -105,6 +105,30 @@ class Atom3D(Structure3D):
         self.i_seq = -1
         self.is_ligand = None
         self.bonds = []
+        
+    def from_pdb_line(self, pdb_line):
+        """from_pdb_line"""
+        if len(pdb_line) < 66:
+            raise ValueError(f"ATOM or HETATM record is too short: {pdb_line}")
+        rec_type = pdb_line[0:6]
+        if rec_type not in ["HETATM", "ATOM  "]:
+            raise ValueError(f"Wrong record type: {rec_type}")
+        self.name = pdb_line[12:16].strip()
+        self.alt_loc = pdb_line[16:17].strip()
+        self.resname = pdb_line[17:20].strip()
+        self.chain = pdb_line[20:22].strip()
+        self.seqid = pdb_line[22:27].strip()
+        x = float(pdb_line[30:38])
+        y = float(pdb_line[38:46])
+        z = float(pdb_line[46:54])
+        self.coords = (x, y, z)
+        self.occupancy = float(pdb_line[54:60])
+        self.b_factor = float(pdb_line[60:66])
+        if len(pdb_line) >= 78:
+            self.element = pdb_line[76:78].strip().upper()
+        # if len(pdb_line) >= 80:
+        #     self.charge = pdb_line[78:80].strip()
+        self.is_ligand = self.resname not in NOT_LIGANDS
 
     # ------------------------------------------------------------------
     # PyMOL-like convenience accessors
