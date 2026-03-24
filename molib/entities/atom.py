@@ -144,10 +144,10 @@ class Atom3D(Structure3D):
         occupancy=PDBLayout.occupancy.parse(line) or 1.0,
         b_factor=PDBLayout.temp_factor.parse(line) or 0.0,
         
-        self.name = pdb_line[12:16].strip()
+        self.name = name
         self.alt_loc = pdb_line[16:17].strip()
-        self.res_seq = pdb_line[17:20].strip()
-        self.chain = pdb_line[20:22].strip()
+        self.res_seq = res_seq
+        self.chain = chain_id
         self.seqid = pdb_line[22:27].strip()
         x = float(pdb_line[30:38])
         y = float(pdb_line[38:46])
