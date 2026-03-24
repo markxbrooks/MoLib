@@ -13,6 +13,7 @@ from molib.core.color.map import ColorMap
 from molib.core.color.strategy import ColorScheme
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from molib.entities.structure import Structure3D
+from molib.parser.pdb import PDBLayout
 from molib.xtal.uglymol.molecule.definition import NOT_LIGANDS
 
 # Performance optimization: Cache color scheme mappings
@@ -128,6 +129,21 @@ class Atom3D(Structure3D):
         rec_type = pdb_line[0:6]
         if rec_type not in ["HETATM", "ATOM  "]:
             raise ValueError(f"Wrong record type: {rec_type}")
+        
+        x = PDBLayout.x.parse(line)
+        y = PDBLayout.y.parse(line)
+        z = PDBLayout.z.parse(line)
+            
+        serial=PDBLayout.atom_serial.parse(line),
+        name=PDBLayout.atom_name.parse(line),
+        chain_id=PDBLayout.chain_id.parse(line),
+        element=PDBLayout.element.parse(line),
+        res_name=PDBLayout.res_name.parse(line),
+        res_seq=PDBLayout.res_seq.parse(line),
+        coords=np.array([x, y, z], dtype=np.float32),
+        occupancy=PDBLayout.occupancy.parse(line) or 1.0,
+        b_factor=PDBLayout.temp_factor.parse(line) or 0.0,
+        
         self.name = pdb_line[12:16].strip()
         self.alt_loc = pdb_line[16:17].strip()
         self.res_seq = pdb_line[17:20].strip()
