@@ -93,7 +93,7 @@ class Atom3D(Structure3D):
             self.color = np.array([1.0, 1.0, 1.0], dtype=np.float32)
             
         # Further initializations
-        segment_id = segment_id
+        self.segment_id = segment_id
         self.atom_validated = atom_validated
         self.atom_validation_error = atom_validation_error
         self.atom_contact_id = atom_contact_id
