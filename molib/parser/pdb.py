@@ -3,7 +3,7 @@ Parser
 """
 import numpy as np
 
-from molib.entities.atom import Atom3D
+# from molib.entities.atom import Atom3D
 from molib.ligand.pdb.spec import PDBLineSpec
 
 
@@ -73,8 +73,8 @@ def parse_pdb_coordinates_from_file(file_path: str):
     return coords
 
 
-def parse_pdb_atoms(file_path: str) -> list[Atom3D]:
-    atoms: list[Atom3D] = []
+def parse_pdb_atoms(file_path: str) -> list["Atom3D"]:
+    atoms: list["Atom3D"] = []
 
     with open(file_path, "r", encoding="utf-8") as file:
         for line in file:
@@ -84,7 +84,7 @@ def parse_pdb_atoms(file_path: str) -> list[Atom3D]:
             x = PDBLayout.x.parse(line)
             y = PDBLayout.y.parse(line)
             z = PDBLayout.z.parse(line)
-
+            from molib.entities.atom import Atom3D
             atom = Atom3D(
                 serial=PDBLayout.atom_serial.parse(line),
                 name=PDBLayout.atom_name.parse(line),
