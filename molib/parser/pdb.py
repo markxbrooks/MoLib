@@ -24,6 +24,7 @@ class PDBLayout:
     occupancy = PDBLineSpec("occupancy", 54, 60, float)
     temp_factor = PDBLineSpec("temp_factor", 60, 66, float)
     element = PDBLineSpec("element", 76, 78)
+    coords = (x, y, z)
 
     @classmethod
     def fields(cls):
@@ -42,6 +43,7 @@ class PDBLayout:
             cls.occupancy,
             cls.temp_factor,
             cls.element,
+            cls.coords
         ]
 
 
