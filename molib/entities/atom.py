@@ -13,6 +13,7 @@ from molib.core.color.map import ColorMap
 from molib.core.color.strategy import ColorScheme
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from molib.entities.structure import Structure3D
+from molib.xtal.uglymol.molecule.definition import NOT_LIGANDS
 
 # Performance optimization: Cache color scheme mappings
 _COLOR_SCHEME_CACHE = {}
