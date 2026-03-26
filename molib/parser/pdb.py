@@ -3,7 +3,7 @@ Parser
 """
 import numpy as np
 
-from molib.entities.atom import Atom3D
+# from molib.entities.atom import Atom3D
 from molib.ligand.pdb.spec import PDBLineSpec
 
 
@@ -13,6 +13,7 @@ class PDBLayout:
     record_type = PDBLineSpec("record_type", 0, 6)
     atom_serial = PDBLineSpec("atom_serial", 6, 11, int)
     atom_name = PDBLineSpec("atom_name", 12, 16)
+    alt_loc = PDBLineSpec("res_name", 16, 17)
     res_name = PDBLineSpec("res_name", 17, 20)
     chain_id = PDBLineSpec("chain_id", 21, 22)
     res_seq = PDBLineSpec("res_seq", 22, 26, int)
@@ -23,6 +24,7 @@ class PDBLayout:
     occupancy = PDBLineSpec("occupancy", 54, 60, float)
     temp_factor = PDBLineSpec("temp_factor", 60, 66, float)
     element = PDBLineSpec("element", 76, 78)
+    coords = (x, y, z)
 
     @classmethod
     def fields(cls):
@@ -30,6 +32,7 @@ class PDBLayout:
             cls.record_type,
             cls.atom_serial,
             cls.atom_name,
+            cls.alt_loc,
             cls.res_name,
             cls.chain_id,
             cls.res_seq,
@@ -40,6 +43,7 @@ class PDBLayout:
             cls.occupancy,
             cls.temp_factor,
             cls.element,
+            cls.coords
         ]
 
 
@@ -69,8 +73,8 @@ def parse_pdb_coordinates_from_file(file_path: str):
     return coords
 
 
-def parse_pdb_atoms(file_path: str) -> list[Atom3D]:
-    atoms: list[Atom3D] = []
+def parse_pdb_atoms(file_path: str) -> list["Atom3D"]:
+    atoms: list["Atom3D"] = []
 
     with open(file_path, "r", encoding="utf-8") as file:
         for line in file:
@@ -80,7 +84,7 @@ def parse_pdb_atoms(file_path: str) -> list[Atom3D]:
             x = PDBLayout.x.parse(line)
             y = PDBLayout.y.parse(line)
             z = PDBLayout.z.parse(line)
-
+            from molib.entities.atom import Atom3D
             atom = Atom3D(
                 serial=PDBLayout.atom_serial.parse(line),
                 name=PDBLayout.atom_name.parse(line),

@@ -520,10 +520,11 @@ def load_ccp4_map(
     centroid_cutoff: float = 15.0,
 ) -> Optional[Tuple[np.ndarray, Dict]]:
     """
-    Load a CCP4 map file using Gemmi.
+    Load a CCP4 map or grid an MTZ reflection file using Gemmi.
 
     Args:
-        map_path: Path to CCP4 map file
+        map_path: Path to a CCP4 map (``.map``, ``.ccp4``, …) or an ``.mtz`` file
+            (density is gridded via :func:`load_density_map_auto_mtz`).
         expand_symmetry: Whether to expand symmetry operations (default: True)
         convert_to_cartesian: Whether to convert from fractional to cartesian coordinates (default: False)
         carve_density: Whether to carve density around protein structure (default: True)
@@ -545,140 +546,170 @@ def load_ccp4_map(
         else:
             log.warning(f"⚠️ Corresponding PDB file not found: {pdb_path}")
 
-        # Load the CCP4 map - returns Ccp4Map object
-        ccp4_map = gemmi.read_ccp4_map(map_path)
+        if map_path.lower().endswith(".mtz"):
+            # MTZ holds structure factors, not a CCP4 map; grid via Gemmi F/Phi columns.
+            log.info(
+                "MTZ detected — gridding density from reflections "
+                "(not a CCP4 .map; use .map/.ccp4 for pre-computed maps)."
+            )
+            mtz_result = load_density_map_auto_mtz(map_path)
+            if mtz_result is None:
+                return None
+            np_array, crystallographic_info = mtz_result
+            log.info(
+                f"📐 Unit cell: a={crystallographic_info['unit_cell']['a']:.2f}, "
+                f"b={crystallographic_info['unit_cell']['b']:.2f}, "
+                f"c={crystallographic_info['unit_cell']['c']:.2f} Å"
+            )
+            log.info(f"📐 Grid dimensions: {crystallographic_info['grid_dimensions']}")
+            log.info(f"📐 Grid origin: {crystallographic_info['grid_origin']}")
+            log.info(f"📐 Axis order: {crystallographic_info['axis_order']}")
+            log.info(f"ℹ️ Loaded MTZ → grid shape: {np_array.shape}")
+        else:
+            # Load the CCP4 map - returns Ccp4Map object
+            ccp4_map = gemmi.read_ccp4_map(map_path)
 
-        if carve_density and pdb_path.exists():
-            log.parameter("carve_density", carve_density)
-            log.parameter("pdb_path", pdb_path)
-            # ccp4_map = carve_density_with_gemmi(ccp4_map, str(pdb_path), carve_cutoff)
-            # st = gemmi.read_structure(str(pdb_path))
-            # ccp4_map.set_extent(st.calculate_fractional_box(margin=carve_cutoff))
+            if carve_density and pdb_path.exists():
+                log.parameter("carve_density", carve_density)
+                log.parameter("pdb_path", pdb_path)
+                # ccp4_map = carve_density_with_gemmi(ccp4_map, str(pdb_path), carve_cutoff)
+                # st = gemmi.read_structure(str(pdb_path))
+                # ccp4_map.set_extent(st.calculate_fractional_box(margin=carve_cutoff))
 
-        # Access the FloatGrid object
-        grid = ccp4_map.grid
+            # Access the FloatGrid object
+            grid = ccp4_map.grid
 
-        # Extract crystallographic information
-        crystallographic_info = {
-            "unit_cell": {
-                "a": grid.unit_cell.a,
-                "b": grid.unit_cell.b,
-                "c": grid.unit_cell.c,
-                "alpha": grid.unit_cell.alpha,
-                "beta": grid.unit_cell.beta,
-                "gamma": grid.unit_cell.gamma,
-            },
-            "space_group": str(grid.spacegroup),
-            "grid_dimensions": grid.shape,
-            "grid_origin": (0, 0, 0),  # CCP4 maps typically start at origin
-            "axis_order": grid.axis_order,
-        }
+            # Extract crystallographic information
+            crystallographic_info = {
+                "unit_cell": {
+                    "a": grid.unit_cell.a,
+                    "b": grid.unit_cell.b,
+                    "c": grid.unit_cell.c,
+                    "alpha": grid.unit_cell.alpha,
+                    "beta": grid.unit_cell.beta,
+                    "gamma": grid.unit_cell.gamma,
+                },
+                "space_group": str(grid.spacegroup),
+                "grid_dimensions": grid.shape,
+                "grid_origin": (0, 0, 0),  # CCP4 maps typically start at origin
+                "axis_order": grid.axis_order,
+            }
 
-        # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
-        # This handles non-orthogonal systems (monoclinic, triclinic) correctly
-        grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
-        crystallographic_info["grid_spacing"] = grid_spacing
-        crystallographic_info["grid_origin"] = grid_origin
+            # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
+            # This handles non-orthogonal systems (monoclinic, triclinic) correctly
+            grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
+            crystallographic_info["grid_spacing"] = grid_spacing
+            crystallographic_info["grid_origin"] = grid_origin
 
-        # COORDINATE SYSTEM FIX: Convert from fractional to cartesian coordinates
-        # This ensures the map coordinates align properly with PDB structures
-        grid_origin = _convert_grid_origin_to_cartesian(grid, grid_spacing, grid_origin)
-        crystallographic_info["grid_origin"] = grid_origin
+            # COORDINATE SYSTEM FIX: Convert from fractional to cartesian coordinates
+            # This ensures the map coordinates align properly with PDB structures
+            grid_origin = _convert_grid_origin_to_cartesian(
+                grid, grid_spacing, grid_origin
+            )
+            crystallographic_info["grid_origin"] = grid_origin
 
-        # Add transformation matrices for proper coordinate handling
-        crystallographic_info["frac_to_orth"] = (
-            get_grid_fractional_to_orthogonal_matrix(grid)
-        )
-        crystallographic_info["orth_to_frac"] = (
-            get_grid_orthogonal_to_fractional_matrix(grid)
-        )
+            # Add transformation matrices for proper coordinate handling
+            crystallographic_info["frac_to_orth"] = (
+                get_grid_fractional_to_orthogonal_matrix(grid)
+            )
+            crystallographic_info["orth_to_frac"] = (
+                get_grid_orthogonal_to_fractional_matrix(grid)
+            )
 
-        log.info(
-            f"📐 Unit cell: a={crystallographic_info['unit_cell']['a']:.2f}, "
-            f"b={crystallographic_info['unit_cell']['b']:.2f}, "
-            f"c={crystallographic_info['unit_cell']['c']:.2f} Å"
-        )
-        log.info(f"📐 Grid dimensions: {crystallographic_info['grid_dimensions']}")
-        log.info(f"📐 Grid origin: {crystallographic_info['grid_origin']}")
-        log.info(f"📐 Axis order: {crystallographic_info['axis_order']}")
+            log.info(
+                f"📐 Unit cell: a={crystallographic_info['unit_cell']['a']:.2f}, "
+                f"b={crystallographic_info['unit_cell']['b']:.2f}, "
+                f"c={crystallographic_info['unit_cell']['c']:.2f} Å"
+            )
+            log.info(f"📐 Grid dimensions: {crystallographic_info['grid_dimensions']}")
+            log.info(f"📐 Grid origin: {crystallographic_info['grid_origin']}")
+            log.info(f"📐 Axis order: {crystallographic_info['axis_order']}")
 
-        # Convert to NumPy array
-        np_array = np.array(grid, copy=True)
-        log.info(f"ℹ️ Loaded CCP4 map shape: {np_array.shape}")
+            # Convert to NumPy array
+            np_array = np.array(grid, copy=True)
+            log.info(f"ℹ️ Loaded CCP4 map shape: {np_array.shape}")
 
-        # Expand symmetry if requested and symmetry operations exist
-        if expand_symmetry:
-            # Create a simple header object from gemmi Ccp4Map
-            class SimpleHeader:
-                def __init__(
-                    self,
-                    nsymbt: int,
-                    nx: int,
-                    ny: int,
-                    nz: int,
-                    nxstart: int = 0,
-                    nystart: int = 0,
-                    nzstart: int = 0,
-                ):
-                    self.nsymbt = nsymbt
-                    self.nx = nx
-                    self.ny = ny
-                    self.nz = nz
-                    self.nxstart = nxstart
-                    self.nystart = nystart
-                    self.nzstart = nzstart
+            # Expand symmetry if requested and symmetry operations exist
+            if expand_symmetry:
+                # Create a simple header object from gemmi Ccp4Map
+                class SimpleHeader:
+                    def __init__(
+                        self,
+                        nsymbt: int,
+                        nx: int,
+                        ny: int,
+                        nz: int,
+                        nxstart: int = 0,
+                        nystart: int = 0,
+                        nzstart: int = 0,
+                    ):
+                        self.nsymbt = nsymbt
+                        self.nx = nx
+                        self.ny = ny
+                        self.nz = nz
+                        self.nxstart = nxstart
+                        self.nystart = nystart
+                        self.nzstart = nzstart
 
-            header = None
-            try:
-                import struct
-
-                if hasattr(ccp4_map, "ccp4_header") and isinstance(
-                    ccp4_map.ccp4_header, (bytes, bytearray)
-                ):
-                    header_ints = struct.unpack("<256i", ccp4_map.ccp4_header[:1024])
-                    header = SimpleHeader(
-                        nsymbt=header_ints[23],
-                        nx=header_ints[7],
-                        ny=header_ints[8],
-                        nz=header_ints[9],
-                        nxstart=header_ints[4],
-                        nystart=header_ints[5],
-                        nzstart=header_ints[6],
-                    )
-            except Exception:
                 header = None
-            if header is None:
-                nsymbt = 0
-                if hasattr(ccp4_map, "header") and hasattr(ccp4_map.header, "nsymbt"):
-                    try:
-                        nsymbt = int(ccp4_map.header.nsymbt)
-                    except Exception:
-                        nsymbt = 0
-                shape = getattr(ccp4_map.grid, "shape", (0, 0, 0))
-                nx, ny, nz = (
-                    (int(shape[0]), int(shape[1]), int(shape[2]))
-                    if len(shape) == 3
-                    else (0, 0, 0)
-                )
-                header = SimpleHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
-
-            if header.nsymbt > 0:
-                log.parameter("ccp4_map", ccp4_map)
-                log.info(f"🔄 Expanding symmetry operations (NSYMBT: {header.nsymbt})")
                 try:
-                    # If running under mocks (no real file), keep shape unchanged
-                    if isinstance(ccp4_map, type(np)) or not os.path.exists(map_path):
-                        _ = expand_ccp4_symmetry(np_array, map_path, header)  # smoke
-                    else:
-                        np_array = expand_ccp4_symmetry(np_array, map_path, header)
-                    log.info(f"✅ Symmetry expanded - new shape: {np_array.shape}")
-                except Exception as _:
-                    # On any expansion error, proceed with unexpanded array
-                    log.warning(
-                        "⚠️ Symmetry expansion failed; continuing without expansion"
+                    import struct
+
+                    if hasattr(ccp4_map, "ccp4_header") and isinstance(
+                        ccp4_map.ccp4_header, (bytes, bytearray)
+                    ):
+                        header_ints = struct.unpack("<256i", ccp4_map.ccp4_header[:1024])
+                        header = SimpleHeader(
+                            nsymbt=header_ints[23],
+                            nx=header_ints[7],
+                            ny=header_ints[8],
+                            nz=header_ints[9],
+                            nxstart=header_ints[4],
+                            nystart=header_ints[5],
+                            nzstart=header_ints[6],
+                        )
+                except Exception:
+                    header = None
+                if header is None:
+                    nsymbt = 0
+                    if hasattr(ccp4_map, "header") and hasattr(
+                        ccp4_map.header, "nsymbt"
+                    ):
+                        try:
+                            nsymbt = int(ccp4_map.header.nsymbt)
+                        except Exception:
+                            nsymbt = 0
+                    shape = getattr(ccp4_map.grid, "shape", (0, 0, 0))
+                    nx, ny, nz = (
+                        (int(shape[0]), int(shape[1]), int(shape[2]))
+                        if len(shape) == 3
+                        else (0, 0, 0)
                     )
-            else:
-                log.info("ℹ️ No symmetry operations found in map header")
+                    header = SimpleHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
+
+                if header.nsymbt > 0:
+                    log.parameter("ccp4_map", ccp4_map)
+                    log.info(
+                        f"🔄 Expanding symmetry operations (NSYMBT: {header.nsymbt})"
+                    )
+                    try:
+                        # If running under mocks (no real file), keep shape unchanged
+                        if isinstance(ccp4_map, type(np)) or not os.path.exists(
+                            map_path
+                        ):
+                            _ = expand_ccp4_symmetry(np_array, map_path, header)  # smoke
+                        else:
+                            np_array = expand_ccp4_symmetry(
+                                np_array, map_path, header
+                            )
+                        log.info(f"✅ Symmetry expanded - new shape: {np_array.shape}")
+                    except Exception as _:
+                        # On any expansion error, proceed with unexpanded array
+                        log.warning(
+                            "⚠️ Symmetry expansion failed; continuing without expansion"
+                        )
+                else:
+                    log.info("ℹ️ No symmetry operations found in map header")
 
         # Carve density around protein if requested
         log.parameter("carve_density", carve_density)
@@ -739,7 +770,7 @@ def load_ccp4_map(
         log.error(f"❌ File not found: {map_path}")
         return None
     except Exception as e:
-        log.error(f"❌ Could not load CCP4 map from {map_path}: {e}")
+        log.error(f"❌ Could not load density map from {map_path}: {e}")
         return None
 
 

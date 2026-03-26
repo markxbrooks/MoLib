@@ -13,6 +13,8 @@ from molib.core.color.map import ColorMap
 from molib.core.color.strategy import ColorScheme
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from molib.entities.structure import Structure3D
+from molib.parser.pdb import PDBLayout
+from molib.xtal.uglymol.molecule.definition import NOT_LIGANDS
 
 # Performance optimization: Cache color scheme mappings
 _COLOR_SCHEME_CACHE = {}
@@ -43,7 +45,7 @@ class Atom3D(Structure3D):
         b_factor: float = 0.0,
         occupancy: float = 1.0,
         # Coordinates
-        coords: Optional["np.ndarray"] = None,
+        coords: Optional["np.ndarray"] = None, # np.asarray(coords) if coords is not None else np.zeros(3)
         # Hierarchy
         parent: Optional["Res3D"] = None,
         # Visualization
@@ -90,6 +92,65 @@ class Atom3D(Structure3D):
         self.set_element_color()
         if self.selected:
             self.color = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+            
+        # Further initializations
+        self.segment_id = segment_id
+        self.atom_validated = atom_validated
+        self.atom_validation_error = atom_validation_error
+        self.atom_contact_id = atom_contact_id
+        self.atom_contact_distance = atom_contact_distance
+        self.element = element
+        self.pqr_charge = pqr_charge
+        self.radius = radius
+        self.b_factor = b_factor
+        self.occupancy = occupancy
+        self.coords = coords
+        
+        # For comparison with uglymol
+        # self.name = ""
+        # self.altloc = ""
+        self.res_name = res_name
+        self.res_seq = res_seq
+        # self.chain = ""
+        # self.chain_index = -1
+        # self.seqid = ""
+        # self.xyz = [0, 0, 0]
+        # self.occ = 1.0
+        # self.b = 0
+        # self.element = ""
+        self.i_seq = -1
+        self.is_ligand = None
+        self.bonds = []
+        
+    def from_pdb_line(self, pdb_line):
+        """from_pdb_line"""
+        if len(pdb_line) < 66:
+            raise ValueError(f"ATOM or HETATM record is too short: {pdb_line}")
+        rec_type = pdb_line[0:6]
+        if rec_type not in ["HETATM", "ATOM  "]:
+            raise ValueError(f"Wrong record type: {rec_type}")
+        
+        x = PDBLayout.x.parse(line)
+        y = PDBLayout.y.parse(line)
+        z = PDBLayout.z.parse(line)
+            
+        serial=PDBLayout.atom_serial.parse(line)
+        name=PDBLayout.atom_name.parse(line)
+        alt_loc=PDBLayout.alt_loc.parse(line)
+        chain_id=PDBLayout.chain_id.parse(line)
+        element=PDBLayout.element.parse(line)
+        res_name=PDBLayout.res_name.parse(line)
+        res_seq=PDBLayout.res_seq.parse(line)
+        coords=np.array([x, y, z], dtype=np.float32)
+        occupancy=PDBLayout.occupancy.parse(line) or 1.0
+        b_factor=PDBLayout.temp_factor.parse(line) or 0.0
+        
+        self.name = name
+        self.alt_loc = alt_loc
+        self.res_seq = res_seq
+        self.chain = chain_id
+        self.coords = (x, y, z)
+        self.is_ligand = self.resname not in NOT_LIGANDS
 
     # ------------------------------------------------------------------
     # PyMOL-like convenience accessors
