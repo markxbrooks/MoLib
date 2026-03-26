@@ -4,7 +4,7 @@ Atom class
 
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 from decologr import Decologr as log
@@ -182,6 +182,99 @@ class Atom3D(Structure3D):
     def alt(self) -> Optional[str]:
         """Alternate location identifier (PyMOL-style), mapped from alt_loc."""
         return self.alt_loc
+
+    # ------------------------------------------------------------------
+    # Geometry, predicates, labels (shared ergonomics with xtal UglyMol Atom).
+    # Optional distance-based bond guesses live in ``atom_bond_heuristics`` (not ElMo GL bonds).
+    # ------------------------------------------------------------------
+
+    def _coords_float3(self) -> Tuple[float, float, float]:
+        """Return this atom's position as three Python floats."""
+        p = self.pos
+        return float(p[0]), float(p[1]), float(p[2])
+
+    def distance_sq(self, other: "Atom3D") -> float:
+        """Squared Euclidean distance to ``other`` in angstroms."""
+        ax, ay, az = self._coords_float3()
+        bx, by, bz = other._coords_float3()
+        dx, dy, dz = ax - bx, ay - by, az - bz
+        return dx * dx + dy * dy + dz * dz
+
+    def distance(self, other: "Atom3D") -> float:
+        """Euclidean distance to ``other`` in angstroms."""
+        return self.distance_sq(other) ** 0.5
+
+    def midpoint(self, other: "Atom3D") -> Tuple[float, float, float]:
+        """Midpoint between this atom and ``other``."""
+        ax, ay, az = self._coords_float3()
+        bx, by, bz = other._coords_float3()
+        return (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2
+
+    def is_hydrogen(self) -> bool:
+        """True for hydrogen isotopes used in PDB/mmCIF (H and D)."""
+        el = (self.element or "").strip().upper()
+        return el in ("H", "D")
+
+    def is_water(self) -> bool:
+        """True if the parent residue (or ``res_name``) is standard water HO4/HOH naming."""
+        name = self.resn or self.res_name
+        if name is None:
+            return False
+        return str(name).strip().upper() == "HOH"
+
+    def _normalized_alt_loc(self) -> str:
+        return (self.alt_loc or "").strip()
+
+    def is_main_conformer(self) -> bool:
+        """True for blank or 'A' alternate-location ID (common PDB main conformer)."""
+        a = self._normalized_alt_loc()
+        return a in ("", "A")
+
+    def is_same_conformer(self, other: "Atom3D") -> bool:
+        """
+        True if alternate-location IDs are compatible for the same physical model.
+
+        Blank altloc is treated as compatible with any ID (standard PDB convention).
+        """
+        a = self._normalized_alt_loc()
+        b = other._normalized_alt_loc()
+        if not a or not b:
+            return True
+        return a == b
+
+    def _label_seq_str(self) -> str:
+        """Residue sequence key for labels (parent number, else atom's res_seq)."""
+        if self.resi is not None:
+            return str(self.resi)
+        if self.res_seq is not None:
+            return str(self.res_seq)
+        return "?"
+
+    def _label_resname_str(self) -> str:
+        rn = self.resn or self.res_name
+        return (rn or "?").strip()
+
+    def resid(self) -> str:
+        """Compact ``{residue_number}/{chain_id}`` style key."""
+        return f"{self._label_seq_str()}/{self.chain_id}"
+
+    def short_label(self) -> str:
+        """One-line atom identity: name, seq, residue name, chain."""
+        return (
+            f"{self.name} /{self._label_seq_str()} "
+            f"{self._label_resname_str()}/{self.chain_id}"
+        )
+
+    def long_label(self) -> str:
+        """Verbose string incl. occupancy, B-factor, element, and coordinates."""
+        x, y, z = self._coords_float3()
+        el = (self.element or "").strip()
+        return (
+            f"{self.name} /{self._label_seq_str()} "
+            f"{self._label_resname_str()}/{self.chain_id} - occ: "
+            f"{self.occupancy:.2f} bf: {self.b_factor:.2f} ele: {el} pos: "
+            f"({x:.2f},{y:.2f},{z:.2f})"
+        )
 
     def get_chain_color(self) -> "np.ndarray":
         """
