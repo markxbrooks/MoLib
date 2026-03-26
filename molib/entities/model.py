@@ -79,11 +79,11 @@ class Model3D:
         """
         apply_chain_coloring
 
-        :param chain_colors: dict
+        :param chain_colors: dict mapping chain_id -> (r, g, b)
         """
-        for chain_id, chain in self.chains.items():
+        for chain_id in self.chains:
             r, g, b = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
-            chain.set_color(r, g, b)
+            self.set_chain_color(chain_id, r, g, b)
 
     def apply_atom_coloring_by_element(self) -> None:
         """
