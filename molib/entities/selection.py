@@ -11,9 +11,9 @@ class CoordinateSelection:
     CoordinateSelection class
     """
 
-    start_residue: int = None
-    end_residue: int = None
-    chain_id: str = None
+    start_residue: int | None = None
+    end_residue: int | None = None
+    chain_id: str | None = None
 
     def __str__(self):
         return f"Selection: {self.chain_id} {self.start_residue}-{self.end_residue}"
