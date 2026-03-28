@@ -4,10 +4,10 @@ CDR
 Annotation and contact functions
 """
 
-import numpy as np
 import pandas as pd
 from decologr import Decologr as log
 from molib.calc.geometry.distance import euclidean_distance
+from molib.calc.inter_chain_contacts import get_contacting_atom_pairs
 
 LOGGING_ENABLED = False
 
@@ -85,29 +85,22 @@ def get_contacting_atoms(chain1: pd.DataFrame, chain2: pd.DataFrame) -> pd.DataF
     """
     Find atom pairs between chain1 and chain2 that are within CONTACT_DISTANCE.
 
-    Both dataframes must contain x, y, z coordinate_data_main with consistent column names:
-        ['x', 'y', 'z']
+    Both dataframes must share biopandas-style columns ``x_coord``, ``y_coord``,
+    ``z_coord``. Suffixes in the result are ``_a`` / ``_b`` (see
+    :func:`molib.calc.inter_chain_contacts.get_contacting_atom_pairs`).
 
     :param chain1: pd.DataFrame with atoms from chain 1
     :param chain2: pd.DataFrame with atoms from chain 2
     :return: pd.DataFrame of contacting atom pairs
     """
-    # Cross join
-    interface = chain1.merge(chain2, how="cross", suffixes=("_1", "_2"))
-
-    # Compute Euclidean distances
-    dx = interface["x_coord_1"] - interface["x_coord_2"]
-    dy = interface["y_coord_1"] - interface["y_coord_2"]
-    dz = interface["z_coord_1"] - interface["z_coord_2"]
-    interface["distance"] = np.sqrt(dx**2 + dy**2 + dz**2)
-
-    # Filter by contact distance
-    contacts = interface[interface["distance"] <= CONTACT_DISTANCE].copy()
-
-    # Optionally drop duplicates based on some atom/residue ID columns
-    # contacts = contacts.drop_duplicates(subset=['resid_1', 'resid_2'])
-
-    return contacts
+    pairs = get_contacting_atom_pairs(chain1, chain2, CONTACT_DISTANCE)
+    # Historically TCR code expected _1/_2 suffixes; normalize for callers in this module.
+    rename = {
+        c: c.replace("_a", "_1").replace("_b", "_2")
+        for c in pairs.columns
+        if "_a" in c or "_b" in c
+    }
+    return pairs.rename(columns=rename)
 
 
 def annotate_alpha_beta_chains(tcr_df: pd.DataFrame):
