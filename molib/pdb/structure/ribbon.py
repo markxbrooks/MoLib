@@ -32,7 +32,7 @@ from picogl.renderer import MeshData
 
 # B-spline ribbon effective half-width is 0.5 * get_width(ss) * width (guide-point factor).
 # Legacy ribbons use constant half-width 0.5. To match, use width so 0.5*0.6*width ≈ 0.5 → width ≈ 1.67.
-# RIBBON_WIDTH_SCALE = 1.7
+# RIBBON_WIDTH_SCALE = 1.7 @@@@@
 RIBBON_WIDTH_SCALE = 2.7
 
 
@@ -94,7 +94,6 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         if all_ss_types is not None and chain_id in ss_types_by_chain:
             ss_array = np.array(ss_types_by_chain[chain_id])
 
-        #verts, norms, inds, colors, _ = generate_ribbon_geometry_with_colors(
         vertex_data = generate_ribbon_geometry_with_colors(
             ca_array,
             color_array,
@@ -492,7 +491,7 @@ def generate_ribbon_geometry_with_colors(
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
 ) -> VertexData:
     """
-    Generate ribbon geometry with per-CA colors.
+    Generate ribbon geometry with per-CA colors. @@@@@ RIBBON_PATH
 
     Uses Ribbons-style B-splines by default for better accuracy, or falls back
     to Catmull-Rom for compatibility.

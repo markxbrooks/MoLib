@@ -244,10 +244,22 @@ def calculate_guide_points(
         c = normalize(c)
         d = cross(c, a)  # Parallel to plane, perpendicular to CA-CA
         d = normalize(d)
+        axis = normalize(ca_coords[k + 1] - ca_coords[k - 1])
+        radial = normalize(cross(axis, a))
+        if dprev is not None:
+            if dot(radial, dprev) < 0.0:
+                radial = -radial
+                dprev = radial.copy()
 
         # Get width based on secondary structure (Ribbons style)
         if ss_types is not None and k < len(ss_types) and k + 1 < len(ss_types):
             ribbon_width = get_width(ss_types[k], ss_types[k + 1]) * width
+            if ss_types is not None and is_helix(
+                    ss_types[k],
+                    ss_types[k] if k + 1 >= len(ss_types) else ss_types[k + 1],
+            ):
+                helix_scale = 5.2  # try 1.3–2.0
+                ribbon_width *= helix_scale
         else:
             ribbon_width = width
 
@@ -263,10 +275,10 @@ def calculate_guide_points(
         # Ribbons uses: fact = (k==1) ? 1 : dot(d, dprev)
         if k == 1:
             fact = 1.0
-        elif dprev is not None:
-            fact = dot(d, dprev)
-            if fact < 0.0:
-                up = not up
+            """elif dprev is not None:
+                fact = dot(d, dprev)
+                if fact < 0.0:
+                    up = not up"""
         else:
             fact = 1.0
 
@@ -276,8 +288,11 @@ def calculate_guide_points(
             fact = -fact
 
         guide_idx = k + 1  # +1 for head point
-        p_points[guide_idx] = p + fact * ribbon_width * d
-        q_points[guide_idx] = p - fact * ribbon_width * d
+        """p_points[guide_idx] = p + fact * ribbon_width * d
+        q_points[guide_idx] = p - fact * ribbon_width * d"""
+
+        p_points[guide_idx] = p + fact * ribbon_width * radial
+        q_points[guide_idx] = p - fact * ribbon_width * radial
 
         dprev = d.copy()
 
@@ -650,11 +665,12 @@ def generate_ribbon_geometry_ribbons_style(
     samples_per_segment: int = 8,
     style: str = RibbonStyle.SQUARE,  # "flat", "circle", "square", "ellipse" - default to square for 3D blocks
     num_threads: int = 8,
+    helix_radius_scale: float = 1.0
 ) -> tuple[
          ndarray, ndarray, ndarray, ndarray, tuple[ndarray, ndarray] | None, tuple[ndarray, ndarray, ndarray] | None] | \
      tuple[GeometryData, tuple[float | Any, float | Any] | None | tuple[Any, Any], tuple[Any, Any, Any] | None]:
     """
-    Generate ribbon geometry using Ribbons' B-spline approach.
+    Generate ribbon geometry using Ribbons' B-spline approach. RIBBON_PATH
 
     This creates 3D ribbon geometry with proper Frenet frame orientation,
     similar to Ribbons' ResGeomCircle/ResGeomFlat functions.
@@ -693,10 +709,6 @@ def generate_ribbon_geometry_ribbons_style(
         tangents, normals, binormals, widths = calculate_frenet_frame_from_edges(
             p_spline, centerline, q_spline
         )
-        """
-        tangents, normals, binormals = calculate_parallel_transport_frames(centerline)
-        widths = np.ones(len(centerline), dtype=np.float32) * width
-        """
     except:
         # Fallback to centerline-only if edges don't match
         tangents, normals, binormals = calculate_frenet_frame(centerline)
@@ -945,12 +957,6 @@ def generate_ribbon_geometry_ribbons_style(
 
     vertices = np.array(vertices, dtype=np.float32)
     vertex_normals = np.array(vertex_normals, dtype=np.float32)
-    """
-    for i in range(1, len(vertex_normals)):
-        if np.dot(vertex_normals[i], vertex_normals[i - 1]) < 0:
-            vertex_normals[i] *= -1
-            binormals[i] *= -1
-    """
     indices = np.array(indices, dtype=np.uint32)
 
     # Colors (default to white, can be customized)
