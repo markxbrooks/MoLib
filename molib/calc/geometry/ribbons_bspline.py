@@ -656,6 +656,7 @@ def calculate_parallel_transport_frames(centerline: np.ndarray):
 
     return tangents, normals, binormals
 
+
 def generate_ribbon_geometry_ribbons_style(
     ca_coords: ndarray,
     o_coords: Optional[ndarray] = None,

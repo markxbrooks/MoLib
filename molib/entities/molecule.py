@@ -322,7 +322,7 @@ class Molecule3D:
         """
         return np.array(self.get_backbone_trace(), dtype=np.float32)
 
-    def _residues_with_ca_protein_only(self):
+    def residues_with_ca_protein_only(self):
         """Yield residues that have CA and are standard polypeptide (excludes ligands)."""
         for res in self.get_all_residues():
             if not res.has_ca():
@@ -341,19 +341,19 @@ class Molecule3D:
         Use this for ribbon/cartoon so ribbons follow the protein backbone only.
         """
         return np.array(
-            [res.ca for res in self._residues_with_ca_protein_only()], dtype=np.float32
+            [res.ca for res in self.residues_with_ca_protein_only()], dtype=np.float32
         )
 
     def get_ca_colors_protein_only(self) -> np.ndarray:
         """CA colors for standard polypeptide residues only."""
         return np.array(
-            [res.color for res in self._residues_with_ca_protein_only()],
+            [res.color for res in self.residues_with_ca_protein_only()],
             dtype=np.float32,
         )
 
     def get_chain_ids_for_ca_protein_only(self) -> list[str]:
         """Chain IDs for each CA in protein-only order (same length as get_ca_coords_protein_only)."""
-        return [res.chain_id for res in self._residues_with_ca_protein_only()]
+        return [res.chain_id for res in self.residues_with_ca_protein_only()]
 
     def get_ca_colors(self) -> np.ndarray:
         """

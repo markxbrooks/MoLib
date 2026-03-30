@@ -479,6 +479,62 @@ def generate_ribbon_geometry_per_chain(
     return ribbon_mesh_by_chain
 
 
+def generate_ribbon_colors(
+    ca_coords: np.ndarray,
+    ca_colors: np.ndarray,
+    chain_ids: list[str],
+    use_ribbons_style: bool = True,
+    o_coords: Optional[np.ndarray] = None,
+    ss_types: Optional[np.ndarray] = None,
+    style: str = RibbonStyle.SQUARE,
+    ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
+) -> np.ndarray:
+    """
+    Generate per-vertex colors for ribbon geometry.
+    Returns: np.ndarray of shape (n_vertices, 3)
+    """
+
+    if use_ribbons_style:
+        try:
+            geo_data, _, _ = generate_ribbon_geometry_ribbons_style(
+                ca_coords,
+                o_coords=o_coords,
+                ss_types=ss_types,
+                width=ribbon_width_scale,
+                samples_per_segment=4,
+                style=style,
+                num_threads=8,
+            )
+
+            vertices = geo_data.vertices
+            n_vertices = len(vertices)
+            colors = np.zeros((n_vertices, 3), dtype=np.float32)
+
+            for i, vertex in enumerate(vertices):
+                distances = np.linalg.norm(ca_coords - vertex, axis=1)
+                nearest_ca_idx = np.argmin(distances)
+                colors[i] = ca_colors[nearest_ca_idx]
+
+            return colors
+
+        except Exception:
+            use_ribbons_style = False
+
+    # Fallback (Catmull-Rom)
+    if len(ca_coords) < 4:
+        raise ValueError(
+            f"At least 4 C-alpha atoms required, got {len(ca_coords)}"
+        )
+
+    spline_colors = catmull_rom_chain(ca_colors)  # (M, 3)
+
+    colors = []
+    for col in spline_colors:
+        colors.extend([col, col])  # left + right vertex
+
+    return np.asarray(colors, dtype=np.float32)
+
+
 def generate_ribbon_geometry_with_colors(
     ca_coords: np.ndarray,
     ca_colors: np.ndarray,

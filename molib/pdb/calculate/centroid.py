@@ -41,8 +41,8 @@ def mol_calculate_atoms_only_centroid(
         log.debug(f"⚠️ No ATOM records for chain {chain_id}.")
         return None
 
-    coords = df[["x_coord", "y_coord", "z_coord"]].values
-    if coords.size == 0:
+    coords = df[["x_coord", "y_coord", "z_coord"]].to_numpy()
+    if coords.shape[0] == 0:
         return None
 
     centroid = np.nanmean(coords, axis=0)

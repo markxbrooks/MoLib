@@ -27,10 +27,12 @@ def _get_cache_key(
     """Generate a cache key for Connolly surface parameters."""
     import hashlib
 
+    ap = np.asarray(atom_positions)
+    ar = np.asarray(atom_radii)
     # Create a hash of the parameters that affect the surface calculation
     key_data = {
-        "atom_positions": atom_positions.tobytes() if atom_positions.size > 0 else b"",
-        "atom_radii": atom_radii.tobytes() if atom_radii.size > 0 else b"",
+        "atom_positions": ap.tobytes() if ap.size > 0 else b"",
+        "atom_radii": ar.tobytes() if ar.size > 0 else b"",
         "probe_radius": probe_radius,
         "grid_spacing": grid_spacing,
         "density": density,
