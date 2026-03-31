@@ -109,7 +109,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
             vertices=vertex_data.geom_data.vertices,
             normals=vertex_data.geom_data.normals,
             ebo=vertex_data.geom_data.indices,
-            cbo=vertex_data.geom_data.colors,
+            colors=vertex_data.geom_data.colors,
         )
 
     return ribbon_data
@@ -410,7 +410,7 @@ def generate_ribbon_geometry_per_chain_test(
             vertices=verts,
             normals=norms,
             ebo=inds,
-            cbo=colors,
+            colors=colors,
         )
 
     return ribbon_mesh_by_chain
@@ -469,7 +469,7 @@ def generate_ribbon_geometry_per_chain(
                 vertices=verts,
                 normals=norms,
                 ebo=inds,
-                cbo=colors,
+                colors=colors,
             )
         except Exception as ex:
             log.message(f"⚠️ Error generating ribbon for chain {chain_id}: {ex}",
