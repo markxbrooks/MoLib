@@ -106,8 +106,8 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         )
 
         ribbon_data[chain_id] = MeshData(
-            vbo=vertex_data.geom_data.vertices,
-            nbo=vertex_data.geom_data.normals,
+            vertices=vertex_data.geom_data.vertices,
+            normals=vertex_data.geom_data.normals,
             ebo=vertex_data.geom_data.indices,
             cbo=vertex_data.geom_data.colors,
         )
@@ -407,8 +407,8 @@ def generate_ribbon_geometry_per_chain_test(
             inds = np.concatenate([inds, arrow_i])
 
         ribbon_mesh_by_chain[chain_id] = MeshData(
-            vbo=verts,
-            nbo=norms,
+            vertices=verts,
+            normals=norms,
             ebo=inds,
             cbo=colors,
         )
@@ -466,8 +466,8 @@ def generate_ribbon_geometry_per_chain(
             colors = vertex_data.geom_data.colors
 
             ribbon_mesh_by_chain[chain_id] = MeshData(
-                vbo=verts,
-                nbo=norms,
+                vertices=verts,
+                normals=norms,
                 ebo=inds,
                 cbo=colors,
             )
