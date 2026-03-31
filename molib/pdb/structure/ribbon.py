@@ -108,7 +108,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         ribbon_data[chain_id] = MeshData(
             vertices=vertex_data.geom_data.vertices,
             normals=vertex_data.geom_data.normals,
-            ebo=vertex_data.geom_data.indices,
+            indices=vertex_data.geom_data.indices,
             colors=vertex_data.geom_data.colors,
         )
 
@@ -409,7 +409,7 @@ def generate_ribbon_geometry_per_chain_test(
         ribbon_mesh_by_chain[chain_id] = MeshData(
             vertices=verts,
             normals=norms,
-            ebo=inds,
+            indices=inds,
             colors=colors,
         )
 
@@ -468,7 +468,7 @@ def generate_ribbon_geometry_per_chain(
             ribbon_mesh_by_chain[chain_id] = MeshData(
                 vertices=verts,
                 normals=norms,
-                ebo=inds,
+                indices=inds,
                 colors=colors,
             )
         except Exception as ex:
