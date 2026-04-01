@@ -2244,7 +2244,7 @@ def _calculate_proper_grid_spacing(grid: gemmi.FloatGrid) -> tuple[dict, dict]:
             raise ValueError("Failed to get transformation matrix")
 
         # Calculate proper grid spacing using the transformation matrix
-        # This accounts for the actual crystallographic geometry
+        # This accounts for the actual crystallographic meshdata
         grid_spacing = {}
 
         # For each crystallographic axis, calculate the proper spacing

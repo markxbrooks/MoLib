@@ -164,7 +164,7 @@ def detect_bonds(
 def create_sulfate_from_coordinates(
     coordinates: List[tuple], element_symbols: List[str], atom_names: List[str]
 ) -> Optional["Chem.Mol"]:
-    """Create sulfate ion from coordinates with proper tetrahedral geometry"""
+    """Create sulfate ion from coordinates with proper tetrahedral meshdata"""
     try:
         log.info(f"🔄 PDBLigandParser: Creating sulfate from {len(coordinates)} atoms")
 
@@ -456,9 +456,9 @@ def is_connected_molecule(mol: "Chem.Mol") -> bool:
 
 
 def add_hydrogen_and_optimize_geometry(mol):
-    """Try to add hydrogens and optimize geometry"""
+    """Try to add hydrogens and optimize meshdata"""
     try:
-        log.info("🔄 PDBLigandParser: Adding hydrogens and optimizing geometry...")
+        log.info("🔄 PDBLigandParser: Adding hydrogens and optimizing meshdata...")
 
         # --- First, sanitize the molecule to fix valence issues
         try:

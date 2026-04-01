@@ -8,7 +8,7 @@ Example Usage:
 
 This module supports two ribbon generation methods:
 1. Catmull-Rom splines (original Elmo/Molscript approach) - fast but less accurate
-2. B-splines (Ribbons approach) - more accurate, uses peptide plane geometry
+2. B-splines (Ribbons approach) - more accurate, uses peptide plane meshdata
 
 """
 
@@ -47,7 +47,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
 ) -> dict[Any, MeshData]:
     """
-    Generate ribbon geometry for each chain separately, with per-CA colors.
+    Generate ribbon meshdata for each chain separately, with per-CA colors.
 
     Uses Ribbons-style B-splines by default for better visual accuracy.
 
@@ -213,7 +213,7 @@ def generate_arrow_geometry(
         base_width = arrow_base_width if arrow_base_width is not None else width
         head_width = arrow_head_width if arrow_head_width is not None else 0.0
 
-    # Generate arrow geometry using Ribbons' approach
+    # Generate arrow meshdata using Ribbons' approach
     # Create samples along arrow length, tapering from base_width to head_width
     vertices = []
     vertex_normals = []
@@ -367,7 +367,7 @@ def generate_ribbon_geometry_per_chain_test(
     add_arrow: bool = True,
 ) -> dict[str, MeshData]:
     """
-    Generate ribbon geometry for each chain separately,
+    Generate ribbon meshdata for each chain separately,
     and optionally add a beta-arrow at the end.
     """
     from collections import defaultdict
@@ -391,7 +391,7 @@ def generate_ribbon_geometry_per_chain_test(
         color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
         colors = np.tile(color, (len(verts), 1)).astype(np.float32)
 
-        # --- Add arrow geometry at chain end ---
+        # --- Add arrow meshdata at chain end ---
         if add_arrow and len(ca_array) >= 2:
             arrow_v, arrow_n, arrow_i, arrow_c = generate_arrow_geometry(
                 ca_array[-2], ca_array[-1], color=color
@@ -424,7 +424,7 @@ def generate_ribbon_geometry_per_chain(
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
 ) -> dict[str, MeshData]:
     """
-    Generate ribbon geometry for each chain separately.
+    Generate ribbon meshdata for each chain separately.
     """
     from collections import defaultdict
 
@@ -447,7 +447,7 @@ def generate_ribbon_geometry_per_chain(
         chain_id_list = [chain_id] * len(ca_array)
 
         try:
-            # Use generate_ribbon_geometry_with_colors for B-spline/Ribbons-style geometry
+            # Use generate_ribbon_geometry_with_colors for B-spline/Ribbons-style meshdata
             # with per-chain flat color (tile chain color for each CA)
             color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
             ca_colors = np.tile(color, (len(ca_array), 1)).astype(np.float32)
@@ -490,7 +490,7 @@ def generate_ribbon_colors(
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
 ) -> np.ndarray:
     """
-    Generate per-vertex colors for ribbon geometry.
+    Generate per-vertex colors for ribbon meshdata.
     Returns: np.ndarray of shape (n_vertices, 3)
     """
 
@@ -547,7 +547,7 @@ def generate_ribbon_geometry_with_colors(
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
 ) -> VertexData:
     """
-    Generate ribbon geometry with per-CA colors. @@@@@ RIBBON_PATH
+    Generate ribbon meshdata with per-CA colors. @@@@@ RIBBON_PATH
 
     Uses Ribbons-style B-splines by default for better accuracy, or falls back
     to Catmull-Rom for compatibility.

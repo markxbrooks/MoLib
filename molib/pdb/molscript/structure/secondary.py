@@ -34,7 +34,7 @@ def mol3d_secstruc_ca_geom(mol: Molecule3D):
 
     :param mol: Mol3D
     :return:   None
-    Secondary structure assignment using Cα geometry only.
+    Secondary structure assignment using Cα meshdata only.
     Assigns 'H' for alpha helix, 'E' for beta strand, 'T' for turn, ' ' for coil.
     """
 

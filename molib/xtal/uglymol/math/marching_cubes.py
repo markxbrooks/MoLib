@@ -32,7 +32,7 @@ def _marching_cubes_impl(size, values, iso_level):
     """
     Basic marching cubes implementation.
 
-    This is a simplified version that returns basic geometry.
+    This is a simplified version that returns basic meshdata.
     For production use, consider using scikit-image's marching_cubes.
     """
     nx, ny, nz = size

@@ -1,15 +1,15 @@
 """
-Ribbons-style B-spline ribbon geometry
+Ribbons-style B-spline ribbon meshdata
 
 This module implements Ribbons' B-spline approach for generating accurate
-3D ribbon geometry, as opposed to the simpler Catmull-Rom approach used
+3D ribbon meshdata, as opposed to the simpler Catmull-Rom approach used
 in the original Elmo implementation.
 
 Key differences from Catmull-Rom:
 - Uses cubic B-splines (smoother, doesn't interpolate through all points)
-- Calculates guide points from peptide plane geometry (CA, O, CB atoms)
+- Calculates guide points from peptide plane meshdata (CA, O, CB atoms)
 - Uses Frenet frame (tangent, normal, binormal) for proper 3D orientation
-- Generates 3D tube geometry with proper normals for lighting
+- Generates 3D tube meshdata with proper normals for lighting
 """
 
 from typing import Optional, Tuple, Any
@@ -180,7 +180,7 @@ def calculate_guide_points(
     Calculate B-spline guide points from CA coordinates (Ribbons-style).
 
     This implements MakeProBSguides from Ribbons, which calculates guide points
-    based on peptide plane geometry.
+    based on peptide plane meshdata.
 
     Args:
         ca_coords: (N, 3) array of C-alpha coordinates
@@ -369,7 +369,7 @@ def evaluate_bspline_segment(
     if matrix is None:
         matrix = BS_MAT
 
-    # Form geometry matrix
+    # Form meshdata matrix
     geom = np.array([p0, p1, p2, p3], dtype=np.float32)  # (4, 3)
 
     # B-spline evaluation: P(t) = [t^3 t^2 t 1] * matrix * geom
@@ -475,7 +475,7 @@ def calculate_frenet_frame_from_edges(
     Calculate Frenet frame from ribbon edges (Ribbons' SetSpaceCurve approach).
 
     This is more accurate than calculating from centerline alone, as it uses
-    the actual ribbon geometry.
+    the actual ribbon meshdata.
 
     Args:
         left_edge: (N, 3) array of left edge points
@@ -671,9 +671,9 @@ def generate_ribbon_geometry_ribbons_style(
          ndarray, ndarray, ndarray, ndarray, tuple[ndarray, ndarray] | None, tuple[ndarray, ndarray, ndarray] | None] | \
      tuple[GeometryData, tuple[float | Any, float | Any] | None | tuple[Any, Any], tuple[Any, Any, Any] | None]:
     """
-    Generate ribbon geometry using Ribbons' B-spline approach. RIBBON_PATH
+    Generate ribbon meshdata using Ribbons' B-spline approach. RIBBON_PATH
 
-    This creates 3D ribbon geometry with proper Frenet frame orientation,
+    This creates 3D ribbon meshdata with proper Frenet frame orientation,
     similar to Ribbons' ResGeomCircle/ResGeomFlat functions.
 
     Args:
@@ -705,7 +705,7 @@ def generate_ribbon_geometry_ribbons_style(
     q_spline = evaluate_bspline_chain(q_points, samples_per_segment)
 
     # Calculate Frenet frame from edges (Ribbons' SetSpaceCurve approach)
-    # This is more accurate as it uses actual ribbon geometry
+    # This is more accurate as it uses actual ribbon meshdata
     try:
         tangents, normals, binormals, widths = calculate_frenet_frame_from_edges(
             p_spline, centerline, q_spline
@@ -1063,16 +1063,16 @@ def generate_resgeom_flat(
     force_thru_ca: bool = False,
 ) -> Tuple[ndarray, ndarray, ndarray, ndarray]:
     """
-    Generate flat ribbon geometry using Ribbons' ResGeomFlat approach.
+    Generate flat ribbon meshdata using Ribbons' ResGeomFlat approach.
 
     This ports the ResGeomFlat function from Ribbons C++ code, including:
     - SetGuidePoints: Interpolates guide points for multiple threads
     - SetGuideLines: Evaluates B-spline curves
     - SetLineNormals: Calculates normals from cross products
     - ArrowLines: Tapers ribbon width for arrowhead (if has_arrow=True)
-    - FlipLineNormals: Creates double-sided geometry with thickness
+    - FlipLineNormals: Creates double-sided meshdata with thickness
 
-    This is the "lovely" geometry generation that creates beautiful beta sheet
+    This is the "lovely" meshdata generation that creates beautiful beta sheet
     ribbons with proper arrowheads that follow the ribbon plane.
 
     Args:
