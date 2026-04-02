@@ -12,12 +12,15 @@ This module supports two ribbon generation methods:
 
 """
 
+from dataclasses import dataclass
 from typing import Any, Optional, Callable
 
 import numpy as np
 from numpy import bool_, dtype, ndarray, floating
 
 from decologr import Decologr as log
+from elmo import get_ribbon_width_scale, get_ribbon_style
+from elmo.gl.buffers.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style, RibbonStyle,
 )
@@ -34,6 +37,14 @@ from picogl.renderer import MeshData
 # Legacy ribbons use constant half-width 0.5. To match, use width so 0.5*0.6*width ≈ 0.5 → width ≈ 1.67.
 # RIBBON_WIDTH_SCALE = 1.7 @@@@@
 RIBBON_WIDTH_SCALE = 2.7
+
+
+@dataclass
+class RibbonStyleConfig:
+    """Ribbon cross-section style and B-spline width scale (context-based API)."""
+
+    style: str
+    width_scale: float = RIBBON_WIDTH_SCALE
 
 
 def generate_ribbon_geometry_per_chain_color_by_ca(
@@ -113,6 +124,19 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         )
 
     return ribbon_data
+
+
+def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
+    context: RibbonBuildContext,
+    config: RibbonStyleConfig) -> dict[Any, MeshData]:
+    """generate ribbon geometry per chain by ca"""
+    return generate_ribbon_geometry_per_chain_color_by_ca(
+        context.coords,
+        context.chain_ids,
+        context.colors,
+        style=config.style,
+        ribbon_width_scale=config.width_scale,
+    )
 
 
 def normalize(v) -> float:
@@ -477,6 +501,16 @@ def generate_ribbon_geometry_per_chain(
             continue
 
     return ribbon_mesh_by_chain
+
+
+def generate_ribbon_geometry_per_chain_from_context(
+    context: RibbonBuildContext,
+    config: RibbonStyleConfig,
+) -> dict[str, MeshData]:
+    """
+    Generate ribbon meshdata for each chain separately.
+    """
+    return generate_ribbon_geometry_per_chain(context.coords, context.chain_ids, context.colors, config.style, config.width_scale)
 
 
 def generate_ribbon_colors(
