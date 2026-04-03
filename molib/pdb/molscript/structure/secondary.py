@@ -1,9 +1,11 @@
 import numpy as np
-from molib.entities.molecule import Molecule3D
+from molib.entities.molecule import Molecule3D, STANDARD_POLYPEPTIDE_RESIDUES
 from molib.entities.residue import Res3D
 from molib.entities.secondary_structure_type import SecondaryStructureType
 
-MOL3D_INIT_SECSTRUC = True
+# Bit reserved for callers that build Molecule3D from PDB: OR into ``mol.init`` when
+# HELIX/SHEET (or mmCIF equivalent) supplied secondary structure.
+MOL3D_INIT_SECSTRUC = 1 << 0
 
 
 def _convert_secstruc_to_enum(
@@ -28,20 +30,87 @@ def _convert_secstruc_to_string(secstruc_value: str | SecondaryStructureType) ->
         return " "
 
 
-def mol3d_secstruc_ca_geom(mol: Molecule3D):
+def _link_residues_ordered(mol: Molecule3D):
     """
-    mol3d_secstruc_ca_geom
+    PDB-built :class:`Molecule3D` keeps residues on chains without ``prev`` / ``next``.
+    Link them in :meth:`Molecule3D.get_all_residues` order so molscript-style passes
+    (short H/E runs, turns) match legacy single-list traversal.
 
-    :param mol: Mol3D
-    :return:   None
-    Secondary structure assignment using Cα meshdata only.
-    Assigns 'H' for alpha helix, 'E' for beta strand, 'T' for turn, ' ' for coil.
+    Returns the first residue, or ``None`` if the molecule has no residues.
     """
+    first = None
+    prev = None
+    for res in mol.get_all_residues():
+        if first is None:
+            first = res
+        res.prev = prev
+        if prev is not None:
+            prev.next = res
+        prev = res
+    if prev is not None:
+        prev.next = None
+    return first
 
-    residues = list(mol.residues)
+
+def mol3d_protein_has_explicit_secondary_structure(mol: Molecule3D) -> bool:
+    """
+    True if any standard polypeptide residue with CA carries non-coil SS.
+
+    When a PDB/mmCIF file has no HELIX/SHEET records, parsers typically leave every
+    residue at the default :class:`SecondaryStructureType.COIL`; then geometry-based
+    inference should run.
+    """
+    for res in mol.residues_with_ca_protein_only():
+        ss = getattr(res, "secstruc", None)
+        if ss is None:
+            continue
+        if isinstance(ss, SecondaryStructureType):
+            if ss != SecondaryStructureType.COIL:
+                return True
+            continue
+        if SecondaryStructureType.from_string(str(ss).strip()) != SecondaryStructureType.COIL:
+            return True
+    return False
+
+
+def _polypeptide_residue_with_ca(res: Res3D) -> bool:
+    if not res.has_ca():
+        return False
+    res_name = (
+        (getattr(res, "name", "") or getattr(res, "type", "") or "")
+        .strip()
+        .upper()
+    )
+    return res_name in STANDARD_POLYPEPTIDE_RESIDUES
+
+
+def _virtual_ca_bend_deg(ca_prev: np.ndarray, ca_mid: np.ndarray, ca_next: np.ndarray) -> float:
+    """Angle ∠(Cα(i−1), Cα(i), Cα(i+1)); helices ~90°, extended strands ~120°+."""
+    u = ca_prev - ca_mid
+    v = ca_next - ca_mid
+    nu, nv = np.linalg.norm(u), np.linalg.norm(v)
+    if nu < 1e-9 or nv < 1e-9:
+        return 180.0
+    return float(
+        np.degrees(np.arccos(np.clip(np.dot(u / nu, v / nv), -1.0, 1.0)))
+    )
+
+
+def _mol3d_secstruc_ca_geom_residue_run(residues: list[Res3D]) -> None:
+    """
+    Cα-only SS for one contiguous polypeptide run (single chain segment).
+
+    Uses the virtual Cα angle and a short-window direction-change average.  Strand
+    detection cannot rely on ``avg_angle > 120`` alone — on real structures that
+    metric rarely exceeds ~100°; bend at Cα separates sheet (~120°+) from helix
+    (~85–100°) much more cleanly than direction averages alone.
+    """
     n = len(residues)
+    if n < 5:
+        for res in residues:
+            res.secstruc = SecondaryStructureType.COIL
+        return
 
-    # Precompute direction vectors and distances
     ca_vectors = []
     for i in range(n - 1):
         a = residues[i].ca
@@ -53,38 +122,62 @@ def mol3d_secstruc_ca_geom(mol: Molecule3D):
         else:
             ca_vectors.append(np.zeros(3))
 
-    # Secondary structure assignment
     for i in range(2, n - 2):
-        # Collect five-residue segment
         v1 = ca_vectors[i - 2]
         v2 = ca_vectors[i - 1]
         v3 = ca_vectors[i]
         v4 = ca_vectors[i + 1]
 
-        # Compute angles between vectors
         a1 = np.degrees(np.arccos(np.clip(np.dot(v1, v2), -1.0, 1.0)))
         a2 = np.degrees(np.arccos(np.clip(np.dot(v2, v3), -1.0, 1.0)))
         a3 = np.degrees(np.arccos(np.clip(np.dot(v3, v4), -1.0, 1.0)))
 
-        # Average angle
         avg_angle = (a1 + a2 + a3) / 3
+        step = float(np.linalg.norm(residues[i].ca - residues[i - 1].ca))
+        bend = _virtual_ca_bend_deg(
+            residues[i - 1].ca, residues[i].ca, residues[i + 1].ca
+        )
 
-        # Helix detection: tight and regular
-        if (
-            3.5 <= np.linalg.norm(residues[i].ca - residues[i - 1].ca) <= 3.9
-            and avg_angle < 70
-        ):
-            residues[i].secstruc = SecondaryStructureType.ALPHA_HELIX
-        # Strand detection: more extended and linear
-        elif avg_angle > 120:
+        is_strand = (bend >= 110.0 and avg_angle < 60.0) or (
+            bend >= 118.0 and avg_angle < 72.0
+        )
+        is_helix = (
+            3.45 <= step <= 4.05
+            and bend <= 118.0
+            and avg_angle < 96.0
+            and not is_strand
+        )
+
+        if is_strand and 3.2 <= step <= 4.2:
             residues[i].secstruc = SecondaryStructureType.BETA_STRAND
+        elif is_helix:
+            residues[i].secstruc = SecondaryStructureType.ALPHA_HELIX
         else:
             residues[i].secstruc = SecondaryStructureType.COIL
 
-    # Pad ends with COIL
-    for i in [0, 1, n - 2, n - 1]:
-        if i < n:
-            residues[i].secstruc = SecondaryStructureType.COIL
+    for idx in (0, 1, n - 2, n - 1):
+        if 0 <= idx < n:
+            residues[idx].secstruc = SecondaryStructureType.COIL
+
+
+def mol3d_secstruc_ca_geom(mol: Molecule3D):
+    """
+    mol3d_secstruc_ca_geom
+
+    :param mol: Mol3D
+    :return:   None
+    Secondary structure assignment using Cα coords only.
+    Assigns 'H' for alpha helix, 'E' for beta strand, 'T' for turn, ' ' for coil.
+
+    Runs independently per chain so vectors do not cross chain breaks or
+    non-protein residues (ligands between peptide links).
+    """
+
+    for model in mol.models:
+        for chain in model.chains.values():
+            seq = [r for r in chain.residues if _polypeptide_residue_with_ca(r)]
+            seq.sort(key=lambda r: r.residue_number)
+            _mol3d_secstruc_ca_geom_residue_run(seq)
 
 
 def set_secondary_structure(mol: Molecule3D, ss_mode: str, coil_mode: bool) -> None:
@@ -98,9 +191,10 @@ def set_secondary_structure(mol: Molecule3D, ss_mode: str, coil_mode: bool) -> N
     """
     assert mol is not None
 
-    if ss_mode == "PDB":  # Already set if data was there
-        if not mol.init & MOL3D_INIT_SECSTRUC:
-            mol3d_secstruc_ca_geom(mol)  # fallback
+    if ss_mode == "PDB":
+        # No HELIX/SHEET in file → everything remains default coil; infer from Cα geometry.
+        if not mol3d_protein_has_explicit_secondary_structure(mol):
+            mol3d_secstruc_ca_geom(mol)
     elif ss_mode == "CA":
         mol3d_secstruc_ca_geom(mol)
     elif ss_mode == "HB":
@@ -115,6 +209,10 @@ def set_secondary_structure(mol: Molecule3D, ss_mode: str, coil_mode: bool) -> N
                     res.secstruc = SecondaryStructureType.ALPHA_HELIX
         else:
             mol3d_secstruc_ca_geom(mol)
+
+    first = _link_residues_ordered(mol)
+    if first is None:
+        return
 
     if coil_mode:
         for res in mol.residues:
@@ -149,11 +247,10 @@ def set_secondary_structure(mol: Molecule3D, ss_mode: str, coil_mode: bool) -> N
             if current_ss == "t" and res.prev and prev_ss == "T":
                 res.secstruc = SecondaryStructureType.TURN
 
-    first = mol.first
     ss = _convert_secstruc_to_string(first.secstruc).upper()
     count = 1
 
-    res = mol.first
+    res = first
     while res:
         current_ss = _convert_secstruc_to_string(res.secstruc).upper()
         if current_ss == ss:
@@ -169,7 +266,7 @@ def set_secondary_structure(mol: Molecule3D, ss_mode: str, coil_mode: bool) -> N
             count = 1
         res = res.next
 
-    for res in mol.residues():
+    for res in mol.residues:
         current_ss = _convert_secstruc_to_string(res.secstruc)
         if current_ss == "-":
             continue

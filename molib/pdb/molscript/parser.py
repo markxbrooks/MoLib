@@ -263,6 +263,7 @@ def parse_pdb_atoms_to_mol3d(
     coordinate_data: CoordinateData,
     pdb_text: str = "",
     validation_report: dict | None = None,
+    infer_missing_secondary_structure: bool = True,
 ) -> Molecule3D:
 
     mol = Molecule3D(coordinate_data=coordinate_data)
@@ -358,5 +359,17 @@ def parse_pdb_atoms_to_mol3d(
         )
 
         residue.atoms[atom_name] = atom
+
+    # PDBs without HELIX/SHEET leave every residue at default coil; infer H/E from Cα
+    # geometry so ribbons and segment extraction match structures like 2VUG_NoSS.pdb.
+    from molib.pdb.molscript.structure.secondary import (
+        mol3d_protein_has_explicit_secondary_structure,
+        set_secondary_structure,
+    )
+
+    if infer_missing_secondary_structure and not mol3d_protein_has_explicit_secondary_structure(
+        mol
+    ):
+        set_secondary_structure(mol, "PDB", coil_mode=False)
 
     return mol

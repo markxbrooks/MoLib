@@ -63,6 +63,7 @@ class Molecule3D:
         _color_scheme: ColorScheme = ColorScheme.ELEMENT,
         **kwargs,
     ):
+        self.init = None
         self.name = name
         self.models = models or []
         self.colour_mode = colour_mode
