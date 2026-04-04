@@ -50,4 +50,4 @@ fig.update_layout(
 )
 
 # Show the plot
-fig.show()
+fig.is_visible()
