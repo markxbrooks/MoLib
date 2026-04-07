@@ -299,29 +299,19 @@ class Molecule3D:
         return self.get_all_residues()
 
     def get_backbone_trace(self) -> list[np.ndarray]:
-        """
-        get_backbone_trace
-
-        :return: list[np.ndarray]
-        """
-        return [res.ca for res in self.get_all_residues() if res.has_ca()]
+        """List of CA coordinates."""
+        residues = self.get_ca_residues()
+        return [res.ca for res in residues]
 
     def get_backbone_trace_colors(self) -> list[np.ndarray]:
-        """
-        get_backbone_trace_colors
-
-        :return: list[np.ndarray]
-        """
-        return [res.color for res in self.get_all_residues() if res.has_ca()]
+        """List of colors for each CA."""
+        residues = self.get_ca_residues()
+        return [res.color for res in residues]
 
     def get_ca_coords(self) -> np.ndarray:
-        """
-        get_ca_coords
-
-        :return: np.ndarray
-        Get all CA coordinate_data_main
-        """
-        return np.array(self.get_backbone_trace(), dtype=np.float32)
+        """Numpy array of all CA coordinates."""
+        residues = self.get_ca_residues()
+        return np.array([res.ca for res in residues], dtype=np.float32)
 
     def residues_with_ca_protein_only(self):
         """Yield residues that have CA and are standard polypeptide (excludes ligands)."""
@@ -336,25 +326,27 @@ class Molecule3D:
             if res_name in STANDARD_POLYPEPTIDE_RESIDUES:
                 yield res
 
+    def get_ca_residues(self) -> list:
+        """Return a list of residues that have CA atoms (backbone)."""
+        if not hasattr(self, "_cached_ca_residues"):
+            self._cached_ca_residues = [res for res in self.get_all_residues() if res.has_ca()]
+        return self._cached_ca_residues
+
+    def get_ca_residues_protein_only(self) -> list:
+        """Single authoritative ordered CA residue list."""
+        return list(self.residues_with_ca_protein_only())
+
     def get_ca_coords_protein_only(self) -> np.ndarray:
-        """
-        CA coordinates for standard polypeptide residues only (excludes HETATM/ligands).
-        Use this for ribbon/cartoon so ribbons follow the protein backbone only.
-        """
-        return np.array(
-            [res.ca for res in self.residues_with_ca_protein_only()], dtype=np.float32
-        )
+        residues = self.get_ca_residues_protein_only()
+        return np.array([res.ca for res in residues], dtype=np.float32)
 
     def get_ca_colors_protein_only(self) -> np.ndarray:
-        """CA colors for standard polypeptide residues only."""
-        return np.array(
-            [res.color for res in self.residues_with_ca_protein_only()],
-            dtype=np.float32,
-        )
+        residues = self.get_ca_residues_protein_only()
+        return np.array([res.color for res in residues], dtype=np.float32)
 
     def get_chain_ids_for_ca_protein_only(self) -> list[str]:
-        """Chain IDs for each CA in protein-only order (same length as get_ca_coords_protein_only)."""
-        return [res.chain_id for res in self.residues_with_ca_protein_only()]
+        residues = self.get_ca_residues_protein_only()
+        return [res.chain_id for res in residues]
 
     def get_ca_colors(self) -> np.ndarray:
         """
