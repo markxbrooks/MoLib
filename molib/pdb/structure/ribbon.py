@@ -45,6 +45,8 @@ class RibbonStyleConfig:
 
     style: str
     width_scale: float = RIBBON_WIDTH_SCALE
+    use_ribbons_style: bool = True
+    ribbon_width_scale: float = 2.6
 
 
 def generate_ribbon_geometry_per_chain_color_by_ca(
