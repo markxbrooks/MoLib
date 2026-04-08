@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from elmo.ui.constants import SSCode
+from molib.pdb.structure.sscode import SSCode
 from molib.entities.atom import Atom3D
 from molib.entities.chain import Chain3D
 from molib.entities.model import Model3D

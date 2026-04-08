@@ -19,7 +19,7 @@ import numpy as np
 from numpy import bool_, dtype, ndarray, floating
 
 from decologr import Decologr as log
-from elmo.gl.buffers.ribbon.build_context import RibbonBuildContext
+from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style, RibbonStyle,
 )
@@ -384,62 +384,6 @@ def _calculate_normals_along_binormal(binormal: Any, vertex_normals: list[Any]):
     vertex_normals.append(binormal)
 
 
-def generate_ribbon_geometry_per_chain_test(
-    all_ca_coords: np.ndarray,
-    all_chain_ids: list,
-    chain_colors: dict[str, tuple],
-    add_arrow: bool = True,
-) -> dict[str, MeshData]:
-    """
-    Generate ribbon meshdata for each chain separately,
-    and optionally add a beta-arrow at the end.
-    """
-    from collections import defaultdict
-
-    coords_by_chain = defaultdict(list)
-    for coord, chain_id in zip(all_ca_coords, all_chain_ids):
-        coords_by_chain[chain_id].append(coord)
-
-    ribbon_mesh_by_chain: dict[str, MeshData] = {}
-
-    for chain_id, coords in coords_by_chain.items():
-        ca_array = np.array(coords, dtype=np.float32)
-        chain_id_list = [chain_id] * len(ca_array)
-
-        vertex_data = generate_ribbon_geometry(ca_array, chain_id_list)
-        verts = vertex_data.geom_data.vertices
-        norms = vertex_data.geom_data.normals
-        inds = vertex_data.geom_data.indices
-
-        # Base colors
-        color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
-        colors = np.tile(color, (len(verts), 1)).astype(np.float32)
-
-        # --- Add arrow meshdata at chain end ---
-        if add_arrow and len(ca_array) >= 2:
-            arrow_v, arrow_n, arrow_i, arrow_c = generate_arrow_geometry(
-                ca_array[-2], ca_array[-1], color=color
-            )
-
-            # Reindex arrow indices to append correctly
-            arrow_i = arrow_i + len(verts)
-
-            # Concatenate
-            verts = np.vstack([verts, arrow_v])
-            norms = np.vstack([norms, arrow_n])
-            colors = np.vstack([colors, arrow_c])
-            inds = np.concatenate([inds, arrow_i])
-
-        ribbon_mesh_by_chain[chain_id] = MeshData(
-            vertices=verts,
-            normals=norms,
-            indices=inds,
-            colors=colors,
-        )
-
-    return ribbon_mesh_by_chain
-
-
 def generate_ribbon_geometry_per_chain(
     all_ca_coords: np.ndarray,
     all_chain_ids: list,
@@ -639,59 +583,6 @@ def generate_ribbon_geometry_with_colors(
                                              indices=indices,
                                              colors=colors),
                       meta_data=VertexMetadata(chain_ids=vertex_chain_ids))
-
-
-def generate_ribbon_geometry(
-    ca_coords: np.ndarray, chain_ids: list[str], width=0.5
-) -> VertexData:
-    """
-    generate_ribbon_geometry
-
-    :param ca_coords: np.ndarray
-    :param chain_ids: list[str]
-    :param width:
-    :return: tuple[
-    ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], list[str]]
-    """
-    from numpy import cross, gradient, linalg
-
-    # Check if we have enough points for Catmull-Rom spline
-    if len(ca_coords) < 4:
-        raise ValueError(
-            f"At least 4 C-alpha atoms required for ribbon generation, got {len(ca_coords)}"
-        )
-
-    spline = catmull_rom_chain(ca_coords)
-    tangents = gradient(spline, axis=0)
-    tangents = tangents / linalg.norm(tangents, axis=1, keepdims=True)
-
-    up_hint = np.array([0, 0, 1])
-    vertices, normals, indices, vertex_chain_ids = [], [], [], []
-
-    for i, (p, t) in enumerate(zip(spline, tangents)):
-        n = cross(t, up_hint)
-        if linalg.norm(n) < 1e-3:
-            up_hint = np.array([1, 0, 0])
-            n = cross(t, up_hint)
-        n = n / linalg.norm(n)
-
-        offset = n * width
-        left = p - offset
-        right = p + offset
-
-        chain_id = chain_ids[min(i, len(chain_ids) - 1)]
-
-        vertices.extend([left, right])
-        normals.extend([n, n])
-        vertex_chain_ids.extend([chain_id, chain_id])
-
-    for i in range(len(spline) - 1):
-        base = i * 2
-        indices.extend([base, base + 1, base + 2, base + 1, base + 3, base + 2])
-
-    return VertexData(geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices),
-        meta_data=VertexMetadata(chain_ids=vertex_chain_ids),
-    )
 
 
 def draw_beta_arrow(p1: tuple, p2: tuple, width: float = 0.3) -> None:
