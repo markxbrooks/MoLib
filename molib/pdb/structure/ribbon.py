@@ -45,7 +45,6 @@ class RibbonStyleConfig:
     style: str
     width_scale: float = RIBBON_WIDTH_SCALE
     use_ribbons_style: bool = True
-    # ribbon_width_scale: float = 2.6
 
 
 def generate_ribbon_geometry_per_chain_color_by_ca(
@@ -477,13 +476,12 @@ def generate_ribbon_geometry_per_chain(
             color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
             ca_colors = np.tile(color, (len(ca_array), 1)).astype(np.float32)
 
-            vertex_data = generate_ribbon_geometry_with_colors(
-                ca_array,
-                ca_colors,
-                chain_id_list,
-                use_ribbons_style=True,
-                style=style,
-                ribbon_width_scale=ribbon_width_scale,
+            context = RibbonBuildContext(coords=ca_array, colors=ca_colors, chain_ids=chain_id_list)
+            config = RibbonStyleConfig(style=style,width_scale=ribbon_width_scale, use_ribbons_style=True)
+
+            vertex_data = generate_ribbon_geometry_with_colors_from_context(
+                context,
+                config
             )
             verts = vertex_data.geom_data.vertices
             norms = vertex_data.geom_data.normals
@@ -502,9 +500,6 @@ def generate_ribbon_geometry_per_chain(
             continue
 
     return ribbon_mesh_by_chain
-
-
-
 
 def generate_ribbon_geometry_with_colors_from_context(
     context: RibbonBuildContext,
