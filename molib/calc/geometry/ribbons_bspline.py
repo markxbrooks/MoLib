@@ -306,8 +306,10 @@ def calculate_guide_points(
     q_points[n_guides - 1] = ca_coords[-1] + 0.02
     # Fill the two tail slots that were left at (0,0,0): extrapolate from last real guides
     if n_res >= 2:
-        dp = p_points[n_res - 1] - p_points[n_res - 2]
-        dq = q_points[n_res - 1] - q_points[n_res - 2]
+        # dp = p_points[n_res - 1] - p_points[n_res - 2]
+        dp = 0 # Extrapolation isn't working
+        # dq = q_points[n_res - 1] - q_points[n_res - 2]
+        dq = 0 # Extrapolation isn't working
         p_points[n_res] = p_points[n_res - 1] + dp
         q_points[n_res] = q_points[n_res - 1] + dq
         p_points[n_res + 1] = p_points[n_res] + dp
@@ -333,7 +335,7 @@ def calculate_guide_points(
     # Last 2 fake planes (C-terminus)
     # Keep C-tail extrapolation softer than the original Ribbons-style values
     # to avoid a visibly wide/fat terminal cap when extension is enabled.
-    if n_guides >= 4:
+    """if n_guides >= 4:
         c = 0.5 * (p_points[-1] + q_points[-1])
         a = 0.5 * (p_points[-2] + q_points[-2])
         b = 0.5 * (p_points[-3] + q_points[-3])
@@ -342,7 +344,7 @@ def calculate_guide_points(
         p_points[-1] += 0.75 * dprev
         q_points[-1] += 0.75 * dprev
         p_points[-2] += 0.25 * dprev
-        q_points[-2] += 0.25 * dprev
+        q_points[-2] += 0.25 * dprev"""
 
     return p_points, q_points
 
