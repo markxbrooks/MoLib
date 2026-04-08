@@ -35,7 +35,7 @@ from picogl.renderer import MeshData
 
 # B-spline ribbon effective half-width is 0.5 * get_width(ss) * width (guide-point factor).
 # Legacy ribbons use constant half-width 0.5. To match, use width so 0.5*0.6*width ≈ 0.5 → width ≈ 1.67.
-# RIBBON_WIDTH_SCALE = 1.7 @@@@@
+# RIBBON_WIDTH_SCALE =
 RIBBON_WIDTH_SCALE = 2.7
 
 
@@ -46,7 +46,7 @@ class RibbonStyleConfig:
     style: str
     width_scale: float = RIBBON_WIDTH_SCALE
     use_ribbons_style: bool = True
-    ribbon_width_scale: float = 2.6
+    # ribbon_width_scale: float = 2.6
 
 
 def generate_ribbon_geometry_per_chain_color_by_ca(
@@ -571,6 +571,19 @@ def generate_ribbon_colors(
     return np.asarray(colors, dtype=np.float32)
 
 
+def generate_ribbon_geometry_with_colors_from_context(
+    context: RibbonBuildContext,
+    config: RibbonStyleConfig) -> VertexData:
+    """generate ribbon geometry per chain by ca"""
+    return generate_ribbon_geometry_with_colors(
+        ca_coords=context.coords,
+        ca_colors=context.colors,
+        chain_ids=context.chain_ids,
+        style=config.style,
+        ribbon_width_scale=config.width_scale,
+    )
+
+
 def generate_ribbon_geometry_with_colors(
     ca_coords: np.ndarray,
     ca_colors: np.ndarray,
@@ -592,6 +605,7 @@ def generate_ribbon_geometry_with_colors(
     :param ca_colors: np.ndarray of shape (N, 3) - RGB colors per CA
     :param chain_ids: list[str], len N
     :param width: float, ribbon half-width
+    :param style: RibbonStyle
     :param use_ribbons_style: bool, if True use B-spline approach (default), else Catmull-Rom
     :param o_coords: Optional (N, 3) array of O (oxygen) coordinates for better accuracy
     :param ss_types: Optional (N,) array of secondary structure types ('H', 'S', 'T', etc.)
