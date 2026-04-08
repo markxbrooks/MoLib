@@ -4,18 +4,28 @@ from molib.core.color.strategy import ColorScheme
 
 
 def get_color_scheme(
-    strategy: Union[str, ColorScheme] = ColorScheme.ELEMENT,
+    strategy: Union[str, int, ColorScheme] = ColorScheme.ELEMENT,
 ) -> ColorScheme:
     """
-    get_color_strategy
+    Normalize a colour scheme to :class:`ColorScheme`.
 
-    :param strategy Union[str, ColorScheme]
-    :return: color_scheme ColorScheme
+    ``ColorScheme`` uses :func:`enum.auto` integer values, so resolving from a
+    string must use the member *name* (e.g. ``ColorScheme['B_FACTOR']``), not
+    ``ColorScheme('B_FACTOR')`` (which looks up by value and fails).
     """
-    if isinstance(strategy, str):
+    if isinstance(strategy, ColorScheme):
+        return strategy
+    if isinstance(strategy, int):
         try:
-            strategy = ColorScheme(strategy.upper())
+            return ColorScheme(strategy)
         except ValueError:
-            # fallback
-            strategy = ColorScheme.ELEMENT
-    return strategy
+            return ColorScheme.ELEMENT
+    if isinstance(strategy, str):
+        key = strategy.strip().upper().replace("-", "_")
+        if "." in key:
+            key = key.rsplit(".", 1)[-1]
+        try:
+            return ColorScheme[key]
+        except KeyError:
+            return ColorScheme.ELEMENT
+    return ColorScheme.ELEMENT

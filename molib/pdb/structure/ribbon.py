@@ -579,6 +579,8 @@ def generate_ribbon_geometry_with_colors_from_context(
         ca_coords=context.coords,
         ca_colors=context.colors,
         chain_ids=context.chain_ids,
+        o_coords=context.o_coords,
+        ss_types=context.ss_types,
         style=config.style,
         ribbon_width_scale=config.width_scale,
     )

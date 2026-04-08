@@ -332,6 +332,7 @@ class Atom3D(Structure3D):
         """Get cached color scheme mapping to avoid recreating dictionaries."""
         if scheme not in _COLOR_SCHEME_CACHE:
             _COLOR_SCHEME_CACHE[scheme] = {
+                ColorScheme.UNIFORM: cls._color_by_uniform,
                 ColorScheme.ELEMENT: cls._color_by_element,
                 ColorScheme.CHAIN: cls._color_by_chain,
                 ColorScheme.SECONDARY_STRUCTURE: cls._color_by_secondary,
@@ -352,7 +353,8 @@ class Atom3D(Structure3D):
 
         # Get the function or fallback to gray
         color_func = color_scheme_map.get(
-            scheme, lambda: np.array((0.8, 0.8, 0.8), dtype=np.float32)
+            scheme,
+            lambda atom: np.array((0.8, 0.8, 0.8), dtype=np.float32),
         )
 
         # Call the function and assign directly to avoid extra array creation
@@ -360,21 +362,28 @@ class Atom3D(Structure3D):
 
     @classmethod
     def apply_color_scheme_batch(
-        cls, atoms: list["Atom3D"], color_scheme: ColorScheme
+        cls, atoms: list["Atom3D"], color_scheme: Union[str, ColorScheme]
     ) -> None:
         """Apply color scheme to a batch of atoms - PERFORMANCE OPTIMIZED."""
         if not atoms:
             return
 
+        scheme = get_color_scheme(color_scheme)
+
         # Get cached color scheme mapping once
-        color_scheme_map = cls._get_color_scheme_map(color_scheme)
+        color_scheme_map = cls._get_color_scheme_map(scheme)
         color_func = color_scheme_map.get(
-            color_scheme, lambda atom: np.array((0.8, 0.8, 0.8), dtype=np.float32)
+            scheme,
+            lambda atom: np.array((0.8, 0.8, 0.8), dtype=np.float32),
         )
 
         # Apply to all atoms in batch
         for atom in atoms:
             atom.color = color_func(atom)
+
+    def _color_by_uniform(self) -> "np.ndarray":
+        """Single neutral colour when no per-atom palette applies."""
+        return np.array((0.75, 0.75, 0.75), dtype=np.float32)
 
     def _color_by_element(self) -> "np.ndarray":
         """Approx PyMOL default element colors."""
