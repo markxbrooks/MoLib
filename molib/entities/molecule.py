@@ -207,6 +207,51 @@ class Molecule3D:
         for model in self.models:
             model.set_all_chains_color(r, g, b)
 
+    def _iter_residues_in_chain_range(
+        self,
+        chain_id: str,
+        start_residue: int,
+        end_residue: int,
+    ):
+        """
+        Yield residues on *chain_id* whose ``residue_number`` lies in
+        [*start_residue*, *end_residue*] inclusive. Tolerates list- or dict-backed
+        ``chain.residues`` and minor chain-id key mismatches (strip / alternate key).
+        """
+        lo, hi = int(start_residue), int(end_residue)
+        if lo > hi:
+            lo, hi = hi, lo
+        sel = str(chain_id).strip()
+        for model in self.models:
+            chain = model.chains.get(chain_id)
+            if chain is None:
+                for cid, ch in model.chains.items():
+                    if str(cid).strip() == sel:
+                        chain = ch
+                        break
+            if chain is None:
+                continue
+            residues = chain.residues
+            if isinstance(residues, dict):
+                for res_num, residue in residues.items():
+                    try:
+                        rn = int(res_num)
+                    except (TypeError, ValueError):
+                        continue
+                    if lo <= rn <= hi:
+                        yield residue
+            else:
+                for residue in residues or ():
+                    rn = getattr(residue, "residue_number", None)
+                    if rn is None:
+                        continue
+                    try:
+                        rn = int(rn)
+                    except (TypeError, ValueError):
+                        continue
+                    if lo <= rn <= hi:
+                        yield residue
+
     def set_selection_color(
         self, selection: CoordinateSelection, r: float, g: float, b: float
     ) -> None:
@@ -217,20 +262,28 @@ class Molecule3D:
         :param r: float, red component (0–1)
         :param g: float, green component (0–1)
         :param b: float, blue component (0–1)
+
+        Optional: ``_elmo_ss_selection_color_hook`` — if set (e.g. by ElMo's
+        :class:`~elmo.gl.renderer.molecule.MoleculeRenderer`), called as
+        ``hook(selection, r, g, b)`` after residue colours are updated so rendered
+        secondary-structure quads can follow the same span.
         """
         if selection.chain_id is None:
             raise ValueError("Selection must have a chain_id.")
         if selection.start_residue is None or selection.end_residue is None:
             raise ValueError("Selection must have start_residue and end_residue.")
 
-        for model in self.models:
-            chain = model.chains.get(selection.chain_id)
-            if chain is None:
-                continue  # Selection's chain not present in this model
+        for residue in self._iter_residues_in_chain_range(
+            selection.chain_id,
+            selection.start_residue,
+            selection.end_residue,
+        ):
+            residue.set_color(r, g, b)
 
-            for res_num, residue in chain.residues.items():
-                if selection.start_residue <= res_num <= selection.end_residue:
-                    residue.set_color(r, g, b)
+        hook = getattr(self, "_elmo_ss_selection_color_hook", None)
+        if callable(hook):
+            hook(selection, r, g, b)
+
 
     def get_atom_count(self) -> int:
         """
