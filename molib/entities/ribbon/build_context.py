@@ -13,7 +13,7 @@ class RibbonBuildContext:
 
     coords: np.ndarray
     chain_ids: list[str] | np.ndarray
-    residue_ids: list[str] | np.ndarray   # NEW: List of residue IDs for each coordinate
+    residue_ids: list[str] | np.ndarray | None = None  # NEW: List of residue IDs for each coordinate
     color_provider: ColorProvider | None = None
     colors: dict | np.ndarray | None = None
     o_coords: np.ndarray | None = None
