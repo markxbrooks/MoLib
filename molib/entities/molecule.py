@@ -47,7 +47,7 @@ STANDARD_POLYPEPTIDE_RESIDUES = frozenset(
 
 class Molecule3D:
     """
-    Mol3D class - Pure Python class for meshdata and colour
+    Mol3D class - Pure Python class for mesh data and colour
 
     Top-level Molecule
     """
