@@ -37,6 +37,7 @@ from picogl.renderer import MeshData
 # RIBBON_WIDTH_SCALE =
 RIBBON_WIDTH_SCALE = 2.7
 
+EPS=1e-6
 
 @dataclass
 class RibbonStyleConfig:
@@ -90,7 +91,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         if all_ss_types is not None:
             ss_types_by_chain[chain_id].append(all_ss_types[i])
 
-    ribbon_data = {}
+    ribbon_data: dict[str, MeshData] = {}
 
     for chain_id, coords in coords_by_chain.items():
         ca_array = np.array(coords, dtype=np.float32)
@@ -142,7 +143,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
 def normalize(v) -> float:
     """normalize"""
     norm = np.linalg.norm(v)
-    if norm < 1e-6:
+    if norm < EPS:
         return v
     return v / norm
 
@@ -189,7 +190,7 @@ def generate_arrow_geometry(
     # Direction vector (arrow direction)
     direction = p2 - p1
     length = np.linalg.norm(direction)
-    if length < 1e-6:
+    if length < EPS:
         return (
             np.zeros((0, 3)),
             np.zeros((0, 3)),
@@ -198,13 +199,6 @@ def generate_arrow_geometry(
         )
 
     direction = direction / length
-
-    # Helper function to normalize vectors
-    def normalize(v):
-        norm = np.linalg.norm(v)
-        if norm < 1e-6:
-            return v
-        return v / norm
 
     # If ribbon edges are provided, use them (Ribbons approach)
     if ribbon_left_edge is not None and ribbon_right_edge is not None:
@@ -222,7 +216,7 @@ def generate_arrow_geometry(
             # Calculate binormal from direction and a hint vector
             up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
             binormal = np.cross(direction, up)
-            if np.linalg.norm(binormal) < 1e-6:
+            if np.linalg.norm(binormal) < EPS:
                 up = np.array([1.0, 0.0, 0.0], dtype=np.float32)
                 binormal = np.cross(direction, up)
             binormal = normalize(binormal)
