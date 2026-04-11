@@ -16,16 +16,15 @@ from dataclasses import dataclass
 from typing import Any, Optional, Callable
 
 import numpy as np
-from numpy import bool_, dtype, ndarray, floating
+from numpy import bool_, dtype, ndarray, floating, generic
 
 from decologr import Decologr as log
+from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style, RibbonStyle,
 )
 from molib.calc.geometry.spline import catmull_rom_chain
-from OpenGL.GL import glBegin, glEnd, glVertex3fv
-from OpenGL.raw.GL.VERSION.GL_1_0 import GL_QUADS, GL_TRIANGLES
 
 from picogl.buffers.geometry import GeometryData
 from picogl.buffers.vertex.data import VertexData
@@ -141,8 +140,9 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
 
 def normalize(v) -> float:
     """normalize"""
+    # Helper function to normalize vectors
     norm = np.linalg.norm(v)
-    if norm < 1e-6:
+    if norm < MoLibConstant.EPSILON:
         return v
     return v / norm
 
@@ -183,13 +183,13 @@ def generate_arrow_geometry(
     Returns:
         Tuple of (vertices, normals, indices, colors) arrays
     """
-    p1 = np.asarray(p1, dtype=np.float32)
-    p2 = np.asarray(p2, dtype=np.float32)
+    p1 = get_np_array(p1)
+    p2 = get_np_array(p2)
 
     # Direction vector (arrow direction)
     direction = p2 - p1
     length = np.linalg.norm(direction)
-    if length < 1e-6:
+    if length < MoLibConstant.EPSILON:
         return (
             np.zeros((0, 3)),
             np.zeros((0, 3)),
@@ -198,13 +198,6 @@ def generate_arrow_geometry(
         )
 
     direction = direction / length
-
-    # Helper function to normalize vectors
-    def normalize(v):
-        norm = np.linalg.norm(v)
-        if norm < 1e-6:
-            return v
-        return v / norm
 
     # If ribbon edges are provided, use them (Ribbons approach)
     if ribbon_left_edge is not None and ribbon_right_edge is not None:
@@ -217,22 +210,20 @@ def generate_arrow_geometry(
     else:
         # Fallback: calculate plane from direction and provided vectors
         if ribbon_binormal is not None:
-            binormal = normalize(np.asarray(ribbon_binormal, dtype=np.float32))
+            binormal = normalize(get_np_array(ribbon_binormal))
         else:
             # Calculate binormal from direction and a hint vector
             up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-            binormal = np.cross(direction, up)
-            if np.linalg.norm(binormal) < 1e-6:
+            binormal = cross(direction, up)
+            if np.linalg.norm(binormal) < MoLibConstant.EPSILON:
                 up = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-                binormal = np.cross(direction, up)
+                binormal = cross(direction, up)
             binormal = normalize(binormal)
 
         if ribbon_plane_normal is not None:
-            normal = normalize(np.asarray(ribbon_plane_normal, dtype=np.float32))
+            normal = normalize(get_np_array(ribbon_plane_normal))
         else:
-            # Calculate normal from cross product
-            normal = np.cross(binormal, direction)
-            normal = normalize(normal)
+            cross_normalize(binormal, direction)
 
         base_width = arrow_base_width if arrow_base_width is not None else width
         head_width = arrow_head_width if arrow_head_width is not None else 0.0
@@ -301,6 +292,23 @@ def generate_arrow_geometry(
     return vertices, vertex_normals, indices, colors
 
 
+def cross_normalize(binormal: float, direction: ndarray[Any, dtype[floating[Any]]]) -> np.ndarray:
+    """Calculate normal from cross product"""
+    normal = cross(binormal, direction)
+    normal = normalize(normal)
+    return normal
+
+
+def cross(binormal: float, direction: ndarray[Any, dtype[floating[Any]]]) -> ndarray[Any, dtype[floating[Any]]]:
+    """cross helper"""
+    return np.cross(binormal, direction)
+
+
+def get_np_array(p1: ndarray) -> ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
+    """get as numpy array"""
+    return np.asarray(p1, dtype=np.float32)
+
+
 def _use_ribbon_edges_to_determine_arrow_plane(arrow_base_width: float | None, arrow_head_width: float | None,
                                                direction: ndarray[Any, dtype[floating[Any]]],
                                                ribbon_binormal: ndarray | None, ribbon_left_edge: ndarray,
@@ -353,7 +361,7 @@ def _calculate_normal_perpendicular_to_ribbon_plane(binormal: Any,
     else:
         # Calculate normal from cross product of direction and binormal
         normal = np.cross(direction, binormal)
-        if np.linalg.norm(normal) < 1e-6:
+        if np.linalg.norm(normal) < MoLibConstant.EPSILON:
             # Fallback: use cross product of binormal and direction
             normal = np.cross(binormal, direction)
         normal = normalize(normal)
@@ -584,46 +592,3 @@ def generate_ribbon_geometry_with_colors(
                                              colors=colors),
                       meta_data=VertexMetadata(chain_ids=vertex_chain_ids))
 
-
-def draw_beta_arrow(p1: tuple, p2: tuple, width: float = 0.3) -> None:
-    """
-    draw_beta_arrow
-
-    :param p1: tuple coordinate_data_main for position_array 1
-    :param p2: tuple coordinate_data_main for position_array 2
-    :param width: float
-    :return: None
-    Draw an arrow from p1 to p2
-    """
-    p1 = np.array(p1, dtype=np.float32)
-    p2 = np.array(p2, dtype=np.float32)
-
-    direction = p2 - p1
-    length = np.linalg.norm(direction)
-    if length == 0:
-        return
-    direction /= length
-
-    # Use up vector to define a normal plane
-    up = np.array([0, 0, 1])
-    side = np.cross(direction, up)
-    if np.linalg.norm(side) < 1e-3:
-        up = np.array([1, 0, 0])
-        side = np.cross(direction, up)
-    side = side / np.linalg.norm(side) * width
-
-    # Body
-    glBegin(GL_QUADS)
-    glVertex3fv(p1 - side)
-    glVertex3fv(p1 + side)
-    glVertex3fv(p2 + side * 0.5)
-    glVertex3fv(p2 - side * 0.5)
-    glEnd()
-
-    # Head (triangle)
-    glBegin(GL_TRIANGLES)
-    tip = p2 + direction * width * 0.5
-    glVertex3fv(p2 + side * 0.5)
-    glVertex3fv(p2 - side * 0.5)
-    glVertex3fv(tip)
-    glEnd()
