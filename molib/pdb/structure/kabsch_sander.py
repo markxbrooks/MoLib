@@ -24,6 +24,8 @@ import numpy as np
 import pandas as pd
 from biopandas.pdb import PandasPdb
 
+from molib.core.constants import MoLibConstant
+
 # Constants from hb-calc.C
 MISSING = -10000001.0
 Q1 = 0.42  # Partial charge on C, O
@@ -1073,7 +1075,7 @@ def extract_backbone_atoms_from_pdb(
             current_atoms.c = coords
         elif atom_name in ("O", "OT1"):
             current_atoms.o = coords
-        elif atom_name == "CA":
+        elif atom_name == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME:
             current_atoms.ca = coords
 
     # Don't forget the last residue

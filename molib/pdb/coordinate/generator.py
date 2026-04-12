@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from biopandas.pdb import PandasPdb
 from decologr import Decologr as log
+from molib.core.constants import MoLibConstant
 from molib.core.entity import MolEntityType
 from molib.pdb.color import generate_chain_colors
 from molib.pdb.coordinate.data import CoordinateData
@@ -83,7 +84,7 @@ def generate_coordinate_data(
     elif chain_from == "atom":
         source_df = atom_df
     elif chain_from == "ca":
-        source_df = atom_df[atom_df["atom_name"] == "CA"]
+        source_df = atom_df[atom_df["atom_name"] == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME]
     elif chain_from == "water":
         source_df = water_df
     elif chain_from == "hetatm_no_water":

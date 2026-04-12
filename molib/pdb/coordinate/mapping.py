@@ -1,5 +1,6 @@
 from biopandas.pdb import PandasPdb
 from decologr import Decologr as log
+from molib.core.constants import MoLibConstant
 from molib.core.entity import MolEntityType
 from molib.pdb.calculate.residue_index import get_residue_from_by_index_and_chain_id
 
@@ -45,7 +46,7 @@ def get_fasta_index_range_for_pdb_residue_span(
             pdb_start, pdb_end = pdb_end, pdb_start
         atom_df = pandas_pdb.df[MolEntityType.ATOM.value]
         chain_atom_df = atom_df[atom_df["chain_id"] == chain_id].reset_index(drop=True)
-        ca_df = chain_atom_df[chain_atom_df["atom_name"] == "CA"].reset_index(drop=True)
+        ca_df = chain_atom_df[chain_atom_df["atom_name"] == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME].reset_index(drop=True)
         hit_indices: list[int] = []
         for ord_idx in range(len(ca_df)):
             rid = int(ca_df.iloc[ord_idx]["residue_number"])

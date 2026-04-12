@@ -3,6 +3,8 @@
 import math
 
 import numpy as np
+
+from molib.core.constants import MoLibConstant
 from molib.xtal.uglymol.cubicles import Cubicles
 from molib.xtal.uglymol.molecule.atom import Atom
 from molib.xtal.uglymol.unit_cell import UnitCell
@@ -89,7 +91,7 @@ class Model:
             a = self.atoms[idx]
             if not a.is_main_conformer():
                 continue
-            if (a.name == "CA" and a.element == "C") or a.name == "P":
+            if (a.name == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME and a.element == "C") or a.name == "P":
                 return a
 
     def extract_trace(self):
@@ -100,11 +102,11 @@ class Model:
         for atom in self.atoms:
             if atom.alt_loc not in ["", "A"]:
                 continue
-            if (atom.name == "CA" and atom.element == "C") or atom.name == "P":
+            if (atom.name == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME and atom.element == "C") or atom.name == "P":
                 start_new = True
                 if last_atom is not None and last_atom.chain_index == atom.chain_index:
                     dxyz2 = atom.distance_sq(last_atom)
-                    if (atom.name == "CA" and dxyz2 <= 5.5 * 5.5) or (
+                    if (atom.name == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME and dxyz2 <= 5.5 * 5.5) or (
                         atom.name == "P" and dxyz2 < 7.5 * 7.5
                     ):
                         current_segment.append(atom)

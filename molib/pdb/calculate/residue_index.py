@@ -1,5 +1,6 @@
 from biopandas.pdb import PandasPdb
 from decologr import Decologr as log
+from molib.core.constants import MoLibConstant
 from molib.core.entity import MolEntityType
 from molib.pdb.coordinate.data import CoordinateData
 
@@ -59,7 +60,7 @@ def get_residue_from_by_index_and_chain_id(
 
     atom_df = pdb_pandas.df[MolEntityType.ATOM.value]
     chain_atom_df = atom_df[atom_df["chain_id"] == chain_id].reset_index(drop=True)
-    ca_df = chain_atom_df[chain_atom_df["atom_name"] == "CA"].reset_index(drop=True)
+    ca_df = chain_atom_df[chain_atom_df["atom_name"] == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME].reset_index(drop=True)
 
     if 0 <= index < len(ca_df):
         residue_id = int(ca_df.iloc[index]["residue_number"])

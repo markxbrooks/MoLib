@@ -8,6 +8,7 @@ import numpy as np
 from decologr import Decologr as log
 from molib.core.color.manager import ChainColorManager
 from molib.core.color.strategy import ColorScheme
+from molib.core.constants import MoLibConstant
 from molib.entities.atom import Atom3D
 from molib.entities.model import Model3D
 from molib.entities.residue import Res3D
@@ -74,6 +75,26 @@ class Molecule3D:
 
         # Post initialization
         self._post_init()
+
+    @property
+    def first(self):
+        """first residue"""
+        return self.get_all_residues()[0]
+
+    @property
+    def last(self):
+        """last residue"""
+        return self.get_all_residues()[-1]
+
+    @property
+    def first_model(self):
+        """first model"""
+        return self.models[0]
+
+    @property
+    def last_model(self):
+        """last model"""
+        return self.models[-1]
 
     def _post_init(self):
         """Post initialization"""
@@ -459,12 +480,12 @@ class Molecule3D:
                     nucleotide_chains.append(chain.chain_id)
         return nucleotide_chains if nucleotide_chains else None
 
-    def get_peptide_chains(self, atom_name: str = "CA") -> list[str] | None:
+    def get_peptide_chains(self, atom_name: str = MoLibConstant.PEPTIDE_CHAIN_ATOMNAME) -> list[str] | None:
         """
         Identify chains that likely contain polypeptides by checking for a specific atom.
 
         :param atom_name: str
-            Atom color_scheme to check (e.g. "CA" for peptides)
+            Atom color_scheme to check (e.g. MoLibConstant.PEPTIDE_CHAIN_ATOMNAME for peptides)
         :return: list[str]
             List of chain IDs that contain the atom
         """

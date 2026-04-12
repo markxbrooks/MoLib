@@ -1,4 +1,6 @@
 import numpy as np
+
+from molib.core.constants import MoLibConstant
 from molib.entities.molecule import Molecule3D, STANDARD_POLYPEPTIDE_RESIDUES
 from molib.entities.residue import Res3D
 from molib.entities.secondary_structure_type import SecondaryStructureType
@@ -195,7 +197,7 @@ def set_secondary_structure(mol: Molecule3D, ss_mode: str, coil_mode: bool) -> N
         # No HELIX/SHEET in file → everything remains default coil; infer from Cα geometry.
         if not mol3d_protein_has_explicit_secondary_structure(mol):
             mol3d_secstruc_ca_geom(mol)
-    elif ss_mode == "CA":
+    elif ss_mode == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME:
         mol3d_secstruc_ca_geom(mol)
     elif ss_mode == "HB":
         if mol3d_secstruc_hbonds(mol):
@@ -314,11 +316,11 @@ def mol3d_secstruc_hbonds(mol: Molecule3D) -> None:
     res = mol.first
     while res:
         if res.code != "X":
-            at = at3d_lookup(res, "CA")
+            at = at3d_lookup(res, MoLibConstant.PEPTIDE_CHAIN_ATOMNAME)
             if at:
-                pass
-                # atoms[ca_count++] = at
-    # return True
+                ca_count = ca_count + 1
+                atoms[ca_count] = at
+    return True
 
 
 def output_hsb_decrement() -> None:

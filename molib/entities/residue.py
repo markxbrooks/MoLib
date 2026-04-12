@@ -7,6 +7,8 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 import numpy as np
+
+from molib.core.constants import MoLibConstant
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from molib.entities.structure import Structure3D
 
@@ -70,8 +72,8 @@ class Res3D(Structure3D):
     @property
     def ca(self) -> "np.ndarray":
         """Return CA atom position if present, otherwise fallback to residue coords."""
-        if "CA" in self.atoms:
-            return self.atoms["CA"].pos
+        if MoLibConstant.PEPTIDE_CHAIN_ATOMNAME in self.atoms:
+            return self.atoms[MoLibConstant.PEPTIDE_CHAIN_ATOMNAME].pos
         return self.pos
 
     def has_ca(self) -> bool:
@@ -81,14 +83,14 @@ class Res3D(Structure3D):
 
         Notes
         -----
-        ``Res3D.ca`` falls back to ``self.pos`` when ``"CA"`` is missing.
+        ``Res3D.ca`` falls back to ``self.pos`` when ``MoLibConstant.PEPTIDE_CHAIN_ATOMNAME`` is missing.
         If ``has_ca`` were based on that fallback, residues without a CA atom
         would still be included in C-alpha traces, producing a "carbon-like"
         backbone.
         """
-        if "CA" not in self.atoms:
+        if MoLibConstant.PEPTIDE_CHAIN_ATOMNAME not in self.atoms:
             return False
-        return not np.allclose(self.atoms["CA"].pos, 0.0)
+        return not np.allclose(self.atoms[MoLibConstant.PEPTIDE_CHAIN_ATOMNAME].pos, 0.0)
 
     def get_atom_positions(self) -> "np.ndarray":
         """Return all atom positions as a NumPy array."""
