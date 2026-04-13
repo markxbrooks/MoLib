@@ -44,6 +44,8 @@ class RibbonStyleConfig:
     style: str
     width_scale: float = RIBBON_WIDTH_SCALE
     use_ribbons_style: bool = True
+    #: Append a Ribbons-style arrowhead at the C-terminus when geometry exposes ribbon edges.
+    has_arrow: bool = False
 
 
 def generate_ribbon_geometry_per_chain_color_by_ca(
@@ -55,6 +57,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
     all_ss_types: Optional[np.ndarray] = None,
     style: str = RibbonStyle.SQUARE,
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
+    has_arrow: bool = False,
 ) -> dict[Any, MeshData]:
     """
     Generate ribbon meshdata for each chain separately, with per-CA colors.
@@ -70,6 +73,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         all_ss_types: Optional (N,) array of secondary structure types
         style: Ribbon cross-section style ("flat", "circle", "square", "ellipse")
         ribbon_width_scale: B-spline ribbon width factor (see RIBBON_WIDTH_SCALE)
+        has_arrow: If True, append a C-terminal arrow when B-spline geometry exposes edges.
     """
     from collections import defaultdict
 
@@ -113,6 +117,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
             ss_types=ss_array,
             style=style,
             ribbon_width_scale=ribbon_width_scale,
+            has_arrow=has_arrow,
         )
 
         ribbon_data[chain_id] = MeshData(
@@ -135,6 +140,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
         context.colors,
         style=config.style,
         ribbon_width_scale=config.width_scale,
+        has_arrow=config.has_arrow,
     )
 
 
@@ -465,6 +471,7 @@ def generate_ribbon_geometry_with_colors_from_context(
         ss_types=context.ss_types,
         style=config.style,
         ribbon_width_scale=config.width_scale,
+        has_arrow=config.has_arrow,
     )
 
 
@@ -478,6 +485,7 @@ def generate_ribbon_geometry_with_colors(
     ss_types: Optional[np.ndarray] = None,
     style: str = RibbonStyle.SQUARE,
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
+    has_arrow: bool = False,
 ) -> VertexData:
     """
     Generate ribbon meshdata with per-CA colors. @@@@@ RIBBON_PATH
@@ -494,6 +502,7 @@ def generate_ribbon_geometry_with_colors(
     :param o_coords: Optional (N, 3) array of O (oxygen) coordinates for better accuracy
     :param ss_types: Optional (N,) array of secondary structure types ('H', 'S', 'T', etc.)
     :param ribbon_width_scale: B-spline width factor passed to Ribbons-style generator
+    :param has_arrow: If True, append a C-terminal arrow (B-spline path only, when edges exist).
     """
     if use_ribbons_style:
         # Use Ribbons-style B-spline approach for better accuracy.
@@ -530,6 +539,63 @@ def generate_ribbon_geometry_with_colors(
                 nearest_ca_idx = np.argmin(distances)
                 colors[i] = ca_colors[nearest_ca_idx]
                 vertex_chain_ids.append(chain_ids[nearest_ca_idx])
+
+            if has_arrow and ribbon_edges is not None and ribbon_frenet is not None:
+                try:
+                    left_edge, right_edge = ribbon_edges
+                    tangent, plane_normal, ribbon_binormal = ribbon_frenet
+                    p1 = 0.5 * (
+                        np.asarray(left_edge, dtype=np.float32)
+                        + np.asarray(right_edge, dtype=np.float32)
+                    )
+                    t = np.asarray(tangent, dtype=np.float32)
+                    t_len = float(np.linalg.norm(t))
+                    if t_len > 1e-8:
+                        t = t / t_len
+                    if len(ca_coords) >= 2:
+                        step = float(
+                            np.linalg.norm(ca_coords[-1] - ca_coords[-2])
+                        )
+                    else:
+                        step = float(ribbon_width_scale) * 0.25
+                    arrow_len = max(step * 0.75, float(ribbon_width_scale) * 0.15)
+                    p2 = p1 + t * arrow_len
+                    last_color = (
+                        float(ca_colors[-1, 0]),
+                        float(ca_colors[-1, 1]),
+                        float(ca_colors[-1, 2]),
+                    )
+                    av, an, ai, ac = generate_arrow_geometry(
+                        p1,
+                        p2,
+                        width=float(ribbon_width_scale) * 0.35,
+                        color=last_color,
+                        ribbon_plane_normal=np.asarray(
+                            plane_normal, dtype=np.float32
+                        ),
+                        ribbon_binormal=np.asarray(
+                            ribbon_binormal, dtype=np.float32
+                        ),
+                        ribbon_left_edge=np.asarray(left_edge, dtype=np.float32),
+                        ribbon_right_edge=np.asarray(right_edge, dtype=np.float32),
+                    )
+                    if len(av) > 0:
+                        offset = np.uint32(len(vertices))
+                        vertices = np.vstack([vertices, av])
+                        normals = np.vstack([normals, an])
+                        colors = np.vstack([colors, ac])
+                        chain_tail = chain_ids[-1] if chain_ids else ""
+                        vertex_chain_ids.extend(
+                            [chain_tail] * len(av)
+                        )
+                        indices = np.concatenate(
+                            [indices, ai.astype(np.uint32) + offset]
+                        )
+                except Exception as arrow_ex:
+                    log.message(
+                        f"Ribbon end arrow: skipped ({arrow_ex})",
+                        scope="generate_ribbon_geometry_with_colors",
+                    )
 
             return VertexData(
                 geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
