@@ -324,7 +324,7 @@ class UnitCellCoordinateGenerator:
             info = {
                 "a": self.unit_cell.a,
                 "b": self.unit_cell.b,
-                "c": self.unit_cell.c,
+                "c": self.unit_cell.segment_color,
                 "alpha": self.unit_cell.alpha,
                 "beta": self.unit_cell.beta,
                 "gamma": self.unit_cell.gamma,

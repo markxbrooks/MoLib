@@ -111,7 +111,7 @@ def extract_unit_cell_from_mtz(mtz_data) -> Optional[Dict[str, Any]]:
             unit_cell_info = {
                 "a": unit_cell.a,
                 "b": unit_cell.b,
-                "c": unit_cell.c,
+                "c": unit_cell.segment_color,
                 "alpha": unit_cell.alpha,
                 "beta": unit_cell.beta,
                 "gamma": unit_cell.gamma,
@@ -125,7 +125,7 @@ def extract_unit_cell_from_mtz(mtz_data) -> Optional[Dict[str, Any]]:
 
             log.info(
                 f"✅ Extracted unit cell from MTZ: a={unit_cell.a:.2f}, "
-                f"b={unit_cell.b:.2f}, c={unit_cell.c:.2f} Å"
+                f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å"
             )
             return unit_cell_info
 
@@ -154,7 +154,7 @@ def extract_unit_cell_from_ccp4(ccp4_data) -> Optional[Dict[str, Any]]:
             unit_cell_info = {
                 "a": unit_cell.a,
                 "b": unit_cell.b,
-                "c": unit_cell.c,
+                "c": unit_cell.segment_color,
                 "alpha": unit_cell.alpha,
                 "beta": unit_cell.beta,
                 "gamma": unit_cell.gamma,
@@ -168,7 +168,7 @@ def extract_unit_cell_from_ccp4(ccp4_data) -> Optional[Dict[str, Any]]:
 
             log.info(
                 f"✅ Extracted unit cell from CCP4: a={unit_cell.a:.2f}, "
-                f"b={unit_cell.b:.2f}, c={unit_cell.c:.2f} Å"
+                f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å"
             )
             return unit_cell_info
 

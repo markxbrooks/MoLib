@@ -26,7 +26,7 @@ def models_from_gemmi(gemmi, buffer, name: str):
         model = st.at(i_model)
         m = Model()
         m.unit_cell = UnitCell(
-            cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma
+            cell.a, cell.b, cell.segment_color, cell.alpha, cell.beta, cell.gamma
         )
         atom_i_seq = 0
         for i_chain in range(model.length):
