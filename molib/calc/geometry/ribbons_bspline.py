@@ -1059,7 +1059,7 @@ def generate_resgeom_flat(
     q_guide_points: ndarray,
     num_threads: int = 2,
     num_samples: int = 8,
-    arrow_base_width: Optional[float] = None,
+    arrow_base_width: Optional[float | np.floating[Any]] = None,
     arrow_head_width: Optional[float] = None,
     has_arrow: bool = False,
     force_thru_ca: bool = False,
