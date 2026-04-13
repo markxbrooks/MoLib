@@ -8,6 +8,15 @@ from scipy import ndimage
 from scipy.signal import savgol_filter
 
 
+def _as_vec3_f64(v):
+    """Coerce ndarray, sequence, or x/y/z point-like to shape (3,) float64."""
+    if isinstance(v, np.ndarray):
+        return np.asarray(v, dtype=np.float64).reshape(3,)
+    if hasattr(v, "x") and hasattr(v, "y") and hasattr(v, "z"):
+        return np.array([float(v.x), float(v.y), float(v.z)], dtype=np.float64)
+    return np.asarray(v, dtype=np.float64).reshape(3,)
+
+
 def apply_torsion_smoothing(backbone_points, normal_vectors, window=5):
     """
     Given backbone points and normal vectors, smooth the torsion (dihedral) angles,
@@ -190,6 +199,11 @@ def apply_arrow_dihedral_smoothing(
     Returns:
         smoothed_arrow_normal: Smoothed normal vector for the arrow face (max 10° change from original)
     """
+    arrow_face_center = _as_vec3_f64(arrow_face_center)
+    arrow_face_normal = _as_vec3_f64(arrow_face_normal)
+    prev_face_center = _as_vec3_f64(prev_face_center)
+    prev_face_normal = _as_vec3_f64(prev_face_normal)
+
     # Calculate the connection vector between faces
     face_connection = arrow_face_center - prev_face_center
     face_connection_norm = np.linalg.norm(face_connection)
