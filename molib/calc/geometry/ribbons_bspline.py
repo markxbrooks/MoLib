@@ -804,7 +804,86 @@ def generate_ribbon_geometry_ribbons_style(
                 indices.extend([base1 + j_next, base2 + j, base2 + j_next])
 
     elif style == RibbonStyle.SQUARE:
-        # Rectangular block (like Ribbons' RIB_SQUARE) - 4 corners
+        # --- VECTORIZE SQUARE STYLE ---
+
+        depth = width * 0.4
+        n = len(centerline)
+
+        # Corner coefficients (same as before)
+        ca4 = np.array([-0.70710678, 0.70710678, 0.70710678, -0.70710678], dtype=np.float32)
+        sa4 = np.array([0.70710678, 0.70710678, -0.70710678, -0.70710678], dtype=np.float32)
+
+        # Ensure widths shape is correct
+        if len(widths) != n:
+            widths = np.full(n, width, dtype=np.float32)
+
+        # --- Compute scaled basis vectors ---
+        rmaj = 0.5 * widths[:, None]  # (n, 1)
+        rmin = 0.5 * depth  # scalar
+
+        a = binormals * rmaj  # (n, 3)
+        b_scaled = normals * rmin  # (n, 3)
+
+        # --- Compute all 4 corners for all points ---
+        # Result: (n, 4, 3)
+        corners = (
+                centerline[:, None, :]
+                + sa4[None, :, None] * a[:, None, :]
+                + ca4[None, :, None] * b_scaled[:, None, :]
+        )
+
+        # Flatten vertices
+        vertices = corners.reshape(-1, 3)
+
+        # --- Compute edge_along (central differences) ---
+        edge_along = np.empty_like(centerline)
+        edge_along[1:-1] = centerline[2:] - centerline[:-2]
+        edge_along[0] = centerline[1] - centerline[0]
+        edge_along[-1] = centerline[-1] - centerline[-2]
+
+        # --- Compute edge_across (per corner) ---
+        # (n, 4, 3)
+        edge_across = np.roll(corners, -1, axis=1) - corners
+
+        # --- Compute normals (vectorized cross product) ---
+        normals_all = np.cross(edge_across, edge_along[:, None, :])
+
+        # Normalize safely
+        norms = np.linalg.norm(normals_all, axis=2, keepdims=True)
+        norms[norms < 1e-8] = 1.0
+        normals_all /= norms
+
+        # Flatten normals
+        vertex_normals = normals_all.reshape(-1, 3)
+
+        # --- Build indices (vectorized) ---
+        # Each segment contributes 8 triangles (24 indices)
+        n_segments = n - 1
+
+        base1 = np.arange(n_segments) * 4
+        base2 = (np.arange(n_segments) + 1) * 4
+
+        # Build all faces in one shot
+        indices = np.stack([
+            # Face 0
+            base1 + 0, base2 + 0, base1 + 1,
+            base1 + 1, base2 + 0, base2 + 1,
+
+            # Face 1
+            base1 + 1, base2 + 1, base1 + 2,
+            base1 + 2, base2 + 1, base2 + 2,
+
+            # Face 2
+            base1 + 2, base2 + 2, base1 + 3,
+            base1 + 3, base2 + 2, base2 + 3,
+
+            # Face 3
+            base1 + 3, base2 + 3, base1 + 0,
+            base1 + 0, base2 + 3, base2 + 0,
+        ], axis=1)
+
+        indices = indices.reshape(-1).astype(np.uint32)
+        """# Rectangular block (like Ribbons' RIB_SQUARE) - 4 corners
         # Uses depth for thickness (perpendicular to width). Use 0.4 so ribbons
         # are clearly visible (legacy-style width scale makes width large; depth follows).
         depth = width * 0.4
@@ -915,10 +994,82 @@ def generate_ribbon_geometry_ribbons_style(
 
             # Face 3: corners 3-0 (left face)
             indices.extend([base1 + 3, base2 + 3, base1 + 0])
-            indices.extend([base1 + 0, base2 + 3, base2 + 0])
+            indices.extend([base1 + 0, base2 + 3, base2 + 0])"""
+
 
     elif style == RibbonStyle.ELLIPSE:
-        # Elliptical tube - like CIRCLE but with major (width) and minor (depth) axes
+        # --- VECTORIZE ELLIPSE STYLE ---
+
+        n = n_points
+        depth = width * 0.4
+
+        # Ensure widths shape
+        if len(widths) != n:
+            widths = np.full(n, width, dtype=np.float32)
+
+        # Radii
+        rmaj = 0.5 * widths  # (n,)
+        rmin = 0.5 * depth  # scalar
+
+        # --- Precompute circle angles ---
+        angles = np.linspace(0.0, 2.0 * np.pi, num_threads, endpoint=False, dtype=np.float32)
+        cos_a = np.cos(angles)  # (t,)
+        sin_a = np.sin(angles)  # (t,)
+
+        # --- Scale basis vectors ---
+        # binormals = major axis, normals = minor axis
+        a = binormals * rmaj[:, None]  # (n, 3)
+        b_scaled = normals * rmin  # (n, 3)
+
+        # --- Compute all vertices ---
+        # (n, t, 3)
+        offsets = (
+                cos_a[None, :, None] * a[:, None, :] +
+                sin_a[None, :, None] * b_scaled[:, None, :]
+        )
+
+        vertices = (centerline[:, None, :] + offsets).reshape(-1, 3)
+
+        # --- Compute normals (same as normalized offsets) ---
+        normals_all = offsets.copy()
+
+        norms = np.linalg.norm(normals_all, axis=2, keepdims=True)
+        norms[norms < 1e-8] = 1.0
+        normals_all /= norms
+
+        vertex_normals = normals_all.reshape(-1, 3)
+
+        # --- Build indices (vectorized) ---
+        n_segments = n - 1
+        t = num_threads
+
+        i = np.arange(n_segments)
+        j = np.arange(t)
+
+        base1 = (i[:, None] * t)
+        base2 = ((i[:, None] + 1) * t)
+
+        j_next = (j + 1) % t
+
+        # Expand for broadcasting
+        j = j[None, :]
+        j_next = j_next[None, :]
+
+        # Build triangles
+        tri1 = np.stack([
+            base1 + j,
+            base2 + j,
+            base1 + j_next
+        ], axis=-1)
+
+        tri2 = np.stack([
+            base1 + j_next,
+            base2 + j,
+            base2 + j_next
+        ], axis=-1)
+
+        indices = np.concatenate([tri1, tri2], axis=-1).reshape(-1).astype(np.uint32)
+        """# Elliptical tube - like CIRCLE but with major (width) and minor (depth) axes
         depth = width * 0.4
 
         for i in range(n_points):
@@ -953,7 +1104,7 @@ def generate_ribbon_geometry_ribbons_style(
 
                 indices.extend([base1 + j, base2 + j, base1 + j_next])
                 indices.extend([base1 + j_next, base2 + j, base2 + j_next])
-
+        """
     else:  # default to square
         # Default to square for 3D blocks
         return generate_ribbon_geometry_ribbons_style(
