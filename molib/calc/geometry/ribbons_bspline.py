@@ -12,12 +12,21 @@ Key differences from Catmull-Rom:
 - Generates 3D tube meshdata with proper normals for lighting
 """
 
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, Protocol
 
 import numpy as np
 from numpy import ndarray
 
+from molib.core.constants import MoLibConstant
 from picogl.buffers.geometry import GeometryData
+class _ResgeomContext(Protocol):
+    num_threads: int
+    num_samples: int
+    arrow_base_width: float | np.floating[Any]
+    arrow_head_width: float
+    has_arrow: bool
+    force_thru_ca: bool
+
 
 
 class RibbonStyle:
@@ -1210,7 +1219,7 @@ def generate_resgeom_flat(
 
             # Calculate scale factor
             s = np.linalg.norm(d)
-            if s > 1e-6:
+            if s > MoLibConstant.EPSILON:
                 s = 0.5 * (current_wab / s)
             else:
                 s = 0.0
@@ -1329,3 +1338,22 @@ def generate_resgeom_flat(
     colors = np.ones((len(vertices), 3), dtype=np.float32)
 
     return vertices, normals, indices, colors
+
+
+def create_resgeom_flat_from_context(
+    p_guide_points: ndarray[Any, np.dtype[Any]] | ndarray[Any, np.dtype[np.generic]],
+    q_guide_points: ndarray[Any, np.dtype[Any]] | ndarray[Any, np.dtype[np.generic]],
+    ctx: _ResgeomContext,
+) -> tuple[ndarray, ndarray]:
+    """create resgeomm from context"""
+    vertices, normals, _indices, _colors_flat = generate_resgeom_flat(
+        p_guide_points=p_guide_points,
+        q_guide_points=q_guide_points,
+        num_threads=ctx.num_threads,
+        num_samples=ctx.num_samples,
+        arrow_base_width=ctx.arrow_base_width,
+        arrow_head_width=ctx.arrow_head_width,
+        has_arrow=ctx.has_arrow,
+        force_thru_ca=ctx.force_thru_ca,
+    )
+    return normals, vertices
