@@ -6,6 +6,7 @@ import numpy as np
 
 class MoLibConstant:
     """MoLib Constant"""
+    EPSILON_SMALL = 1e-8
     EPSILON = 1e-6
     PEPTIDE_CHAIN_ATOMNAME = "CA" # MoLibConstant.PEPTIDE_CHAIN_ATOMNAME
     PEPTIDE_DISTANCE = 4.2
