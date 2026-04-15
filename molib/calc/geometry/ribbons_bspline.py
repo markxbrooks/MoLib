@@ -370,9 +370,11 @@ def evaluate_bspline_segment(
     """
     Evaluate a cubic B-spline segment at parameter t.
 
-    Args:
-        p0, p1, p2, p3: Four control points (3D)
-        t: Parameter in [0, 1]
+    :param p0: np.ndarray
+    :param p1: np.ndarray
+    :param p2: np.ndarray,
+    :param p3: np.ndarray Four control points (3D)
+    :param t: Parameter in [0, 1]
         matrix: B-spline basis matrix (defaults to BS_MAT)
 
     Returns:
