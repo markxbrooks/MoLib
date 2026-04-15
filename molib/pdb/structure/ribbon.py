@@ -219,7 +219,7 @@ def generate_arrow_geometry(
             binormal = normalize(get_np_array(ribbon_binormal))
         else:
             # Calculate binormal from direction and a hint vector
-            up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+            up = to_up_vec3()
             binormal = cross(direction, up)
             if np.linalg.norm(binormal) < MoLibConstant.EPSILON:
                 up = np.array([1.0, 0.0, 0.0], dtype=np.float32)
@@ -296,6 +296,10 @@ def generate_arrow_geometry(
     colors = np.tile(color, (len(vertices), 1)).astype(np.float32)
 
     return vertices, vertex_normals, indices, colors
+
+
+def to_up_vec3() -> ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
+    return np.array([0.0, 0.0, 1.0], dtype=np.float32)
 
 
 def cross_normalize(binormal: float, direction: ndarray[Any, dtype[floating[Any]]]) -> np.ndarray:
