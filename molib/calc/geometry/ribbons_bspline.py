@@ -16,6 +16,7 @@ from typing import Optional, Tuple, Any, Protocol
 
 import numpy as np
 from numpy import ndarray
+from elmo.core.calc.utils import compute_tangents
 
 from molib.core.constants import MoLibConstant
 from picogl.buffers.geometry import GeometryData
@@ -94,7 +95,7 @@ BS_MAT_Z = np.array(
 )
 
 
-def normalize(v: ndarray) -> ndarray:
+def normalize(v: np.ndarray) -> np.ndarray:
     """Normalize a vector."""
     norm = np.linalg.norm(v)
     if norm < 1e-6:
@@ -102,12 +103,12 @@ def normalize(v: ndarray) -> ndarray:
     return v / norm
 
 
-def cross(a: ndarray, b: ndarray) -> ndarray:
+def cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Cross product of two 3D vectors."""
     return np.cross(a, b)
 
 
-def dot(a: ndarray, b: ndarray) -> float:
+def dot(a: np.ndarray, b: np.ndarray) -> float:
     """Dot product of two vectors."""
     return np.dot(a, b)
 
@@ -179,12 +180,12 @@ def is_sheet(ss1: str, ss2: str) -> bool:
 
 
 def calculate_guide_points(
-    ca_coords: ndarray,
-    o_coords: Optional[ndarray] = None,
-    cb_coords: Optional[ndarray] = None,
-    ss_types: Optional[ndarray] = None,
+    ca_coords: np.ndarray,
+    o_coords: Optional[np.ndarray] = None,
+    cb_coords: Optional[np.ndarray] = None,
+    ss_types: Optional[np.ndarray] = None,
     width: float = 0.5,
-) -> Tuple[ndarray, ndarray]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Calculate B-spline guide points from CA coordinates (Ribbons-style).
 
@@ -359,13 +360,13 @@ def calculate_guide_points(
 
 
 def evaluate_bspline_segment(
-    p0: ndarray,
-    p1: ndarray,
-    p2: ndarray,
-    p3: ndarray,
+    p0: np.ndarray,
+    p1: np.ndarray,
+    p2: np.ndarray,
+    p3: np.ndarray,
     t: float,
-    matrix: Optional[ndarray] = None,
-) -> ndarray:
+    matrix: Optional[np.ndarray]= None,
+) -> np.ndarray:
     """
     Evaluate a cubic B-spline segment at parameter t.
 
@@ -391,8 +392,8 @@ def evaluate_bspline_segment(
 
 
 def evaluate_bspline_chain(
-    guide_points: ndarray, samples_per_segment: int = 8
-) -> ndarray:
+    guide_points: np.ndarray, samples_per_segment: int = 8
+) -> np.ndarray:
     """
     Evaluate a B-spline chain through guide points.
 
@@ -480,7 +481,7 @@ def smooth(vectors, alpha=0.2):
     return out
 
 def calculate_frenet_frame_from_edges(
-    left_edge: ndarray, centerline: ndarray, right_edge: ndarray
+    left_edge: np.ndarray, centerline: np.ndarray, right_edge: np.ndarray
 ) -> Tuple[ndarray, ndarray, ndarray, ndarray]:
     """
     Calculate Frenet frame from ribbon edges (Ribbons' SetSpaceCurve approach).
@@ -566,7 +567,7 @@ def calculate_frenet_frame_from_edges(
     return tangents, normals, binormals, widths
 
 
-def calculate_frenet_frame(centerline: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
+def calculate_frenet_frame(centerline: np.ndarray) -> Tuple[ndarray, ndarray, ndarray]:
     """
     Calculate Frenet frame (tangent, normal, binormal) for a space curve.
 
@@ -669,10 +670,10 @@ def calculate_parallel_transport_frames(centerline: np.ndarray):
 
 
 def generate_ribbon_geometry_ribbons_style(
-    ca_coords: ndarray,
-    o_coords: Optional[ndarray] = None,
-    cb_coords: Optional[ndarray] = None,
-    ss_types: Optional[ndarray] = None,
+    ca_coords: np.ndarray,
+    o_coords: Optional[np.ndarray]= None,
+    cb_coords: Optional[np.ndarray]= None,
+    ss_types: Optional[np.ndarray]= None,
     width: float = 0.5,
     samples_per_segment: int = 8,
     style: str = RibbonStyle.SQUARE,  # "flat", "circle", "square", "ellipse" - default to square for 3D blocks
@@ -836,10 +837,7 @@ def generate_ribbon_geometry_ribbons_style(
         vertices = corners.reshape(-1, 3)
 
         # --- Compute edge_along (central differences) ---
-        edge_along = np.empty_like(centerline)
-        edge_along[1:-1] = centerline[2:] - centerline[:-2]
-        edge_along[0] = centerline[1] - centerline[0]
-        edge_along[-1] = centerline[-1] - centerline[-2]
+        edge_along = compute_tangents(centerline)
 
         # --- Compute edge_across (per corner) ---
         # (n, 4, 3)
@@ -1215,8 +1213,8 @@ def generate_ribbon_geometry_ribbons_style(
 
 
 def generate_resgeom_flat(
-    p_guide_points: ndarray,
-    q_guide_points: ndarray,
+    p_guide_points: np.ndarray,
+    q_guide_points: np.ndarray,
     num_threads: int = 2,
     num_samples: int = 8,
     arrow_base_width: Optional[float | np.floating[Any]] = None,
@@ -1492,8 +1490,8 @@ def generate_resgeom_flat(
 
 
 def create_resgeom_flat_from_context(
-    p_guide_points: ndarray[Any, np.dtype[Any]] | ndarray[Any, np.dtype[np.generic]],
-    q_guide_points: ndarray[Any, np.dtype[Any]] | ndarray[Any, np.dtype[np.generic]],
+    p_guide_points: np.ndarray[Any, np.dtype[Any]] | ndarray[Any, np.dtype[np.generic]],
+    q_guide_points: np.ndarray[Any, np.dtype[Any]] | ndarray[Any, np.dtype[np.generic]],
     ctx: _ResgeomContext,
 ) -> tuple[ndarray, ndarray]:
     """create resgeomm from context"""

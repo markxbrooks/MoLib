@@ -298,7 +298,7 @@ def generate_arrow_geometry(
     return vertices, vertex_normals, indices, colors
 
 
-def to_up_vec3() -> ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
+def to_up_vec3() -> np.ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
     return np.array([0.0, 0.0, 1.0], dtype=np.float32)
 
 
@@ -309,12 +309,12 @@ def cross_normalize(binormal: float, direction: ndarray[Any, dtype[floating[Any]
     return normal
 
 
-def cross(binormal: float, direction: ndarray[Any, dtype[floating[Any]]]) -> ndarray[Any, dtype[floating[Any]]]:
+def cross(binormal: float, direction: ndarray[Any, dtype[floating[Any]]]) -> np.ndarray[Any, dtype[floating[Any]]]:
     """cross helper"""
     return np.cross(binormal, direction)
 
 
-def get_np_array(p1: ndarray) -> ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
+def get_np_array(p1: ndarray) -> np.ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
     """get as numpy array"""
     return np.asarray(p1, dtype=np.float32)
 
