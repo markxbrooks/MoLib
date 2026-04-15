@@ -19,7 +19,7 @@ from numpy import ndarray
 from elmo.core.calc.utils import compute_tangents
 
 from molib.core.constants import MoLibConstant
-from molib.entities.secondary_structure_type import SecondaryStructureType
+from molib.entities.secondary_structure_type import SecondaryStructureType, normalize_ss
 from picogl.buffers.geometry import GeometryData
 class _ResgeomContext(Protocol):
     num_threads: int
@@ -151,7 +151,7 @@ def get_width(ss1: str, ss2: str) -> float:
     return 0.5 * (wa + wb)
 
 
-def get_shift(ss: str) -> float:
+def get_shift_old(ss: str) -> float:
     """
     Get helix shift amount (from Ribbons).
 
@@ -166,19 +166,34 @@ def get_shift(ss: str) -> float:
     return 0.0
 
 
-def is_helix(ss1: str, ss2: str) -> bool:
+def is_helix_old(ss1: str, ss2: str) -> bool:
     """Check if secondary structure is a helix."""
     return (ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10 or ss1 == SecondaryStructureType.PI_HELIX) and (
         ss2 == SecondaryStructureType.ALPHA_HELIX or ss2 == SecondaryStructureType.HELIX_3_10 or ss2 == SecondaryStructureType.PI_HELIX
     )
 
 
-def is_sheet(ss1: str, ss2: str) -> bool:
+def is_sheet_old(ss1: str, ss2: str) -> bool:
     """Check if secondary structure is a sheet."""
     return (ss1 == SecondaryStructureType.BEND or ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BETA_BRIDGE) and (
         ss2 == SecondaryStructureType.BEND or ss2 == SecondaryStructureType.BETA_STRAND or ss2 == SecondaryStructureType.BETA_BRIDGE
     )
 
+def get_shift(ss: str) -> float:
+    ss = normalize_ss(ss)
+    return 0.3 if ss in HELIX_TYPES else 0.0
+
+
+def is_helix(ss1: str, ss2: str) -> bool:
+    ss1 = normalize_ss(ss1)
+    ss2 = normalize_ss(ss2)
+    return ss1 in HELIX_TYPES and ss2 in HELIX_TYPES
+
+
+def is_sheet(ss1: str, ss2: str) -> bool:
+    ss1 = normalize_ss(ss1)
+    ss2 = normalize_ss(ss2)
+    return ss1 in SHEET_TYPES and ss2 in SHEET_TYPES
 
 def calculate_guide_points(
     ca_coords: np.ndarray,

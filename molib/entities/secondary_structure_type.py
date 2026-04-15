@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from enum import Enum
-
 from picogl.utils.strenum import StrEnum
 
 
@@ -42,3 +40,50 @@ class SecondaryStructureType(StrEnum):
     def to_string(self) -> str:
         """Convert enum to string representation."""
         return self.value
+
+HELIX_TYPES = {
+    SecondaryStructureType.ALPHA_HELIX,
+    SecondaryStructureType.ALPHA_HELIX2,
+    SecondaryStructureType.HELIX_3_10,
+    SecondaryStructureType.HELIX_3_10_2,
+    SecondaryStructureType.HELIX_3_10_3,
+    SecondaryStructureType.PI_HELIX,
+}
+
+SHEET_TYPES = {
+    SecondaryStructureType.BETA_STRAND,
+    SecondaryStructureType.BETA_BRIDGE,
+}
+
+COIL_TYPES = {
+    SecondaryStructureType.COIL,
+    SecondaryStructureType.COIL2,
+    SecondaryStructureType.TURN,
+    SecondaryStructureType.BEND,
+}
+
+
+def normalize_ss(ss: str | SecondaryStructureType) -> SecondaryStructureType:
+    if isinstance(ss, SecondaryStructureType):
+        return ss
+    return SecondaryStructureType.from_string(ss)
+
+
+class SecondaryStructureWidth:
+    """Secondary Structure Width"""
+    HELIX = 0.6
+    SHEET = 0.8
+    COIL = 0.5
+
+
+def _width_for(ss: SecondaryStructureType) -> float:
+    if ss in HELIX_TYPES:
+        return SecondaryStructureWidth.HELIX
+    elif ss in SHEET_TYPES:
+        return SecondaryStructureWidth.SHEET
+    else:
+        return SecondaryStructureWidth.COIL
+
+
+
+
