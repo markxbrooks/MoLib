@@ -2,18 +2,24 @@ from __future__ import annotations
 
 from enum import Enum
 
+from picogl.utils.strenum import StrEnum
 
-class SecondaryStructureType(Enum):
+
+class SecondaryStructureType(StrEnum):
     """Secondary structure types with string mappings for backward compatibility."""
 
     ALPHA_HELIX = "H"  # Alpha helix
+    ALPHA_HELIX2 = "A"  # Alpha helix
     BETA_STRAND = "E"  # Beta strand/sheet
     TURN = "T"  # Turn
     BEND = "S"  # Bend
     HELIX_3_10 = "G"  # 3-10 helix
+    HELIX_3_10_2 = "3"  # 3-10 helix
+    HELIX_3_10_3 = "L"  # 3-10 helix
     PI_HELIX = "I"  # Pi helix
     BETA_BRIDGE = "B"  # Beta bridge
     COIL = " "  # Coil/loop (space character for compatibility)
+    COIL2 = "C"  # Coil/loop (space character for compatibility)
 
     @classmethod
     def from_string(cls, value: str) -> "SecondaryStructureType":

@@ -19,6 +19,7 @@ from numpy import ndarray
 from elmo.core.calc.utils import compute_tangents
 
 from molib.core.constants import MoLibConstant
+from molib.entities.secondary_structure_type import SecondaryStructureType
 from picogl.buffers.geometry import GeometryData
 class _ResgeomContext(Protocol):
     num_threads: int
@@ -127,21 +128,21 @@ def get_width(ss1: str, ss2: str) -> float:
         Width factor (average of wa and wb)
     """
     # Get width for current residue
-    if not ss1 or ss1 == " " or ss1 == "T" or ss1 == "C" or ss1 == "c":
+    if not ss1 or ss1 ==  SecondaryStructureType.COIL or ss1 == SecondaryStructureType.TURN or ss1 == SecondaryStructureType.COIL2 or ss1 == SecondaryStructureType.COIL2.lower():
         wa = 0.5  # Coil/turn
-    elif ss1 == "H" or ss1 == "L" or ss1 == "3" or ss1 == "h":
+    elif ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10_2 or ss1 == SecondaryStructureType.HELIX_3_10_3 or ss1 == SecondaryStructureType.ALPHA_HELIX.lower():
         wa = 0.6  # Helix
-    elif ss1 == "S" or ss1 == "A" or ss1 == "E" or ss1 == "B":
+    elif ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BETA_BRIDGE or ss1 == SecondaryStructureType.ALPHA_HELIX2 or ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.BETA_BRIDGE:
         wa = 0.8  # Sheet
     else:
         wa = 0.5
 
     # Get width for next residue
-    if not ss2 or ss2 == " " or ss2 == "T" or ss2 == "C" or ss2 == "c":
+    if not ss2 or ss2 == SecondaryStructureType.COIL or ss2 == SecondaryStructureType.TURN or ss2 == SecondaryStructureType.COIL2 or ss2 == SecondaryStructureType.COIL2.lower():
         wb = 0.5  # Coil/turn
-    elif ss2 == "H" or ss2 == "L" or ss2 == "3" or ss2 == "h":
-        wb = 0.6  # Helix
-    elif ss2 == "S" or ss2 == "A" or ss2 == "E" or ss2 == "B":
+    elif ss2 == SecondaryStructureType.ALPHA_HELIX or ss2 == SecondaryStructureType.HELIX_3_10_3 or ss2 == SecondaryStructureType.HELIX_3_10_2 or ss2 == SecondaryStructureType.ALPHA_HELIX.lower():
+        wb = 0.6  # HelixSecondaryStructureType.BETA_STRAND
+    elif ss2 == SecondaryStructureType.BEND or ss2 == SecondaryStructureType.ALPHA_HELIX2 or ss2 == SecondaryStructureType.BETA_STRAND or ss2 == SecondaryStructureType.BETA_BRIDGE:
         wb = 0.8  # Sheet
     else:
         wb = 0.5
@@ -160,22 +161,22 @@ def get_shift(ss: str) -> float:
     Returns:
         Shift amount in Angstroms
     """
-    if ss == "H" or ss == "G" or ss == "I":  # Helix types
+    if ss == SecondaryStructureType.ALPHA_HELIX or ss == SecondaryStructureType.HELIX_3_10 or ss == SecondaryStructureType.PI_HELIX:  # Helix types
         return 0.3  # Shift towards helix center
     return 0.0
 
 
 def is_helix(ss1: str, ss2: str) -> bool:
     """Check if secondary structure is a helix."""
-    return (ss1 == "H" or ss1 == "G" or ss1 == "I") and (
-        ss2 == "H" or ss2 == "G" or ss2 == "I"
+    return (ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10 or ss1 == SecondaryStructureType.PI_HELIX) and (
+        ss2 == SecondaryStructureType.ALPHA_HELIX or ss2 == SecondaryStructureType.HELIX_3_10 or ss2 == SecondaryStructureType.PI_HELIX
     )
 
 
 def is_sheet(ss1: str, ss2: str) -> bool:
     """Check if secondary structure is a sheet."""
-    return (ss1 == "S" or ss1 == "E" or ss1 == "B") and (
-        ss2 == "S" or ss2 == "E" or ss2 == "B"
+    return (ss1 == SecondaryStructureType.BEND or ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BETA_BRIDGE) and (
+        ss2 == SecondaryStructureType.BEND or ss2 == SecondaryStructureType.BETA_STRAND or ss2 == SecondaryStructureType.BETA_BRIDGE
     )
 
 
