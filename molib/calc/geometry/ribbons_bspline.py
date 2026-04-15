@@ -19,8 +19,9 @@ from numpy import ndarray
 from elmo.core.calc.utils import compute_tangents
 
 from molib.core.constants import MoLibConstant
-from molib.entities.secondary_structure_type import SecondaryStructureType, normalize_ss
+from molib.entities.secondary_structure_type import SecondaryStructureType, normalize_ss, HELIX_TYPES, SHEET_TYPES
 from picogl.buffers.geometry import GeometryData
+
 class _ResgeomContext(Protocol):
     num_threads: int
     num_samples: int
@@ -114,7 +115,16 @@ def dot(a: np.ndarray, b: np.ndarray) -> float:
     return np.dot(a, b)
 
 
-def get_width(ss1: str, ss2: str) -> float:
+def get_width(ss: SecondaryStructureType) -> float:
+    if ss in HELIX_TYPES:
+        return SecondaryStructureWidth.HELIX
+    elif ss in SHEET_TYPES:
+        return SecondaryStructureWidth.SHEET
+    else:
+        return SecondaryStructureWidth.COIL
+
+
+def get_width_old(ss1: str, ss2: str) -> float:
     """
     Get ribbon width based on secondary structure types (from Ribbons).
 
@@ -150,34 +160,6 @@ def get_width(ss1: str, ss2: str) -> float:
     # Return average (like Ribbons)
     return 0.5 * (wa + wb)
 
-
-def get_shift_old(ss: str) -> float:
-    """
-    Get helix shift amount (from Ribbons).
-
-    Args:
-        ss: Secondary structure type
-
-    Returns:
-        Shift amount in Angstroms
-    """
-    if ss == SecondaryStructureType.ALPHA_HELIX or ss == SecondaryStructureType.HELIX_3_10 or ss == SecondaryStructureType.PI_HELIX:  # Helix types
-        return 0.3  # Shift towards helix center
-    return 0.0
-
-
-def is_helix_old(ss1: str, ss2: str) -> bool:
-    """Check if secondary structure is a helix."""
-    return (ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10 or ss1 == SecondaryStructureType.PI_HELIX) and (
-        ss2 == SecondaryStructureType.ALPHA_HELIX or ss2 == SecondaryStructureType.HELIX_3_10 or ss2 == SecondaryStructureType.PI_HELIX
-    )
-
-
-def is_sheet_old(ss1: str, ss2: str) -> bool:
-    """Check if secondary structure is a sheet."""
-    return (ss1 == SecondaryStructureType.BEND or ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BETA_BRIDGE) and (
-        ss2 == SecondaryStructureType.BEND or ss2 == SecondaryStructureType.BETA_STRAND or ss2 == SecondaryStructureType.BETA_BRIDGE
-    )
 
 def get_shift(ss: str) -> float:
     ss = normalize_ss(ss)
