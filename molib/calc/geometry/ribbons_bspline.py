@@ -809,8 +809,12 @@ def generate_eliptical_ribbon(binormals: ndarray[Any, dtype[floating[_64Bit]]] |
                                       ndarray[Any, dtype[floating[Any]]] | ndarray[
                                           Any, dtype[complexfloating[Any, Any]]] | ndarray[Any, dtype[number[Any]]] |
                                       ndarray[Any, dtype[timedelta64]] | float | Any) -> tuple[
-    ndarray[Any, dtype[bool_]] | Any, ndarray[Any, dtype[bool_]], ndarray[Any, dtype[generic]] | ndarray[
-        Any, dtype[Any]], ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]]:
+    ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], ndarray[Any, dtype[bool_]], ndarray[
+        Any, dtype[bool_]] | Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
+        Any, dtype[Any]] | ndarray[Any, dtype[bool_]] | ndarray[Any, dtype[unsignedinteger[Any]]] | ndarray[
+        Any, dtype[signedinteger[Any]]] | ndarray[Any, dtype[floating[Any]]] | ndarray[
+        Any, dtype[complexfloating[Any, Any]]] | ndarray[Any, dtype[number[Any]]] | ndarray[
+        Any, dtype[timedelta64]] | float | Any]:
     # --- VECTORIZE ELLIPSE STYLE ---
 
     n = n_points
@@ -981,8 +985,12 @@ def generate_square_ribbon(binormals: ndarray[Any, dtype[floating[_64Bit]]] | nd
                                        Any, dtype[unsignedinteger[Any]]] | ndarray[Any, dtype[signedinteger[Any]]] |
                                    ndarray[Any, dtype[floating[Any]]] | ndarray[Any, dtype[complexfloating[Any, Any]]] |
                                    ndarray[Any, dtype[number[Any]]] | ndarray[Any, dtype[timedelta64]] | float | Any) -> \
-tuple[ndarray[Any, dtype[bool_]], ndarray[Any, dtype[Any]], ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]],
-                                                            ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]]:
+        tuple[ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], ndarray[
+            Any, dtype[bool_]], ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
+                  Any, dtype[Any]] | ndarray[Any, dtype[bool_]] | ndarray[Any, dtype[unsignedinteger[Any]]] | ndarray[
+                  Any, dtype[signedinteger[Any]]] | ndarray[Any, dtype[floating[Any]]] | ndarray[
+                  Any, dtype[complexfloating[Any, Any]]] | ndarray[Any, dtype[number[Any]]] | ndarray[
+                  Any, dtype[timedelta64]] | float | Any]:
     # --- VECTORIZE SQUARE STYLE ---
 
     depth = width * 0.4
@@ -1063,7 +1071,7 @@ tuple[ndarray[Any, dtype[bool_]], ndarray[Any, dtype[Any]], ndarray[Any, dtype[g
 
 
 def get_frenet_frame(binormals: ndarray, centerline: ndarray, normals: ndarray, ribbon_frenet: tuple[Any, Any, Any] | None,
-                     tangents: ndarray) -> tuple[Any, Any, Any]:
+                     tangents: ndarray) -> tuple[Any, Any, Any] | None:
     """Return Frenet frame"""
     if len(centerline) > 0:
         last_idx = len(centerline) - 1
