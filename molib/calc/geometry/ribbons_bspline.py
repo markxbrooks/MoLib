@@ -115,50 +115,14 @@ def dot(a: np.ndarray, b: np.ndarray) -> float:
     return np.dot(a, b)
 
 
-def get_width(ss: SecondaryStructureType) -> float:
+def _width_for(ss: SecondaryStructureType) -> float:
+    """width for"""
     if ss in HELIX_TYPES:
         return SecondaryStructureWidth.HELIX
     elif ss in SHEET_TYPES:
         return SecondaryStructureWidth.SHEET
     else:
         return SecondaryStructureWidth.COIL
-
-
-def get_width_old(ss1: str, ss2: str) -> float:
-    """
-    Get ribbon width based on secondary structure types (from Ribbons).
-
-    Ribbons averages the width of current and next residue.
-
-    Args:
-        ss1: Current secondary structure type
-        ss2: Next secondary structure type
-
-    Returns:
-        Width factor (average of wa and wb)
-    """
-    # Get width for current residue
-    if not ss1 or ss1 ==  SecondaryStructureType.COIL or ss1 == SecondaryStructureType.TURN or ss1 == SecondaryStructureType.COIL2 or ss1 == SecondaryStructureType.COIL2.lower():
-        wa = 0.5  # Coil/turn
-    elif ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10_2 or ss1 == SecondaryStructureType.HELIX_3_10_3 or ss1 == SecondaryStructureType.ALPHA_HELIX.lower():
-        wa = 0.6  # Helix
-    elif ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BETA_BRIDGE or ss1 == SecondaryStructureType.ALPHA_HELIX2 or ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.BETA_BRIDGE:
-        wa = 0.8  # Sheet
-    else:
-        wa = 0.5
-
-    # Get width for next residue
-    if not ss2 or ss2 == SecondaryStructureType.COIL or ss2 == SecondaryStructureType.TURN or ss2 == SecondaryStructureType.COIL2 or ss2 == SecondaryStructureType.COIL2.lower():
-        wb = 0.5  # Coil/turn
-    elif ss2 == SecondaryStructureType.ALPHA_HELIX or ss2 == SecondaryStructureType.HELIX_3_10_3 or ss2 == SecondaryStructureType.HELIX_3_10_2 or ss2 == SecondaryStructureType.ALPHA_HELIX.lower():
-        wb = 0.6  # HelixSecondaryStructureType.BETA_STRAND
-    elif ss2 == SecondaryStructureType.BEND or ss2 == SecondaryStructureType.ALPHA_HELIX2 or ss2 == SecondaryStructureType.BETA_STRAND or ss2 == SecondaryStructureType.BETA_BRIDGE:
-        wb = 0.8  # Sheet
-    else:
-        wb = 0.5
-
-    # Return average (like Ribbons)
-    return 0.5 * (wa + wb)
 
 
 def get_shift(ss: str) -> float:
@@ -261,7 +225,7 @@ def calculate_guide_points(
 
         # Get width based on secondary structure (Ribbons style)
         if ss_types is not None and k < len(ss_types) and k + 1 < len(ss_types):
-            ribbon_width = get_width(ss_types[k], ss_types[k + 1]) * width
+            ribbon_width = _width_for(ss_types[k], ss_types[k + 1]) * width
             if ss_types is not None and is_helix(
                     ss_types[k],
                     ss_types[k] if k + 1 >= len(ss_types) else ss_types[k + 1],
