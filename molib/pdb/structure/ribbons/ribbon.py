@@ -55,7 +55,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
         if context.ss_types is not None:
             ss_types_by_chain[chain_id].append(context.ss_types[i])
 
-    ribbon_data = {}
+    ribbon_mesh_by_chain = {}
 
     for chain_id, coords in coords_by_chain.items():
         ca_array = np.array(coords, dtype=np.float32)
@@ -76,9 +76,9 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
                                              colors=color_array,
                                              chain_ids=chain_id_list)
 
-        ribbon_data[chain_id] = generate_ribbon_geometry_with_colors_from_context(context=colored_context, config=config)
+        ribbon_mesh_by_chain[chain_id] = generate_ribbon_geometry_with_colors_from_context(context=colored_context, config=config)
 
-    return ribbon_data
+    return ribbon_mesh_by_chain
 
 
 def generate_ribbon_geometry_per_chain_from_context(config: RibbonStyleConfig, context: RibbonBuildContext) -> dict:

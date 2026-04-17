@@ -1216,6 +1216,34 @@ def generate_ribbon_geometry_ribbons_style(
     return geo_data, ribbon_edges, ribbon_frenet
 
 
+def generate_ribbon_geometry_ribbons_style_from_context(
+    config: "RibbonStyleConfig",
+    context: "RibbonBuildContext",
+) -> tuple[
+    GeometryData,
+    tuple[np.ndarray, np.ndarray] | None,
+    tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+]:
+    """
+    Build Ribbons-style B-spline geometry from :class:`~molib.pdb.structure.ribbons.style.RibbonStyleConfig`
+    and :class:`~molib.entities.ribbon.build_context.RibbonBuildContext`.
+
+    Returns the same triple as :func:`generate_ribbon_geometry_ribbons_style` (``GeometryData``, ribbon
+    edge pair, Frenet triple for C-terminal arrow placement).
+    """
+    return generate_ribbon_geometry_ribbons_style(
+        context.coords,
+        o_coords=context.o_coords,
+        cb_coords=None,
+        ss_types=context.ss_types,
+        width=config.width_scale,
+        samples_per_segment=4,
+        style=config.style,
+        num_threads=8,
+        helix_radius_scale=1.0,
+    )
+
+
 def generate_resgeom_flat(
     p_guide_points: np.ndarray,
     q_guide_points: np.ndarray,
