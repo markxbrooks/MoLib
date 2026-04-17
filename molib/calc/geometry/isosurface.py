@@ -2,6 +2,8 @@
 
 import numpy as np
 from decologr import Decologr as log
+
+from molib.calc.math.numpy_util import generate_colors_from_positions
 from skimage import measure
 
 
@@ -140,8 +142,12 @@ def create_fofc_color_map(
         density_range = np.max(np.abs(vertex_densities))
         if density_range == 0:
             # All values are zero, use zero colour
-            colors[:] = zero_color
-            return colors
+            return generate_colors_from_positions(
+                vertex_densities,
+                zero_color[0],
+                zero_color[1],
+                zero_color[2],
+            )
 
         # Normalize densities to [-1, 1] range
         normalized_densities = vertex_densities / density_range
@@ -174,7 +180,12 @@ def create_fofc_color_map(
     except Exception as ex:
         log.error(f"Error creating fo-fc colour map: {ex}")
         # Return default colors on error
-        return np.full((len(vertex_densities), 3), positive_color)
+        return generate_colors_from_positions(
+            vertex_densities,
+            positive_color[0],
+            positive_color[1],
+            positive_color[2],
+        )
 
 
 def create_2fofc_color_map(
@@ -196,21 +207,21 @@ def create_2fofc_color_map(
         np.ndarray - RGB colors for each vertex, shape (n_vertices, 3)
     """
     try:
-        n_vertices = len(vertex_densities)
-        colors = np.zeros((n_vertices, 3))
-
-        # Use default blue colour if none provided
-        if base_color is None:
-            base_color = (0.0, 0.0, 1.0)  # Default blue
-        # All values are the same, use base colour
-        colors[:] = base_color
-        return colors
+        bc = base_color if base_color is not None else (0.0, 0.0, 1.0)
+        return generate_colors_from_positions(
+            vertex_densities, bc[0], bc[1], bc[2]
+        )
 
     except Exception as ex:
         log.error(f"Error creating 2Fo-Fc colour map: {ex}")
         # Return default colors on error
         default_color = (0.0, 0.5, 1.0) if base_color is None else base_color
-        return np.full((len(vertex_densities), 3), default_color)
+        return generate_colors_from_positions(
+            vertex_densities,
+            default_color[0],
+            default_color[1],
+            default_color[2],
+        )
 
 
 def extract_isosurface_elmo(volume: np.ndarray, level: float = 1.0):

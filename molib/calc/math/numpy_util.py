@@ -11,3 +11,9 @@ def to_up_vec3() -> np.ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
 def get_np_array(p1: ndarray) -> np.ndarray:
     """get as numpy array"""
     return np.asarray(p1, dtype=np.float32)
+
+
+def generate_colors_from_positions(positions: np.ndarray,
+                                   r: float, g: float, b: float) -> np.ndarray:
+    """generate colors from positions"""
+    return np.tile([r, g, b], (len(positions), 1)).astype(np.float32)

@@ -10,6 +10,8 @@ from typing import Tuple
 
 import numpy as np
 from decologr import Decologr as log
+
+from molib.calc.math.numpy_util import generate_colors_from_positions
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import laplacian
 from scipy.spatial.distance import cdist
@@ -524,13 +526,17 @@ def create_connolly_surface_colors(vertices: np.ndarray, *args, **kwargs) -> np.
     if len(args) == 0:
         # No arguments - use uniform color
         uniform_color = kwargs.get("uniform_color", (0.2, 0.6, 1.0))
-        return np.tile(uniform_color, (len(vertices), 1))
+        return generate_colors_from_positions(
+            vertices, uniform_color[0], uniform_color[1], uniform_color[2]
+        )
 
     if len(args) == 1 and isinstance(args[0], str):
         # Pattern: create_connolly_surface_colors(vertices, "uniform")
         if args[0] == "uniform":
             uniform_color = kwargs.get("uniform_color", (0.2, 0.6, 1.0))
-            return np.tile(uniform_color, (len(vertices), 1))
+            return generate_colors_from_positions(
+                vertices, uniform_color[0], uniform_color[1], uniform_color[2]
+            )
         elif args[0] == "distance":
             # Distance-based coloring: green (low) to purple (high)
             distances = np.linalg.norm(vertices, axis=1)
@@ -576,7 +582,9 @@ def create_connolly_surface_colors(vertices: np.ndarray, *args, **kwargs) -> np.
         else:
             # Unknown string - fallback to uniform
             uniform_color = (0.2, 0.6, 1.0)
-            return np.tile(uniform_color, (len(vertices), 1))
+            return generate_colors_from_positions(
+                vertices, uniform_color[0], uniform_color[1], uniform_color[2]
+            )
 
     if len(args) == 3 and isinstance(args[0], str) and args[0] == "atom":
         # Pattern: create_connolly_surface_colors(vertices, "atom", atom_positions, atom_colors)
@@ -591,16 +599,22 @@ def create_connolly_surface_colors(vertices: np.ndarray, *args, **kwargs) -> np.
     else:
         # Fallback to uniform color
         uniform_color = (0.2, 0.6, 1.0)
-        return np.tile(uniform_color, (len(vertices), 1))
+        return generate_colors_from_positions(
+            vertices, uniform_color[0], uniform_color[1], uniform_color[2]
+        )
 
     # Check if we have valid atom data
     if atom_positions is None or len(atom_positions) == 0:
         uniform_color = (0.2, 0.6, 1.0)
-        return np.tile(uniform_color, (len(vertices), 1))
+        return generate_colors_from_positions(
+            vertices, uniform_color[0], uniform_color[1], uniform_color[2]
+        )
 
     # If uniform color is specified, return that color for all vertices
     if uniform_color is not None:
-        return np.tile(uniform_color, (len(vertices), 1))
+        return generate_colors_from_positions(
+            vertices, uniform_color[0], uniform_color[1], uniform_color[2]
+        )
 
     # Try to get cached spatial index
     atom_tree, cached_colors = _get_cached_spatial_index(atom_positions, atom_colors)

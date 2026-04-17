@@ -4,7 +4,7 @@ import numpy as np
 
 from molib.calc.math.matrix_util import cross, cross_normalize
 from molib.calc.math.normal import normalize
-from molib.calc.math.numpy_util import get_np_array, to_up_vec3
+from molib.calc.math.numpy_util import get_np_array, to_up_vec3, generate_colors_from_positions
 from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.pdb.structure.ribbons.arrows.config import ArrowConfig
@@ -68,9 +68,7 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
 
     # Generate arrow meshdata using Ribbons' approach
     # Create samples along arrow length, tapering from base_width to head_width
-    vertices = []
-    vertex_normals = []
-    indices = []
+    vertices,  vertex_normals, indices = [], [], []
 
     # Ribbons' ArrowLines approach: taper width along the arrow
     for i in range(arrow_config.num_samples + 1):
@@ -111,7 +109,7 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
 
     # Generate triangle indices
     # Body: quad strips connecting adjacent samples
-    for i in range(num_samples):
+    for i in range(arrow_config.num_samples):
         base = i * 2
         # Quad as two triangles
         indices.extend([base, base + 1, base + 2])  # Triangle 1
@@ -125,6 +123,8 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
     indices = np.array(indices, dtype=np.uint32)
 
     # Color buffer
-    colors = np.tile(color, (len(vertices), 1)).astype(np.float32)
+    colors = generate_colors_from_positions(
+        positions=vertices, r=color[0], g=color[1], b=color[2]
+    )
 
     return as_meshdata(positions=vertices, normals=vertex_normals, indices=indices, colors=colors)

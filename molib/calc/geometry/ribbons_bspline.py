@@ -13,22 +13,15 @@ Key differences from Catmull-Rom:
 """
 
 from typing import Optional, Tuple, Any, Protocol
-from decologr import Decologr as log
-import numpy as np
-from numpy import ndarray, dtype, floating, generic, bool_, complexfloating, number, signedinteger, timedelta64, \
-    unsignedinteger
-from numpy._typing import _64Bit
 
+import numpy as np
+from numpy import ndarray
 from elmo.core.calc.utils import compute_tangents
 
+from molib.calc.math.numpy_util import generate_colors_from_positions
 from molib.core.constants import MoLibConstant
-from molib.entities.ribbon.build_context import RibbonBuildContext
-from molib.entities.secondary_structure_type import SecondaryStructureType, normalize_ss, HELIX_TYPES, SHEET_TYPES, \
-    SecondaryStructureWidth
-from molib.pdb.structure.ribbons.style import RibbonStyleConfig
-from picogl.renderer import MeshData
-
-
+from molib.entities.secondary_structure_type import SecondaryStructureType
+from picogl.buffers.geometry import GeometryData
 class _ResgeomContext(Protocol):
     num_threads: int
     num_samples: int
@@ -122,31 +115,71 @@ def dot(a: np.ndarray, b: np.ndarray) -> float:
     return np.dot(a, b)
 
 
-def _width_for(ss: SecondaryStructureType) -> float:
-    """width for"""
-    if ss in HELIX_TYPES:
-        return SecondaryStructureWidth.HELIX
-    elif ss in SHEET_TYPES:
-        return SecondaryStructureWidth.SHEET
+def get_width(ss1: str, ss2: str) -> float:
+    """
+    Get ribbon width based on secondary structure types (from Ribbons).
+
+    Ribbons averages the width of current and next residue.
+
+    Args:
+        ss1: Current secondary structure type
+        ss2: Next secondary structure type
+
+    Returns:
+        Width factor (average of wa and wb)
+    """
+    # Get width for current residue
+    if not ss1 or ss1 ==  SecondaryStructureType.COIL or ss1 == SecondaryStructureType.TURN or ss1 == SecondaryStructureType.COIL2 or ss1 == SecondaryStructureType.COIL2.lower():
+        wa = 0.5  # Coil/turn
+    elif ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10_2 or ss1 == SecondaryStructureType.HELIX_3_10_3 or ss1 == SecondaryStructureType.ALPHA_HELIX.lower():
+        wa = 0.6  # Helix
+    elif ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BEND or ss1 == "A" or ss1 == "E" or ss1 == "B":
+        wa = 0.8  # Sheet
     else:
-        return SecondaryStructureWidth.COIL
+        wa = 0.5
+
+    # Get width for next residue
+    if not ss2 or ss2 == " " or ss2 == "T" or ss2 == "C" or ss2 == "c":
+        wb = 0.5  # Coil/turn
+    elif ss2 == "H" or ss2 == "L" or ss2 == "3" or ss2 == "h":
+        wb = 0.6  # Helix
+    elif ss2 == "S" or ss2 == "A" or ss2 == "E" or ss2 == "B":
+        wb = 0.8  # Sheet
+    else:
+        wb = 0.5
+
+    # Return average (like Ribbons)
+    return 0.5 * (wa + wb)
 
 
 def get_shift(ss: str) -> float:
-    ss = normalize_ss(ss)
-    return 0.3 if ss in HELIX_TYPES else 0.0
+    """
+    Get helix shift amount (from Ribbons).
+
+    Args:
+        ss: Secondary structure type
+
+    Returns:
+        Shift amount in Angstroms
+    """
+    if ss == SecondaryStructureType.ALPHA_HELIX or ss == SecondaryStructureType.HELIX_3_10 or ss == SecondaryStructureType.PI_HELIX:  # Helix types
+        return 0.3  # Shift towards helix center
+    return 0.0
 
 
 def is_helix(ss1: str, ss2: str) -> bool:
-    ss1 = normalize_ss(ss1)
-    ss2 = normalize_ss(ss2)
-    return ss1 in HELIX_TYPES and ss2 in HELIX_TYPES
+    """Check if secondary structure is a helix."""
+    return (ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10 or ss1 == SecondaryStructureType.PI_HELIX) and (
+        ss2 == SecondaryStructureType.ALPHA_HELIX or ss2 == SecondaryStructureType.HELIX_3_10 or ss2 == SecondaryStructureType.PI_HELIX
+    )
 
 
 def is_sheet(ss1: str, ss2: str) -> bool:
-    ss1 = normalize_ss(ss1)
-    ss2 = normalize_ss(ss2)
-    return ss1 in SHEET_TYPES and ss2 in SHEET_TYPES
+    """Check if secondary structure is a sheet."""
+    return (ss1 == SecondaryStructureType.BEND or ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BETA_BRIDGE) and (
+        ss2 == SecondaryStructureType.BEND or ss2 == SecondaryStructureType.BETA_STRAND or ss2 == SecondaryStructureType.BETA_BRIDGE
+    )
+
 
 def calculate_guide_points(
     ca_coords: np.ndarray,
@@ -232,7 +265,7 @@ def calculate_guide_points(
 
         # Get width based on secondary structure (Ribbons style)
         if ss_types is not None and k < len(ss_types) and k + 1 < len(ss_types):
-            ribbon_width = _width_for(ss_types[k]) * width
+            ribbon_width = get_width(ss_types[k], ss_types[k + 1]) * width
             if ss_types is not None and is_helix(
                     ss_types[k],
                     ss_types[k] if k + 1 >= len(ss_types) else ss_types[k + 1],
@@ -451,13 +484,9 @@ def smooth(vectors, alpha=0.2):
         out[i] = normalize((1 - alpha) * out[i] + alpha * out[i - 1])
     return out
 
-
 def calculate_frenet_frame_from_edges(
     left_edge: np.ndarray, centerline: np.ndarray, right_edge: np.ndarray
-) -> tuple[
-    ndarray, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], ndarray[
-        Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], ndarray[
-                 Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]]]:
+) -> Tuple[ndarray, ndarray, ndarray, ndarray]:
     """
     Calculate Frenet frame from ribbon edges (Ribbons' SetSpaceCurve approach).
 
@@ -472,11 +501,22 @@ def calculate_frenet_frame_from_edges(
     Returns:
         Tuple of (tangents, normals, binormals, widths), each (N, 3) except widths (N,)
     """
-    binormals, n_points, normals, tangents = initialize_frame(centerline)
+    n_points = len(centerline)
+    tangents = np.zeros((n_points, 3), dtype=np.float32)
+    normals = np.zeros((n_points, 3), dtype=np.float32)
+    binormals = np.zeros((n_points, 3), dtype=np.float32)
     widths = np.zeros(n_points, dtype=np.float32)
-    tangents = compute_tangents(centerline=centerline)
+
     for i in range(n_points):
         # --- Tangent ---
+        if i == 0:
+            t = centerline[1] - centerline[0]
+        elif i == n_points - 1:
+            t = centerline[-1] - centerline[-2]
+        else:
+            t = centerline[i + 1] - centerline[i - 1]
+        t = normalize(t)
+        tangents[i] = t
 
         # --- Edge / binormal ---
         edge_vec = right_edge[i] - left_edge[i]
@@ -491,7 +531,7 @@ def calculate_frenet_frame_from_edges(
         if i > 0:
             edge_vec = normalize(0.7 * edge_vec + 0.3 * binormals[i - 1])
         b = edge_vec
-        t = tangents[i]
+
         # --- Normal ---
         n = cross(t, b)
         if np.linalg.norm(n) < 1e-6:
@@ -516,7 +556,7 @@ def calculate_frenet_frame_from_edges(
                 b = normalize(np.cross(t, n))
 
         # --- Flip fix ---
-        if i > 0 > np.dot(n, normals[i - 1]):
+        if i > 0 and np.dot(n, normals[i - 1]) < 0:
             n *= -1
             b *= -1
 
@@ -531,18 +571,6 @@ def calculate_frenet_frame_from_edges(
     return tangents, normals, binormals, widths
 
 
-def initialize_frame(centerline: ndarray) -> tuple[
-    ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], int, ndarray[
-        Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], ndarray[
-        Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]]]:
-    """initialize frame """
-    n_points = len(centerline)
-    tangents = np.zeros((n_points, 3), dtype=np.float32)
-    normals = np.zeros((n_points, 3), dtype=np.float32)
-    binormals = np.zeros((n_points, 3), dtype=np.float32)
-    return binormals, n_points, normals, tangents
-
-
 def calculate_frenet_frame(centerline: np.ndarray) -> Tuple[ndarray, ndarray, ndarray]:
     """
     Calculate Frenet frame (tangent, normal, binormal) for a space curve.
@@ -555,14 +583,30 @@ def calculate_frenet_frame(centerline: np.ndarray) -> Tuple[ndarray, ndarray, nd
     Returns:
         Tuple of (tangents, normals, binormals), each (N, 3)
     """
-    binormals, n_points, normals, tangents = initialize_frame(centerline)
+    n_points = len(centerline)
+    tangents = np.zeros((n_points, 3), dtype=np.float32)
+    normals = np.zeros((n_points, 3), dtype=np.float32)
+    binormals = np.zeros((n_points, 3), dtype=np.float32)
 
     # Up hint for initial normal calculation
     up_hint = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-    tangents = compute_tangents(centerline=centerline)
+
     for i in range(n_points):
         # Calculate tangent
-        t = tangents[i]
+        if i == 0:
+            t = (
+                centerline[1] - centerline[0]
+                if n_points > 1
+                else np.array([1.0, 0.0, 0.0])
+            )
+        elif i == n_points - 1:
+            t = centerline[-1] - centerline[-2]
+        else:
+            t = centerline[i + 1] - centerline[i - 1]
+
+        t = normalize(t)
+        tangents[i] = t
+
         # Calculate normal (perpendicular to tangent)
         n = cross(t, up_hint)
         if np.linalg.norm(n) < 1e-3:
@@ -629,20 +673,6 @@ def calculate_parallel_transport_frames(centerline: np.ndarray):
     return tangents, normals, binormals
 
 
-def generate_ribbon_geometry_ribbons_style_from_context(config: RibbonStyleConfig, context: RibbonBuildContext) -> \
-tuple[Any, Any, Any]:
-    """generate ribbon geometry ribbons"""
-    mesh_data, ribbon_edges, ribbon_frenet = generate_ribbon_geometry_ribbons_style(
-        context.coords,
-        o_coords=context.o_coords,
-        ss_types=context.ss_types,
-        width=config.width_scale,
-        samples_per_segment=4,
-        style=config.style,
-        num_threads=8,
-    )
-    return mesh_data, ribbon_edges, ribbon_frenet
-
 def generate_ribbon_geometry_ribbons_style(
     ca_coords: np.ndarray,
     o_coords: Optional[np.ndarray]= None,
@@ -655,7 +685,7 @@ def generate_ribbon_geometry_ribbons_style(
     helix_radius_scale: float = 1.0
 ) -> tuple[
          ndarray, ndarray, ndarray, ndarray, tuple[ndarray, ndarray] | None, tuple[ndarray, ndarray, ndarray] | None] | \
-     tuple[MeshData, tuple[float | Any, float | Any] | None | tuple[Any, Any], tuple[Any, Any, Any] | None]:
+     tuple[GeometryData, tuple[float | Any, float | Any] | None | tuple[Any, Any], tuple[Any, Any, Any] | None]:
     """
     Generate ribbon meshdata using Ribbons' B-spline approach. RIBBON_PATH
 
@@ -696,13 +726,7 @@ def generate_ribbon_geometry_ribbons_style(
         tangents, normals, binormals, widths = calculate_frenet_frame_from_edges(
             p_spline, centerline, q_spline
         )
-    except ValueError as e:
-        # log/debug if needed
-        log.error(f"Error {ex} occurred generating ribbons")
-        tangents, normals, binormals = calculate_frenet_frame(centerline)
-        widths = np.full(len(centerline), base_width, dtype=np.float32)
-    except Exception as ex:
-        log.error(f"Error {ex} occurred generating ribbons")
+    except:
         # Fallback to centerline-only if edges don't match
         tangents, normals, binormals = calculate_frenet_frame(centerline)
         widths = np.ones(len(centerline), dtype=np.float32) * width
@@ -713,21 +737,376 @@ def generate_ribbon_geometry_ribbons_style(
     indices = []
 
     if style == RibbonStyle.FLAT:
-        generate_flat_ribbon(centerline, indices, n_points, normals, p_spline, q_spline, vertex_normals, vertices,
-                             width, widths)
+        # Flat ribbon (like Ribbons' RIB_FLAT) - use actual edge splines
+        # This gives better accuracy than offsetting from centerline
+        for i in range(n_points):
+            # Use the p and q splines directly (these are the actual ribbon edges)
+            if i < len(p_spline) and i < len(q_spline):
+                left = p_spline[i]
+                right = q_spline[i]
+            elif i < len(p_spline):
+                left = p_spline[i]
+                right = q_spline[min(i, len(q_spline) - 1)]
+            else:
+                # Fallback to centerline + offset using actual width
+                center = centerline[i]
+                actual_width = widths[i] if i < len(widths) else width
+                n = normals[i]
+                left = center - n * actual_width * 0.5
+                right = center + n * actual_width * 0.5
+
+            # Use the calculated normal from Frenet frame
+            # This is more accurate than calculating from edge vectors
+            perp = (
+                normals[i]
+                if i < len(normals)
+                else np.array([0.0, 0.0, 1.0], dtype=np.float32)
+            )
+
+            vertices.append(left)
+            vertices.append(right)
+            vertex_normals.append(perp)
+            vertex_normals.append(perp)
+
+        # Generate triangle indices (quads as two triangles)
+        for i in range(n_points - 1):
+            base = i * 2
+            # Triangle 1: left1, right1, left2
+            indices.extend([base, base + 1, base + 2])
+            # Triangle 2: right1, right2, left2
+            indices.extend([base + 1, base + 3, base + 2])
 
     elif style == RibbonStyle.CIRCLE:
-        generate_circular_ribbon(binormals, centerline, indices, n_points, normals, num_threads, tangents,
-                                 vertex_normals, vertices, width)
+        # Circular tube (like Ribbons' RIB_CIRCLE)
+        tube_radius = width
+        for i in range(n_points):
+            center = centerline[i]
+            t = tangents[i]
+            n = normals[i]
+            b = binormals[i]
+
+            # Generate circle of points around the centerline
+            for j in range(num_threads):
+                angle = 2.0 * np.pi * j / num_threads
+                # Rotate normal and binormal around tangent
+                offset = n * np.cos(angle) + b * np.sin(angle)
+                vertex = center + offset * tube_radius
+                vertex_normal = normalize(offset)
+
+                vertices.append(vertex)
+                vertex_normals.append(vertex_normal)
+
+        # Generate triangle indices (connect adjacent circles)
+        for i in range(n_points - 1):
+            base1 = i * num_threads
+            base2 = (i + 1) * num_threads
+
+            for j in range(num_threads):
+                j_next = (j + 1) % num_threads
+
+                # Two triangles per quad
+                indices.extend([base1 + j, base2 + j, base1 + j_next])
+                indices.extend([base1 + j_next, base2 + j, base2 + j_next])
 
     elif style == RibbonStyle.SQUARE:
-        indices, vertex_normals, vertices, widths = generate_square_ribbon(binormals, centerline, normals,
-                                                                           vertex_normals, vertices, width, widths)
+        # --- VECTORIZE SQUARE STYLE ---
+
+        depth = width * 0.4
+        n = len(centerline)
+
+        # Corner coefficients (same as before)
+        ca4 = np.array([-0.70710678, 0.70710678, 0.70710678, -0.70710678], dtype=np.float32)
+        sa4 = np.array([0.70710678, 0.70710678, -0.70710678, -0.70710678], dtype=np.float32)
+
+        # Ensure widths shape is correct
+        if len(widths) != n:
+            widths = np.full(n, width, dtype=np.float32)
+
+        # --- Compute scaled basis vectors ---
+        rmaj = 0.5 * widths[:, None]  # (n, 1)
+        rmin = 0.5 * depth  # scalar
+
+        a = binormals * rmaj  # (n, 3)
+        b_scaled = normals * rmin  # (n, 3)
+
+        # --- Compute all 4 corners for all points ---
+        # Result: (n, 4, 3)
+        corners = (
+                centerline[:, None, :]
+                + sa4[None, :, None] * a[:, None, :]
+                + ca4[None, :, None] * b_scaled[:, None, :]
+        )
+
+        # Flatten vertices
+        vertices = corners.reshape(-1, 3)
+
+        # --- Compute edge_along (central differences) ---
+        edge_along = compute_tangents(centerline)
+
+        # --- Compute edge_across (per corner) ---
+        # (n, 4, 3)
+        edge_across = np.roll(corners, -1, axis=1) - corners
+
+        # --- Compute normals (vectorized cross product) ---
+        normals_all = np.cross(edge_across, edge_along[:, None, :])
+
+        # Normalize safely
+        norms = np.linalg.norm(normals_all, axis=2, keepdims=True)
+        norms[norms < 1e-8] = 1.0
+        normals_all /= norms
+
+        # Flatten normals
+        vertex_normals = normals_all.reshape(-1, 3)
+
+        # --- Build indices (vectorized) ---
+        # Each segment contributes 8 triangles (24 indices)
+        n_segments = n - 1
+
+        base1 = np.arange(n_segments) * 4
+        base2 = (np.arange(n_segments) + 1) * 4
+
+        # Build all faces in one shot
+        indices = np.stack([
+            # Face 0
+            base1 + 0, base2 + 0, base1 + 1,
+            base1 + 1, base2 + 0, base2 + 1,
+
+            # Face 1
+            base1 + 1, base2 + 1, base1 + 2,
+            base1 + 2, base2 + 1, base2 + 2,
+
+            # Face 2
+            base1 + 2, base2 + 2, base1 + 3,
+            base1 + 3, base2 + 2, base2 + 3,
+
+            # Face 3
+            base1 + 3, base2 + 3, base1 + 0,
+            base1 + 0, base2 + 3, base2 + 0,
+        ], axis=1)
+
+        indices = indices.reshape(-1).astype(np.uint32)
+        """# Rectangular block (like Ribbons' RIB_SQUARE) - 4 corners
+        # Uses depth for thickness (perpendicular to width). Use 0.4 so ribbons
+        # are clearly visible (legacy-style width scale makes width large; depth follows).
+        depth = width * 0.4
+
+        # Square uses 4 corners: ca4 and sa4 arrays from Ribbons
+        # ca4 = [-0.707, 0.707, 0.707, -0.707]
+        # sa4 = [0.707, 0.707, -0.707, -0.707]
+        # Formula from calc_ellipse: x = xc + sa[i]*a + ca[i]*b
+        # where a = vmaj * rmaj (binormal * 0.5*width), b = vmin * rmin (normal * 0.5*depth)
+        ca4 = np.array(
+            [-0.70710678, 0.70710678, 0.70710678, -0.70710678], dtype=np.float32
+        )
+        sa4 = np.array(
+            [0.70710678, 0.70710678, -0.70710678, -0.70710678], dtype=np.float32
+        )
+
+        for i in range(n_points):
+            center = centerline[i]
+            t = tangents[i]
+            n = normals[i]  # vmin (depth direction)
+            b = binormals[i]  # vmaj (width direction)
+
+            # Get actual width and depth for this point
+            actual_width = widths[i] if i < len(widths) else width
+            # Depth could vary by secondary structure, but for now use constant
+            actual_depth = depth
+
+            # Scale basis vectors (like calc_ellipse: a = vmaj * rmaj, b = vmin * rmin)
+            rmaj = 0.5 * actual_width
+            rmin = 0.5 * actual_depth
+            a = b * rmaj  # Major axis (width direction)
+            b_scaled = n * rmin  # Minor axis (depth direction)
+
+            # Generate 4 corners using Ribbons' formula
+            corners = []
+            for corner_idx in range(4):
+                # x = xc + sa[i]*a + ca[i]*b
+                offset = sa4[corner_idx] * a + ca4[corner_idx] * b_scaled
+                vertex = center + offset
+                corners.append(vertex)
+                vertices.append(vertex)
+
+            # Calculate normals for each face (like Ribbons' SetLineNormals for RIB_SQUARE)
+            # Ribbons stores 2 normals per face (2*nt normals), but we'll use one per vertex
+            # For each corner, calculate normal from adjacent edges
+            # We need to get next/prev points for proper normal calculation
+            if i < n_points - 1:
+                # Get next centerline point for edge calculation
+                next_center = centerline[i + 1]
+                next_t = tangents[i + 1] if i + 1 < len(tangents) else t
+            else:
+                next_center = centerline[i] + t * 0.1  # Extrapolate
+                next_t = t
+
+            if i > 0:
+                prev_center = centerline[i - 1]
+            else:
+                prev_center = centerline[i] - t * 0.1  # Extrapolate
+
+            # Calculate normals for each corner using adjacent edges
+            # Corner 0: between faces 0 and 3
+            edge_along = next_center - prev_center  # Edge along curve
+            edge_across_0 = corners[1] - corners[0]  # Edge across face 0
+            normal_0 = cross(edge_across_0, edge_along)
+            normal_0 = normalize(normal_0)
+
+            # Corner 1: between faces 0 and 1
+            edge_across_1 = corners[2] - corners[1]  # Edge across face 1
+            normal_1 = cross(edge_across_1, edge_along)
+            normal_1 = normalize(normal_1)
+
+            # Corner 2: between faces 1 and 2
+            edge_across_2 = corners[3] - corners[2]  # Edge across face 2
+            normal_2 = cross(edge_across_2, edge_along)
+            normal_2 = normalize(normal_2)
+
+            # Corner 3: between faces 2 and 3
+            edge_across_3 = corners[0] - corners[3]  # Edge across face 3
+            normal_3 = cross(edge_across_3, edge_along)
+            normal_3 = normalize(normal_3)
+
+            # Store normals (one per vertex)
+            vertex_normals.append(normal_0)
+            vertex_normals.append(normal_1)
+            vertex_normals.append(normal_2)
+            vertex_normals.append(normal_3)
+
+        # Generate triangle indices (connect adjacent rectangles)
+        # Each rectangle has 4 corners, so we connect rectangles with quads
+        # Ribbons draws quads as quad strips, connecting adjacent corners
+        for i in range(n_points - 1):
+            base1 = i * 4
+            base2 = (i + 1) * 4
+
+            # Create 4 faces (sides) of the rectangular block
+            # Each face is a quad strip connecting two adjacent corners
+            # Face 0: corners 0-1 (top face)
+            indices.extend([base1 + 0, base2 + 0, base1 + 1])
+            indices.extend([base1 + 1, base2 + 0, base2 + 1])
+
+            # Face 1: corners 1-2 (right face)
+            indices.extend([base1 + 1, base2 + 1, base1 + 2])
+            indices.extend([base1 + 2, base2 + 1, base2 + 2])
+
+            # Face 2: corners 2-3 (bottom face)
+            indices.extend([base1 + 2, base2 + 2, base1 + 3])
+            indices.extend([base1 + 3, base2 + 2, base2 + 3])
+
+            # Face 3: corners 3-0 (left face)
+            indices.extend([base1 + 3, base2 + 3, base1 + 0])
+            indices.extend([base1 + 0, base2 + 3, base2 + 0])"""
+
 
     elif style == RibbonStyle.ELLIPSE:
-        indices, vertex_normals, vertices, widths = generate_eliptical_ribbon(binormals, centerline, indices, n_points,
-                                                                              normals, num_threads, vertex_normals,
-                                                                              vertices, width, widths)
+        # --- VECTORIZE ELLIPSE STYLE ---
+
+        n = n_points
+        depth = width * 0.4
+
+        # Ensure widths shape
+        if len(widths) != n:
+            widths = np.full(n, width, dtype=np.float32)
+
+        # Radii
+        rmaj = 0.5 * widths  # (n,)
+        rmin = 0.5 * depth  # scalar
+
+        # --- Precompute circle angles ---
+        angles = np.linspace(0.0, 2.0 * np.pi, num_threads, endpoint=False, dtype=np.float32)
+        cos_a = np.cos(angles)  # (t,)
+        sin_a = np.sin(angles)  # (t,)
+
+        # --- Scale basis vectors ---
+        # binormals = major axis, normals = minor axis
+        a = binormals * rmaj[:, None]  # (n, 3)
+        b_scaled = normals * rmin  # (n, 3)
+
+        # --- Compute all vertices ---
+        # (n, t, 3)
+        offsets = (
+                cos_a[None, :, None] * a[:, None, :] +
+                sin_a[None, :, None] * b_scaled[:, None, :]
+        )
+
+        vertices = (centerline[:, None, :] + offsets).reshape(-1, 3)
+
+        # --- Compute normals (same as normalized offsets) ---
+        normals_all = offsets.copy()
+
+        norms = np.linalg.norm(normals_all, axis=2, keepdims=True)
+        norms[norms < 1e-8] = 1.0
+        normals_all /= norms
+
+        vertex_normals = normals_all.reshape(-1, 3)
+
+        # --- Build indices (vectorized) ---
+        n_segments = n - 1
+        t = num_threads
+
+        i = np.arange(n_segments)
+        j = np.arange(t)
+
+        base1 = (i[:, None] * t)
+        base2 = ((i[:, None] + 1) * t)
+
+        j_next = (j + 1) % t
+
+        # Expand for broadcasting
+        j = j[None, :]
+        j_next = j_next[None, :]
+
+        # Build triangles
+        tri1 = np.stack([
+            base1 + j,
+            base2 + j,
+            base1 + j_next
+        ], axis=-1)
+
+        tri2 = np.stack([
+            base1 + j_next,
+            base2 + j,
+            base2 + j_next
+        ], axis=-1)
+
+        indices = np.concatenate([tri1, tri2], axis=-1).reshape(-1).astype(np.uint32)
+        """# Elliptical tube - like CIRCLE but with major (width) and minor (depth) axes
+        depth = width * 0.4
+
+        for i in range(n_points):
+            center = centerline[i]
+            t = tangents[i]
+            n = normals[i]  # minor axis (depth direction)
+            b = binormals[i]  # major axis (width direction)
+
+            actual_width = widths[i] if i < len(widths) else width
+            actual_depth = depth
+            rmaj = 0.5 * actual_width
+            rmin = 0.5 * actual_depth
+
+            # Generate ellipse of points around the centerline
+            for j in range(num_threads):
+                angle = 2.0 * np.pi * j / num_threads
+                # Parametric ellipse: offset = rmaj*cos*binormal + rmin*sin*normal
+                offset = b * (rmaj * np.cos(angle)) + n * (rmin * np.sin(angle))
+                vertex = center + offset
+                vertex_normal = normalize(offset)
+
+                vertices.append(vertex)
+                vertex_normals.append(vertex_normal)
+
+        # Generate triangle indices (connect adjacent ellipses)
+        for i in range(n_points - 1):
+            base1 = i * num_threads
+            base2 = (i + 1) * num_threads
+
+            for j in range(num_threads):
+                j_next = (j + 1) % num_threads
+
+                indices.extend([base1 + j, base2 + j, base1 + j_next])
+                indices.extend([base1 + j_next, base2 + j, base2 + j_next])
+        """
     else:  # default to square
         # Default to square for 3D blocks
         return generate_ribbon_geometry_ribbons_style(
@@ -746,7 +1125,7 @@ def generate_ribbon_geometry_ribbons_style(
     indices = np.array(indices, dtype=np.uint32)
 
     # Colors (default to white, can be customized)
-    colors = np.ones((len(vertices), 3), dtype=np.float32)
+    colors = generate_colors_from_positions(vertices, 1.0, 1.0, 1.0)
 
     # Return ribbon edge information for arrow generation (Ribbons-style)
     # Extract the last cross-section edges for arrow base
@@ -762,7 +1141,18 @@ def generate_ribbon_geometry_ribbons_style(
         ribbon_edges = (left_edge, right_edge)
 
         # Also return Frenet frame at the end for arrow orientation
-        ribbon_frenet = get_frenet_frame(binormals, centerline, normals, ribbon_frenet, tangents)
+        if len(centerline) > 0:
+            last_idx = len(centerline) - 1
+            if (
+                last_idx < len(tangents)
+                and last_idx < len(normals)
+                and last_idx < len(binormals)
+            ):
+                ribbon_frenet = (
+                    tangents[last_idx],
+                    normals[last_idx],
+                    binormals[last_idx],
+                )
 
     elif style == RibbonStyle.ELLIPSE and len(centerline) > 0:
         # For ellipse, use last cross-section extremes along major axis
@@ -809,301 +1199,21 @@ def generate_ribbon_geometry_ribbons_style(
         # For flat style, last two vertices are the edges
         ribbon_edges = (vertices[-2], vertices[-1])
 
-        ribbon_frenet = get_frenet_frame(binormals, centerline, normals, ribbon_frenet, tangents)
-    mesh_data = MeshData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
-    return mesh_data, ribbon_edges, ribbon_frenet
-
-
-def generate_eliptical_ribbon(binormals: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-    Any, dtype[Any]] | ndarray, centerline: ndarray, indices: ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]],
-                              n_points: int,
-                              normals: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-                                  Any, dtype[Any]] | ndarray, num_threads: int,
-                              vertex_normals: ndarray[Any, dtype[bool_]], vertices: ndarray[Any, dtype[bool_]] | Any,
-                              width: float,
-                              widths: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-                                  Any, dtype[Any]] | ndarray[Any, dtype[bool_]] | ndarray[
-                                          Any, dtype[unsignedinteger[Any]]] | ndarray[Any, dtype[signedinteger[Any]]] |
-                                      ndarray[Any, dtype[floating[Any]]] | ndarray[
-                                          Any, dtype[complexfloating[Any, Any]]] | ndarray[Any, dtype[number[Any]]] |
-                                      ndarray[Any, dtype[timedelta64]] | float | Any) -> tuple[
-    ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], ndarray[Any, dtype[bool_]], ndarray[
-        Any, dtype[bool_]] | Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-        Any, dtype[Any]] | ndarray[Any, dtype[bool_]] | ndarray[Any, dtype[unsignedinteger[Any]]] | ndarray[
-        Any, dtype[signedinteger[Any]]] | ndarray[Any, dtype[floating[Any]]] | ndarray[
-        Any, dtype[complexfloating[Any, Any]]] | ndarray[Any, dtype[number[Any]]] | ndarray[
-        Any, dtype[timedelta64]] | float | Any]:
-    # --- VECTORIZE ELLIPSE STYLE ---
-
-    n = n_points
-    depth = width * 0.4
-
-    # Ensure widths shape
-    if len(widths) != n:
-        widths = np.full(n, width, dtype=np.float32)
-
-    # Radii
-    rmaj = 0.5 * widths  # (n,)
-    rmin = 0.5 * depth  # scalar
-
-    # --- Precompute circle angles ---
-    angles = np.linspace(0.0, 2.0 * np.pi, num_threads, endpoint=False, dtype=np.float32)
-    cos_a = np.cos(angles)  # (t,)
-    sin_a = np.sin(angles)  # (t,)
-
-    # --- Scale basis vectors ---
-    # binormals = major axis, normals = minor axis
-    a = binormals * rmaj[:, None]  # (n, 3)
-    b_scaled = normals * rmin  # (n, 3)
-
-    # --- Compute all vertices ---
-    # (n, t, 3)
-    offsets = (
-            cos_a[None, :, None] * a[:, None, :] +
-            sin_a[None, :, None] * b_scaled[:, None, :]
-    )
-
-    vertices = (centerline[:, None, :] + offsets).reshape(-1, 3)
-
-    # --- Compute normals (same as normalized offsets) ---
-    normals_all = offsets.copy()
-
-    norms = np.linalg.norm(normals_all, axis=2, keepdims=True)
-    norms[norms < 1e-8] = 1.0
-    normals_all /= norms
-
-    vertex_normals = normals_all.reshape(-1, 3)
-
-    # --- Build indices (vectorized) ---
-    n_segments = n - 1
-    t = num_threads
-
-    i = np.arange(n_segments)
-    j = np.arange(t)
-
-    base1 = (i[:, None] * t)
-    base2 = ((i[:, None] + 1) * t)
-
-    j_next = (j + 1) % t
-
-    # Expand for broadcasting
-    j = j[None, :]
-    j_next = j_next[None, :]
-
-    # Build triangles
-    tri1 = np.stack([
-        base1 + j,
-        base2 + j,
-        base1 + j_next
-    ], axis=-1)
-
-    tri2 = np.stack([
-        base1 + j_next,
-        base2 + j,
-        base2 + j_next
-    ], axis=-1)
-
-    indices = np.concatenate([tri1, tri2], axis=-1).reshape(-1).astype(np.uint32)
-    return indices, vertex_normals, vertices, widths
-
-
-def generate_circular_ribbon(binormals: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-    Any, dtype[Any]] | ndarray, centerline: ndarray, indices: list[Any], n_points: int,
-                             normals: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-                                 Any, dtype[Any]] | ndarray, num_threads: int, tangents: ndarray,
-                             vertex_normals: list[Any], vertices: list[Any], width: float):
-    # Circular tube (like Ribbons' RIB_CIRCLE)
-    tube_radius = width
-    for i in range(n_points):
-        center = centerline[i]
-        t = tangents[i]
-        n = normals[i]
-        b = binormals[i]
-
-        # Generate circle of points around the centerline
-        for j in range(num_threads):
-            angle = 2.0 * np.pi * j / num_threads
-            # Rotate normal and binormal around tangent
-            offset = n * np.cos(angle) + b * np.sin(angle)
-            vertex = center + offset * tube_radius
-            vertex_normal = normalize(offset)
-
-            vertices.append(vertex)
-            vertex_normals.append(vertex_normal)
-
-    # Generate triangle indices (connect adjacent circles)
-    for i in range(n_points - 1):
-        base1 = i * num_threads
-        base2 = (i + 1) * num_threads
-
-        for j in range(num_threads):
-            j_next = (j + 1) % num_threads
-
-            # Two triangles per quad
-            indices.extend([base1 + j, base2 + j, base1 + j_next])
-            indices.extend([base1 + j_next, base2 + j, base2 + j_next])
-
-
-def generate_flat_ribbon(centerline: ndarray, indices: list[Any], n_points: int,
-                         normals: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-                             Any, dtype[Any]] | ndarray, p_spline: ndarray, q_spline: ndarray,
-                         vertex_normals: list[Any], vertices: list[Any], width: float,
-                         widths: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-                             Any, dtype[Any]] | ndarray[Any, dtype[bool_]] | ndarray[Any, dtype[unsignedinteger[Any]]] |
-                                 ndarray[Any, dtype[signedinteger[Any]]] | ndarray[Any, dtype[floating[Any]]] | ndarray[
-                                     Any, dtype[complexfloating[Any, Any]]] | ndarray[Any, dtype[number[Any]]] |
-                                 ndarray[Any, dtype[timedelta64]] | float | Any):
-    # Flat ribbon (like Ribbons' RIB_FLAT) - use actual edge splines
-    # This gives better accuracy than offsetting from centerline
-    for i in range(n_points):
-        # Use the p and q splines directly (these are the actual ribbon edges)
-        if i < len(p_spline) and i < len(q_spline):
-            left = p_spline[i]
-            right = q_spline[i]
-        elif i < len(p_spline):
-            left = p_spline[i]
-            right = q_spline[min(i, len(q_spline) - 1)]
-        else:
-            # Fallback to centerline + offset using actual width
-            center = centerline[i]
-            actual_width = widths[i] if i < len(widths) else width
-            n = normals[i]
-            left = center - n * actual_width * 0.5
-            right = center + n * actual_width * 0.5
-
-        # Use the calculated normal from Frenet frame
-        # This is more accurate than calculating from edge vectors
-        perp = (
-            normals[i]
-            if i < len(normals)
-            else np.array([0.0, 0.0, 1.0], dtype=np.float32)
-        )
-
-        vertices.append(left)
-        vertices.append(right)
-        vertex_normals.append(perp)
-        vertex_normals.append(perp)
-
-    # Generate triangle indices (quads as two triangles)
-    for i in range(n_points - 1):
-        base = i * 2
-        # Triangle 1: left1, right1, left2
-        indices.extend([base, base + 1, base + 2])
-        # Triangle 2: right1, right2, left2
-        indices.extend([base + 1, base + 3, base + 2])
-
-
-def generate_square_ribbon(binormals: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-    Any, dtype[Any]] | ndarray, centerline: ndarray,
-                           normals: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-                               Any, dtype[Any]] | ndarray, vertex_normals: ndarray[Any, dtype[Any]],
-                           vertices: ndarray[Any, dtype[bool_]], width: float,
-                           widths: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-                               Any, dtype[Any]] | ndarray[Any, dtype[bool_]] | ndarray[
-                                       Any, dtype[unsignedinteger[Any]]] | ndarray[Any, dtype[signedinteger[Any]]] |
-                                   ndarray[Any, dtype[floating[Any]]] | ndarray[Any, dtype[complexfloating[Any, Any]]] |
-                                   ndarray[Any, dtype[number[Any]]] | ndarray[Any, dtype[timedelta64]] | float | Any) -> \
-        tuple[ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], ndarray[
-            Any, dtype[bool_]], ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
-                  Any, dtype[Any]] | ndarray[Any, dtype[bool_]] | ndarray[Any, dtype[unsignedinteger[Any]]] | ndarray[
-                  Any, dtype[signedinteger[Any]]] | ndarray[Any, dtype[floating[Any]]] | ndarray[
-                  Any, dtype[complexfloating[Any, Any]]] | ndarray[Any, dtype[number[Any]]] | ndarray[
-                  Any, dtype[timedelta64]] | float | Any]:
-    # --- VECTORIZE SQUARE STYLE ---
-
-    depth = width * 0.4
-    n = len(centerline)
-
-    # Corner coefficients (same as before)
-    ca4 = np.array([-0.70710678, 0.70710678, 0.70710678, -0.70710678], dtype=np.float32)
-    sa4 = np.array([0.70710678, 0.70710678, -0.70710678, -0.70710678], dtype=np.float32)
-
-    # Ensure widths shape is correct
-    if len(widths) != n:
-        widths = np.full(n, width, dtype=np.float32)
-
-    # --- Compute scaled basis vectors ---
-    rmaj = 0.5 * widths[:, None]  # (n, 1)
-    rmin = 0.5 * depth  # scalar
-
-    a = binormals * rmaj  # (n, 3)
-    b_scaled = normals * rmin  # (n, 3)
-
-    # --- Compute all 4 corners for all points ---
-    # Result: (n, 4, 3)
-    corners = (
-            centerline[:, None, :]
-            + sa4[None, :, None] * a[:, None, :]
-            + ca4[None, :, None] * b_scaled[:, None, :]
-    )
-
-    # Flatten vertices
-    vertices = corners.reshape(-1, 3)
-
-    # --- Compute edge_along (central differences) ---
-    edge_along = compute_tangents(centerline)
-
-    # --- Compute edge_across (per corner) ---
-    # (n, 4, 3)
-    edge_across = np.roll(corners, -1, axis=1) - corners
-
-    # --- Compute normals (vectorized cross product) ---
-    normals_all = np.cross(edge_across, edge_along[:, None, :])
-
-    # Normalize safely
-    norms = np.linalg.norm(normals_all, axis=2, keepdims=True)
-    norms[norms < 1e-8] = 1.0
-    normals_all /= norms
-
-    # Flatten normals
-    vertex_normals = normals_all.reshape(-1, 3)
-
-    # --- Build indices (vectorized) ---
-    # Each segment contributes 8 triangles (24 indices)
-    n_segments = n - 1
-
-    base1 = np.arange(n_segments) * 4
-    base2 = (np.arange(n_segments) + 1) * 4
-
-    # Build all faces in one shot
-    indices = np.stack([
-        # Face 0
-        base1 + 0, base2 + 0, base1 + 1,
-        base1 + 1, base2 + 0, base2 + 1,
-
-        # Face 1
-        base1 + 1, base2 + 1, base1 + 2,
-        base1 + 2, base2 + 1, base2 + 2,
-
-        # Face 2
-        base1 + 2, base2 + 2, base1 + 3,
-        base1 + 3, base2 + 2, base2 + 3,
-
-        # Face 3
-        base1 + 3, base2 + 3, base1 + 0,
-        base1 + 0, base2 + 3, base2 + 0,
-    ], axis=1)
-
-    indices = indices.reshape(-1).astype(np.uint32)
-    return indices, vertex_normals, vertices, widths
-
-
-def get_frenet_frame(binormals: ndarray, centerline: ndarray, normals: ndarray, ribbon_frenet: tuple[Any, Any, Any] | None,
-                     tangents: ndarray) -> tuple[Any, Any, Any] | None:
-    """Return Frenet frame"""
-    if len(centerline) > 0:
-        last_idx = len(centerline) - 1
-        if (
+        # Return Frenet frame
+        if len(centerline) > 0:
+            last_idx = len(centerline) - 1
+            if (
                 last_idx < len(tangents)
                 and last_idx < len(normals)
                 and last_idx < len(binormals)
-        ):
-            ribbon_frenet = (
-                tangents[last_idx],
-                normals[last_idx],
-                binormals[last_idx],
-            )
-    return ribbon_frenet
+            ):
+                ribbon_frenet = (
+                    tangents[last_idx],
+                    normals[last_idx],
+                    binormals[last_idx],
+                )
+    geo_data = GeometryData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
+    return geo_data, ribbon_edges, ribbon_frenet
 
 
 def generate_resgeom_flat(
@@ -1378,7 +1488,7 @@ def generate_resgeom_flat(
     indices = np.array(indices, dtype=np.uint32)
 
     # Colors (default to white)
-    colors = np.ones((len(vertices), 3), dtype=np.float32)
+    colors = generate_colors_from_positions(vertices, 1.0, 1.0, 1.0)
 
     return vertices, normals, indices, colors
 

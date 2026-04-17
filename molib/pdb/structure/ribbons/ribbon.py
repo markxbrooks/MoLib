@@ -19,6 +19,7 @@ from scipy.spatial import cKDTree
 from collections import defaultdict
 
 from decologr import Decologr as log
+from molib.calc.math.numpy_util import generate_colors_from_positions
 from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
@@ -106,7 +107,7 @@ def generate_ribbon_geometry_per_chain_from_context(config: RibbonStyleConfig, c
             # Use generate_ribbon_geometry_with_colors for B-spline/Ribbons-style meshdata
             # with per-chain flat color (tile chain color for each CA)
             color = context.colors.get(chain_id, (1.0, 1.0, 1.0))
-            ca_colors = np.tile(color, (len(ca_array), 1)).astype(np.float32)
+            ca_colors = generate_colors_from_positions(positions=ca_array, r=color[0], g=color[1], b=color[2])
 
             context = RibbonBuildContext(coords=ca_array, colors=ca_colors, chain_ids=chain_id_list)
 
