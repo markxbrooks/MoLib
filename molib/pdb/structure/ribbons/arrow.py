@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 
 import numpy as np
 
@@ -8,11 +8,11 @@ from molib.calc.math.numpy_util import get_np_array, to_up_vec3
 from molib.core.constants import MoLibConstant
 from molib.pdb.structure.ribbons.calc import use_ribbon_edges_to_determine_arrow_plane, \
     calculate_normals_along_binormal_and_direction, calculate_normals_along_direction, calculate_normals_along_binormal
-
+from molib.pdb.structure.ribbons.ribbon_geometry import RibbonGeometryContext
 
 
 def generate_arrow_geometry_from_context(config, context, p1: Any, p2: Any, ribbon_geom: RibbonGeometryContext) -> \
-tuple[ndarray, ndarray, ndarray, ndarray]:
+tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     av, an, ai, ac = generate_arrow_geometry(
         p1, p2,
         width=config.width_scale * 0.35,
