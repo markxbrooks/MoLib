@@ -122,6 +122,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
         context.coords,
         context.chain_ids,
         context.colors,
+        use_ribbons_style=config.use_ribbons_style,
         style=config.style,
         ribbon_width_scale=config.width_scale,
         has_arrow=config.has_arrow,
@@ -134,6 +135,7 @@ def generate_ribbon_geometry_per_chain(
     chain_colors: dict[str, tuple],
     style: str = RibbonStyle.SQUARE,
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
+    use_ribbons_style: bool = True,
 ) -> dict[str, MeshData]:
     """
     Generate ribbon meshdata for each chain separately.
@@ -165,7 +167,9 @@ def generate_ribbon_geometry_per_chain(
             ca_colors = np.tile(color, (len(ca_array), 1)).astype(np.float32)
 
             context = RibbonBuildContext(coords=ca_array, colors=ca_colors, chain_ids=chain_id_list)
-            config = RibbonStyleConfig(style=style, width_scale=ribbon_width_scale, use_ribbons_style=True)
+            config = RibbonStyleConfig(
+                style=style, width_scale=ribbon_width_scale, use_ribbons_style=use_ribbons_style
+            )
 
             vertex_data = generate_ribbon_geometry_with_colors_from_context(
                 context,
@@ -355,58 +359,4 @@ def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5)
         geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
         meta_data=VertexMetadata(chain_ids=vertex_chain_ids),
     )
-
-
-def generate_ribbon_catmull_rom_old(context: RibbonBuildContext):
-    """Fallback to original Catmull-Rom approach"""
-    from numpy import cross, gradient, linalg
-
-    # Check if we have enough points for Catmull-Rom spline
-    if len(context.coords) < 4:
-        raise ValueError(
-            f"At least 4 C-alpha atoms required for ribbon generation, got {len(context.coords)}"
-        )
-
-    spline = catmull_rom_chain(context.coords)  # (M, 3)
-    spline_colors = catmull_rom_chain(context.colors)  # interpolate colors (M, 3)
-    spline_chain_ids = [
-        context.chain_ids[min(i, len(context.chain_ids) - 1)] for i in range(len(spline))
-    ]
-
-    tangents = gradient(spline, axis=0)
-    tangents = tangents / linalg.norm(tangents, axis=1, keepdims=True)
-
-    up_hint = np.array([0, 0, 1], dtype=np.float32)
-    vertices, normals, indices, colors, vertex_chain_ids = [], [], [], [], []
-
-    for i, (p, t, col, chain_id) in enumerate(
-        zip(spline, tangents, spline_colors, spline_chain_ids)
-    ):
-        n = cross(t, up_hint)
-        if linalg.norm(n) < 1e-3:
-            up_hint = np.array([1, 0, 0], dtype=np.float32)
-            n = cross(t, up_hint)
-        n = n / linalg.norm(n)
-
-        offset = n * width
-        left = p - offset
-        right = p + offset
-
-        # Add vertices
-        vertices.extend([left, right])
-        normals.extend([n, n])
-
-        # Add colors for both sides of the ribbon at this spline point
-        colors.extend([col, col])
-        vertex_chain_ids.extend([chain_id, chain_id])
-
-    for i in range(len(spline) - 1):
-        base = i * 2
-        indices.extend([base, base + 1, base + 2, base + 1, base + 3, base + 2])
-
-    return VertexData(geom_data=GeometryData(vertices=vertices,
-                                             normals=normals,
-                                             indices=indices,
-                                             colors=colors),
-                      meta_data=VertexMetadata(chain_ids=vertex_chain_ids))
 
