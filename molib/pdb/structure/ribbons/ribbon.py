@@ -32,6 +32,22 @@ from picogl.buffers.vertex.meta_data import VertexMetadata
 from picogl.renderer import MeshData
 
 
+
+def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
+    context: RibbonBuildContext,
+    config: RibbonStyleConfig) -> dict[Any, MeshData]:
+    """generate ribbon geometry per chain by ca"""
+    return generate_ribbon_geometry_per_chain_color_by_ca(
+        context.coords,
+        context.chain_ids,
+        context.colors,
+        use_ribbons_style=config.use_ribbons_style,
+        style=config.style,
+        ribbon_width_scale=config.width_scale,
+        has_arrow=config.has_arrow,
+    )
+    
+
 def generate_ribbon_geometry_per_chain_color_by_ca(
     all_ca_coords: np.ndarray,
     all_chain_ids: list,
@@ -112,21 +128,6 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
         )
 
     return ribbon_data
-
-
-def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
-    context: RibbonBuildContext,
-    config: RibbonStyleConfig) -> dict[Any, MeshData]:
-    """generate ribbon geometry per chain by ca"""
-    return generate_ribbon_geometry_per_chain_color_by_ca(
-        context.coords,
-        context.chain_ids,
-        context.colors,
-        use_ribbons_style=config.use_ribbons_style,
-        style=config.style,
-        ribbon_width_scale=config.width_scale,
-        has_arrow=config.has_arrow,
-    )
 
 
 def generate_ribbon_geometry_per_chain(
