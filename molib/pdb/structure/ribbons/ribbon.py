@@ -15,6 +15,7 @@ This module supports two ribbon generation methods:
 from typing import Any, Optional
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from decologr import Decologr as log
 from molib.entities.ribbon.build_context import RibbonBuildContext
@@ -203,6 +204,58 @@ def generate_ribbon_geometry_with_colors_from_context(
 
     return generate_ribbon_catmull_rom(context)
 
+def _append_arrow(
+    vertices, normals, colors, indices, vertex_chain_ids,
+    context, config, ribbon_edges, ribbon_frenet
+):
+    if not (config.has_arrow and ribbon_edges and ribbon_frenet):
+        return vertices, normals, colors, indices, vertex_chain_ids
+
+    try:
+        left_edge, right_edge = ribbon_edges
+        tangent, plane_normal, ribbon_binormal = ribbon_frenet
+
+        p1 = 0.5 * (left_edge + right_edge)
+
+        t = tangent / (np.linalg.norm(tangent) + 1e-8)
+
+        step = (
+            np.linalg.norm(context.coords[-1] - context.coords[-2])
+            if len(context.coords) >= 2
+            else config.width_scale * 0.25
+        )
+
+        arrow_len = max(step * 0.75, config.width_scale * 0.15)
+        p2 = p1 + t * arrow_len
+
+        av, an, ai, ac = generate_arrow_geometry(
+            p1, p2,
+            width=config.width_scale * 0.35,
+            color=tuple(context.colors[-1]),
+            ribbon_plane_normal=plane_normal,
+            ribbon_binormal=ribbon_binormal,
+            ribbon_left_edge=left_edge,
+            ribbon_right_edge=right_edge,
+        )
+
+        if len(av) == 0:
+            return vertices, normals, colors, indices, vertex_chain_ids
+
+        offset = np.uint32(len(vertices))
+
+        vertices = np.vstack([vertices, av])
+        normals = np.vstack([normals, an])
+        colors = np.vstack([colors, ac])
+        indices = np.concatenate([indices, ai.astype(np.uint32) + offset])
+
+        chain_tail = context.chain_ids[-1] if context.chain_ids else ""
+        vertex_chain_ids.extend([chain_tail] * len(av))
+
+    except Exception as e:
+        log.message(f"Ribbon end arrow skipped: {e}", scope="ribbon")
+
+    return vertices, normals, colors, indices, vertex_chain_ids
+
 
 def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuildContext) -> VertexData:
     """generate ribbon ribbons style"""
@@ -210,98 +263,101 @@ def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuil
     # B-spline uses get_width(ss)*width and a 0.5 factor in guide points, so effective
     # half-width is smaller than legacy (constant 0.5). Use ribbon_width_scale
     # so modern ribbons match legacy visibility (helix half-width ~0.5).
-    geo_data, ribbon_edges, ribbon_frenet = (
-        generate_ribbon_geometry_ribbons_style(
-            context.coords,
-            o_coords=context.o_coords,
-            ss_types=context.ss_types,
-            width=config.width_scale,
-            samples_per_segment=4,  # Fewer samples = less smoothing (helix stays tighter)
-            style=config.style,
-            num_threads=8,
-        )
+    geo_data, ribbon_edges, ribbon_frenet = generate_ribbon_geometry_ribbons_style(
+        context.coords,
+        o_coords=context.o_coords,
+        ss_types=context.ss_types,
+        width=config.width_scale,
+        samples_per_segment=4,
+        style=config.style,
+        num_threads=8,
     )
+
     vertices = geo_data.vertices
     normals = geo_data.normals
     indices = geo_data.indices
 
-    # Map colors to vertices (interpolate along the ribbon)
-    # For now, use the color of the nearest CA atom
-    n_vertices = len(vertices)
-    colors = np.zeros((n_vertices, 3), dtype=np.float32)
-    vertex_chain_ids = []
+    # Efficient color mapping
+    from scipy.spatial import cKDTree
+    tree = cKDTree(context.coords)
+    _, nearest = tree.query(vertices)
 
-    # Calculate which CA each vertex is closest to
-    for i, vertex in enumerate(vertices):
-        # Find nearest CA
-        distances = np.linalg.norm(context.coords - vertex, axis=1)
-        nearest_ca_idx = np.argmin(distances)
-        colors[i] = context.colors[nearest_ca_idx]
-        vertex_chain_ids.append(context.chain_ids[nearest_ca_idx])
+    colors = context.colors[nearest]
+    vertex_chain_ids = [context.chain_ids[i] for i in nearest]
 
-    if config.has_arrow and ribbon_edges is not None and ribbon_frenet is not None:
-        try:
-            left_edge, right_edge = ribbon_edges
-            tangent, plane_normal, ribbon_binormal = ribbon_frenet
-            p1 = 0.5 * (
-                    np.asarray(left_edge, dtype=np.float32)
-                    + np.asarray(right_edge, dtype=np.float32)
-            )
-            t = np.asarray(tangent, dtype=np.float32)
-            t_len = float(np.linalg.norm(t))
-            if t_len > 1e-8:
-                t = t / t_len
-            if len(context.coords) >= 2:
-                step = float(
-                    np.linalg.norm(context.coords[-1] - context.coords[-2])
-                )
-            else:
-                step = float(config.width_scale) * 0.25
-            arrow_len = max(step * 0.75, float(config.width_scale) * 0.15)
-            p2 = p1 + t * arrow_len
-            last_color = (
-                float(context.colors[-1, 0]),
-                float(context.colors[-1, 1]),
-                float(context.colors[-1, 2]),
-            )
-            av, an, ai, ac = generate_arrow_geometry(
-                p1,
-                p2,
-                width=float(config.width_scale) * 0.35,
-                color=last_color,
-                ribbon_plane_normal=np.asarray(
-                    plane_normal, dtype=np.float32
-                ),
-                ribbon_binormal=np.asarray(
-                    ribbon_binormal, dtype=np.float32
-                ),
-                ribbon_left_edge=np.asarray(left_edge, dtype=np.float32),
-                ribbon_right_edge=np.asarray(right_edge, dtype=np.float32),
-            )
-            if len(av) > 0:
-                offset = np.uint32(len(vertices))
-                vertices = np.vstack([vertices, av])
-                normals = np.vstack([normals, an])
-                colors = np.vstack([colors, ac])
-                chain_tail = context.chain_ids[-1] if context.chain_ids else ""
-                vertex_chain_ids.extend(
-                    [chain_tail] * len(av)
-                )
-                indices = np.concatenate(
-                    [indices, ai.astype(np.uint32) + offset]
-                )
-        except Exception as arrow_ex:
-            log.message(
-                f"Ribbon end arrow: skipped ({arrow_ex})",
-                scope="generate_ribbon_geometry_with_colors",
-            )
+    # Arrow
+    vertices, normals, colors, indices, vertex_chain_ids = _append_arrow(
+        vertices, normals, colors, indices, vertex_chain_ids,
+        context, config, ribbon_edges, ribbon_frenet
+    )
 
     return VertexData(
         geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
-        meta_data=VertexMetadata(chain_ids=vertex_chain_ids))
+        meta_data=VertexMetadata(chain_ids=vertex_chain_ids),
+    )
 
 
-def generate_ribbon_catmull_rom(context):
+def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5) -> VertexData:
+    if len(context.coords) < 4:
+        raise ValueError(f"Need ≥4 CA atoms, got {len(context.coords)}")
+
+    spline = catmull_rom_chain(context.coords)
+    spline_colors = catmull_rom_chain(context.colors)
+
+    tangents = np.gradient(spline, axis=0)
+    norms = np.linalg.norm(tangents, axis=1, keepdims=True)
+    tangents = tangents / (norms + 1e-8)
+
+    up_hint = np.array([0, 0, 1], dtype=np.float32)
+
+    n_points = len(spline)
+
+    vertices = np.empty((n_points * 2, 3), dtype=np.float32)
+    normals = np.empty((n_points * 2, 3), dtype=np.float32)
+    colors = np.empty((n_points * 2, 3), dtype=np.float32)
+    indices = np.empty(( (n_points - 1) * 6,), dtype=np.uint32)
+
+    vertex_chain_ids = []
+
+    for i in range(n_points):
+        p = spline[i]
+        t = tangents[i]
+
+        n = np.cross(t, up_hint)
+        if np.linalg.norm(n) < 1e-3:
+            up_hint = np.array([1, 0, 0], dtype=np.float32)
+            n = np.cross(t, up_hint)
+
+        n = n / (np.linalg.norm(n) + 1e-8)
+
+        offset = n * width
+
+        vertices[2*i]     = p - offset
+        vertices[2*i + 1] = p + offset
+
+        normals[2*i:2*i+2] = n
+        colors[2*i:2*i+2] = spline_colors[i]
+
+        chain_id = context.chain_ids[min(i, len(context.chain_ids) - 1)]
+        vertex_chain_ids.extend([chain_id, chain_id])
+
+    # Indices (vectorizable but keeping readable)
+    idx = 0
+    for i in range(n_points - 1):
+        base = 2 * i
+        indices[idx:idx+6] = [
+            base, base+1, base+2,
+            base+1, base+3, base+2
+        ]
+        idx += 6
+
+    return VertexData(
+        geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
+        meta_data=VertexMetadata(chain_ids=vertex_chain_ids),
+    )
+
+
+def generate_ribbon_catmull_rom_old(context: RibbonBuildContext):
     """Fallback to original Catmull-Rom approach"""
     from numpy import cross, gradient, linalg
 
