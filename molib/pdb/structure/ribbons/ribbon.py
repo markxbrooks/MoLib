@@ -43,8 +43,8 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     all_ca_colors=context.colors
     use_ribbons_style=config.use_ribbons_style
     style=config.style
-    ribbon_width_scale=config.width_scale,
-    has_arrow=config.has_arrow,
+    ribbon_width_scale=config.width_scale
+    has_arrow=config.has_arrow
     # )
 
     # def generate_ribbon_geometry_per_chain_color_by_ca(
