@@ -10,6 +10,20 @@ from molib.pdb.structure.ribbons.calc import use_ribbon_edges_to_determine_arrow
     calculate_normals_along_binormal_and_direction, calculate_normals_along_direction, calculate_normals_along_binormal
 
 
+
+def generate_arrow_geometry_from_context(config, context, p1: Any, p2: Any, ribbon_geom: RibbonGeometryContext) -> \
+tuple[ndarray, ndarray, ndarray, ndarray]:
+    av, an, ai, ac = generate_arrow_geometry(
+        p1, p2,
+        width=config.width_scale * 0.35,
+        color=tuple(context.colors[-1]),
+        ribbon_plane_normal=ribbon_geom.plane_normal,
+        ribbon_binormal=ribbon_geom.binormal,
+        ribbon_left_edge=ribbon_geom.left_edge,
+        ribbon_right_edge=ribbon_geom.right_edge,
+    )
+    return ac, ai, an, av
+
 def generate_arrow_geometry(
     p1: np.ndarray,
     p2: np.ndarray,

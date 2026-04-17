@@ -11,10 +11,10 @@ This module supports two ribbon generation methods:
 2. B-splines (Ribbons approach) - more accurate, uses peptide plane meshdata
 
 """
-
 from typing import Any
 
 import numpy as np
+from numpy import ndarray
 from scipy.spatial import cKDTree
 
 from collections import defaultdict
@@ -24,7 +24,8 @@ from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style_from_context)
 from molib.calc.geometry.spline import catmull_rom_chain
-from molib.pdb.structure.ribbons.arrow import generate_arrow_geometry
+from molib.pdb.structure.ribbons.arrow import generate_arrow_geometry, generate_arrow_geometry_from_context
+from molib.pdb.structure.ribbons.ribbon_geometry import RibbonGeometryContext
 from molib.pdb.structure.ribbons.style import RibbonStyleConfig
 
 from picogl.buffers.helper import as_meshdata
@@ -120,6 +121,7 @@ def generate_ribbon_geometry_per_chain_from_context(config: RibbonStyleConfig, c
 
     return ribbon_mesh_by_chain
 
+
 def generate_ribbon_geometry_with_colors_from_context(
     context: RibbonBuildContext,
     config: RibbonStyleConfig) -> MeshData:
@@ -159,15 +161,13 @@ def _append_arrow(
         arrow_len = max(step * 0.75, config.width_scale * 0.15)
         p2 = p1 + t * arrow_len
 
-        av, an, ai, ac = generate_arrow_geometry(
-            p1, p2,
-            width=config.width_scale * 0.35,
-            color=tuple(context.colors[-1]),
-            ribbon_plane_normal=plane_normal,
-            ribbon_binormal=ribbon_binormal,
-            ribbon_left_edge=left_edge,
-            ribbon_right_edge=right_edge,
+        ribbon_geom = RibbonGeometryContext(plane_normal=plane_normal,
+            binormal=ribbon_binormal,
+            left_edge=left_edge,
+            right_edge=right_edge,
         )
+
+        ac, ai, an, av = generate_arrow_geometry_from_context(config, context, p1, p2, ribbon_geom)
 
         if len(av) == 0:
             return vertices, normals, colors, indices, vertex_chain_ids
