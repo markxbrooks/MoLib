@@ -12,23 +12,22 @@ This module supports two ribbon generation methods:
 
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from scipy.spatial import cKDTree
 
+from collections import defaultdict
+
 from decologr import Decologr as log
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
-    generate_ribbon_geometry_ribbons_style, RibbonStyle,
-)
+    generate_ribbon_geometry_ribbons_style)
 from molib.calc.geometry.spline import catmull_rom_chain
 from molib.pdb.structure.ribbons.arrow import generate_arrow_geometry
-from molib.pdb.structure.ribbons.style import RIBBON_WIDTH_SCALE, RibbonStyleConfig
+from molib.pdb.structure.ribbons.style import RibbonStyleConfig
 
-from picogl.buffers.geometry import GeometryData
-from picogl.buffers.vertex.data import VertexData
-from picogl.buffers.vertex.meta_data import VertexMetadata
+from picogl.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 
 
@@ -36,43 +35,6 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     context: RibbonBuildContext,
     config: RibbonStyleConfig) -> dict[Any, MeshData]:
     """generate ribbon geometry per chain by ca"""
-    # return generate_ribbon_geometry_per_chain_color_by_ca(
-    all_chain_ids=context.coords
-    all_chain_ids=context.chain_ids
-    all_ca_colors=context.colors
-    use_ribbons_style=config.use_ribbons_style
-    style=config.style
-    ribbon_width_scale=config.width_scale
-    has_arrow=config.has_arrow
-    # )
-
-    # def generate_ribbon_geometry_per_chain_color_by_ca(
-    """ all_ca_coords: np.ndarray,
-    all_chain_ids: list,
-    all_ca_colors: np.ndarray,
-    use_ribbons_style: bool = True,
-    all_o_coords: Optional[np.ndarray] = None,
-    all_ss_types: Optional[np.ndarray] = None,
-    style: str = RibbonStyle.SQUARE,
-    ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
-    has_arrow: bool = False,
-    ) -> dict[Any, MeshData]:
-    
-    Generate ribbon meshdata for each chain separately, with per-CA colors.
-
-    Uses Ribbons-style B-splines by default for better visual accuracy.
-
-    Args:
-        all_ca_coords: (N, 3) array of all CA coordinates
-        all_chain_ids: list of chain IDs, length N
-        all_ca_colors: (N, 3) array of RGB colors per CA
-        use_ribbons_style: If True, use B-spline approach (default), else Catmull-Rom
-        all_o_coords: Optional (N, 3) array of O coordinates for better accuracy
-        all_ss_types: Optional (N,) array of secondary structure types
-        style: Ribbon cross-section style ("flat", "circle", "square", "ellipse")
-        ribbon_width_scale: B-spline ribbon width factor (see RIBBON_WIDTH_SCALE)
-        has_arrow: If True, append a C-terminal arrow when B-spline geometry exposes edges.
-    """
     from collections import defaultdict
 
     # Group CA coordinates, colors, O coords, and SS types by chain
@@ -82,14 +44,14 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     ss_types_by_chain = defaultdict(list)
 
     for i, (coord, color, chain_id) in enumerate(
-        zip(all_ca_coords, all_ca_colors, all_chain_ids)
+        zip(context.coords, context.colors, context.chain_ids)
     ):
         coords_by_chain[chain_id].append(coord)
         colors_by_chain[chain_id].append(color)
-        if all_o_coords is not None:
-            o_coords_by_chain[chain_id].append(all_o_coords[i])
-        if all_ss_types is not None:
-            ss_types_by_chain[chain_id].append(all_ss_types[i])
+        if context.o_coords is not None:
+            o_coords_by_chain[chain_id].append(context.o_coords[i])
+        if context.ss_types is not None:
+            ss_types_by_chain[chain_id].append(context.ss_types[i])
 
     ribbon_data = {}
 
@@ -99,51 +61,31 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
         chain_id_list = [chain_id] * len(ca_array)
 
         o_array = None
-        if all_o_coords is not None and chain_id in o_coords_by_chain:
+        if context.o_coords is not None and chain_id in o_coords_by_chain:
             o_array = np.array(o_coords_by_chain[chain_id], dtype=np.float32)
 
         ss_array = None
-        if all_ss_types is not None and chain_id in ss_types_by_chain:
+        if context.ss_types is not None and chain_id in ss_types_by_chain:
             ss_array = np.array(ss_types_by_chain[chain_id])
 
-        vertex_data = generate_ribbon_geometry_with_colors(
-            ca_array,
-            color_array,
-            chain_id_list,
-            use_ribbons_style=use_ribbons_style,
-            o_coords=o_array,
-            ss_types=ss_array,
-            style=style,
-            ribbon_width_scale=ribbon_width_scale,
-            has_arrow=has_arrow,
-        )
+        colored_context = RibbonBuildContext(coords=ca_array,
+                                             o_coords=o_array,
+                                             ss_types=ss_array,
+                                             colors=color_array,
+                                             chain_ids=chain_id_list)
 
-        ribbon_data[chain_id] = MeshData(
-            vertices=vertex_data.geom_data.vertices,
-            normals=vertex_data.geom_data.normals,
-            indices=vertex_data.geom_data.indices,
-            colors=vertex_data.geom_data.colors,
-        )
+        ribbon_data[chain_id] = generate_ribbon_geometry_with_colors_from_context(context=colored_context, config=config)
 
     return ribbon_data
 
 
-def generate_ribbon_geometry_per_chain(
-    all_ca_coords: np.ndarray,
-    all_chain_ids: list,
-    chain_colors: dict[str, tuple],
-    style: str = RibbonStyle.SQUARE,
-    ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
-    use_ribbons_style: bool = True,
-) -> dict[str, MeshData]:
-    """
-    Generate ribbon meshdata for each chain separately.
-    """
-    from collections import defaultdict
+def generate_ribbon_geometry_per_chain_from_context(config: RibbonStyleConfig, context: RibbonBuildContext):
+    """generate ribbon geometry per chain from context"""
+
 
     # Group CA coordinates by chain
     coords_by_chain = defaultdict(list)
-    for coord, chain_id in zip(all_ca_coords, all_chain_ids):
+    for coord, chain_id in zip(context.coords, context.chain_ids):
         coords_by_chain[chain_id].append(coord)
 
     ribbon_mesh_by_chain: dict[str, MeshData] = {}
@@ -162,28 +104,14 @@ def generate_ribbon_geometry_per_chain(
         try:
             # Use generate_ribbon_geometry_with_colors for B-spline/Ribbons-style meshdata
             # with per-chain flat color (tile chain color for each CA)
-            color = chain_colors.get(chain_id, (1.0, 1.0, 1.0))
+            color = context.colors.get(chain_id, (1.0, 1.0, 1.0))
             ca_colors = np.tile(color, (len(ca_array), 1)).astype(np.float32)
 
             context = RibbonBuildContext(coords=ca_array, colors=ca_colors, chain_ids=chain_id_list)
-            config = RibbonStyleConfig(
-                style=style, width_scale=ribbon_width_scale, use_ribbons_style=use_ribbons_style
-            )
 
-            vertex_data = generate_ribbon_geometry_with_colors_from_context(
+            ribbon_mesh_by_chain[chain_id] = generate_ribbon_geometry_with_colors_from_context(
                 context,
                 config
-            )
-            verts = vertex_data.geom_data.vertices
-            norms = vertex_data.geom_data.normals
-            inds = vertex_data.geom_data.indices
-            colors = vertex_data.geom_data.colors
-
-            ribbon_mesh_by_chain[chain_id] = MeshData(
-                vertices=verts,
-                normals=norms,
-                indices=inds,
-                colors=colors,
             )
         except Exception as ex:
             log.message(f"⚠️ Error generating ribbon for chain {chain_id}: {ex}",
@@ -194,7 +122,7 @@ def generate_ribbon_geometry_per_chain(
 
 def generate_ribbon_geometry_with_colors_from_context(
     context: RibbonBuildContext,
-    config: RibbonStyleConfig) -> VertexData:
+    config: RibbonStyleConfig) -> MeshData:
     """generate ribbon geometry from context"""
     if config.use_ribbons_style:
         try:
@@ -260,7 +188,7 @@ def _append_arrow(
     return vertices, normals, colors, indices, vertex_chain_ids
 
 
-def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuildContext) -> VertexData:
+def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuildContext) -> MeshData:
     """generate ribbon ribbons style"""
     # Use Ribbons-style B-spline approach for better accuracy.
     # B-spline uses get_width(ss)*width and a 0.5 factor in guide points, so effective
@@ -281,7 +209,6 @@ def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuil
     indices = geo_data.indices
 
     # Efficient color mapping
-    from scipy.spatial import cKDTree
     tree = cKDTree(context.coords)
     _, nearest = tree.query(vertices)
 
@@ -293,14 +220,10 @@ def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuil
         vertices, normals, colors, indices, vertex_chain_ids,
         context, config, ribbon_edges, ribbon_frenet
     )
-
-    return VertexData(
-        geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
-        meta_data=VertexMetadata(chain_ids=vertex_chain_ids),
-    )
+    return as_meshdata(positions=vertices, normals=normals, colors=colors, indices=indices)
 
 
-def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5) -> VertexData:
+def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5) -> MeshData:
     if len(context.coords) < 4:
         raise ValueError(f"Need ≥4 CA atoms, got {len(context.coords)}")
 
@@ -353,9 +276,4 @@ def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5)
             base+1, base+3, base+2
         ]
         idx += 6
-
-    return VertexData(
-        geom_data=GeometryData(vertices=vertices, normals=normals, indices=indices, colors=colors),
-        meta_data=VertexMetadata(chain_ids=vertex_chain_ids),
-    )
-
+    return as_meshdata(positions=vertices, normals=normals, colors=colors, indices=indices)

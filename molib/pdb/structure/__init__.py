@@ -1,1 +1,0 @@
-from molib.pdb.structure.ribbons.ribbon import generate_ribbon_geometry_per_chain, generate_ribbon_geometry_per_chain_color_by_ca
