@@ -139,10 +139,13 @@ def generate_ribbon_geometry_with_colors_from_context(
     return generate_ribbon_catmull_rom(context)
 
 def _append_arrow(
-    vertices, normals, colors, indices, vertex_chain_ids,
-    context, config, ribbon_edges, ribbon_frenet
-):
-    mesh_data = as_meshdata(positions=vertices, normals=normals, colors=colors, indices=indices)
+    mesh_data: MeshData,
+    vertex_chain_ids,
+    context,
+    config,
+    ribbon_edges,
+    ribbon_frenet,
+) -> tuple[MeshData, list[str]]:
     if not (config.has_arrow and ribbon_edges and ribbon_frenet):
         return mesh_data, vertex_chain_ids
 
@@ -168,7 +171,7 @@ def _append_arrow(
             left_edge=left_edge,
             right_edge=right_edge,
         )
-        arrow_config = ArrowConfig(base_width=0.5)
+        arrow_config = ArrowConfig(base_width=config.width_scale * 0.5)
         arrow_mesh = generate_arrow_geometry_from_context(config, context, p1=p1, p2=p2, ribbon_geom=ribbon_geom, arrow_config=arrow_config)
         if arrow_mesh.vertices is not None:
             if len(arrow_mesh.vertices) == 0:
@@ -194,25 +197,19 @@ def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuil
     # B-spline uses get_width(ss)*width and a 0.5 factor in guide points, so effective
     # half-width is smaller than legacy (constant 0.5). Use ribbon_width_scale
     # so modern ribbons match legacy visibility (helix half-width ~0.5).
-    geo_data, ribbon_edges, ribbon_frenet = generate_ribbon_geometry_ribbons_style_from_context(config, context)
-
-    vertices = geo_data.vertices
-    normals = geo_data.normals
-    indices = geo_data.indices
+    mesh_data, ribbon_edges, ribbon_frenet = generate_ribbon_geometry_ribbons_style_from_context(config, context)
 
     # Efficient color mapping
     tree = cKDTree(context.coords)
-    _, nearest = tree.query(vertices)
-
+    # _, nearest = tree.query(vertices)
+    nearest = tree.query(mesh_data.vertices, workers=-1)[1]
     colors = context.colors[nearest]
+    color_updated_mesh = as_meshdata(positions=mesh_data.vertices, normals=mesh_data.normals, colors=colors, indices=mesh_data.indices)
     vertex_chain_ids = [context.chain_ids[i] for i in nearest]
 
     # Arrow
     mesh_data, _ = _append_arrow(
-        vertices,
-        normals,
-        colors,
-        indices,
+        color_updated_mesh,
         vertex_chain_ids,
         context,
         config,
@@ -237,10 +234,10 @@ def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5)
 
     n_points = len(spline)
 
-    vertices = np.empty((n_points * 2, 3), dtype=np.float32)
-    normals = np.empty((n_points * 2, 3), dtype=np.float32)
-    colors = np.empty((n_points * 2, 3), dtype=np.float32)
-    indices = np.empty(( (n_points - 1) * 6,), dtype=np.uint32)
+    vertices = _vec3_points(n_points)
+    normals = _vec3_points(n_points)
+    colors = _vec3_points(n_points)
+    indices = _vec3_empty_indices(n_points)
 
     vertex_chain_ids = []
 
@@ -276,3 +273,11 @@ def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5)
         ]
         idx += 6
     return as_meshdata(positions=vertices, normals=normals, colors=colors, indices=indices)
+
+
+def _vec3_empty_indices(n_points: int) -> np.ndarray:
+    return np.empty(((n_points - 1) * 6,), dtype=np.uint32)
+
+
+def _vec3_points(n_points: int) -> np.ndarray:
+    return np.empty((n_points * 2, 3), dtype=np.float32)
