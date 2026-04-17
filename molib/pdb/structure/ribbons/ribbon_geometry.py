@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 
+import numpy as np
+from typing import Optional
+
 
 @dataclass
 class RibbonGeometryContext:
-    """Ribbon Geometry"""
-    plane_normal = None
-    binormal = None
-    left_edge = None
-    right_edge = None
+    plane_normal: Optional[np.ndarray] = None
+    binormal: Optional[np.ndarray] = None
+    left_edge: Optional[np.ndarray] = None
+    right_edge: Optional[np.ndarray] = None

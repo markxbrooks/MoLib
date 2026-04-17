@@ -14,17 +14,18 @@ This module supports two ribbon generation methods:
 from typing import Any
 
 import numpy as np
-from numpy import ndarray
 from scipy.spatial import cKDTree
 
 from collections import defaultdict
 
 from decologr import Decologr as log
+from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style_from_context)
 from molib.calc.geometry.spline import catmull_rom_chain
-from molib.pdb.structure.ribbons.arrow import generate_arrow_geometry, generate_arrow_geometry_from_context
+from molib.pdb.structure.ribbons.arrows.arrow import  generate_arrow_geometry_from_context
+from molib.pdb.structure.ribbons.arrows.config import ArrowConfig
 from molib.pdb.structure.ribbons.ribbon_geometry import RibbonGeometryContext
 from molib.pdb.structure.ribbons.style import RibbonStyleConfig
 
@@ -80,7 +81,7 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     return ribbon_data
 
 
-def generate_ribbon_geometry_per_chain_from_context(config: RibbonStyleConfig, context: RibbonBuildContext):
+def generate_ribbon_geometry_per_chain_from_context(config: RibbonStyleConfig, context: RibbonBuildContext) -> dict:
     """generate ribbon geometry per chain from context"""
 
 
@@ -141,8 +142,9 @@ def _append_arrow(
     vertices, normals, colors, indices, vertex_chain_ids,
     context, config, ribbon_edges, ribbon_frenet
 ):
+    mesh_data = as_meshdata(positions=vertices, normals=normals, colors=colors, indices=indices)
     if not (config.has_arrow and ribbon_edges and ribbon_frenet):
-        return vertices, normals, colors, indices, vertex_chain_ids
+        return mesh_data, vertex_chain_ids
 
     try:
         left_edge, right_edge = ribbon_edges
@@ -150,7 +152,7 @@ def _append_arrow(
 
         p1 = 0.5 * (left_edge + right_edge)
 
-        t = tangent / (np.linalg.norm(tangent) + 1e-8)
+        t = tangent / (np.linalg.norm(tangent) +  MoLibConstant.EPSILON_SMALL)
 
         step = (
             np.linalg.norm(context.coords[-1] - context.coords[-2])
@@ -166,26 +168,24 @@ def _append_arrow(
             left_edge=left_edge,
             right_edge=right_edge,
         )
+        arrow_config = ArrowConfig(base_width=0.5)
+        arrow_mesh = generate_arrow_geometry_from_context(config, context, p1=p1, p2=p2, ribbon_geom=ribbon_geom, arrow_config=arrow_config)
+        if arrow_mesh.vertices is not None:
+            if len(arrow_mesh.vertices) == 0:
+                return arrow_mesh, vertex_chain_ids
 
-        ac, ai, an, av = generate_arrow_geometry_from_context(config, context, p1, p2, ribbon_geom)
+        if arrow_mesh.vertices is None or len(arrow_mesh.vertices) == 0:
+            return mesh_data, vertex_chain_ids
 
-        if len(av) == 0:
-            return vertices, normals, colors, indices, vertex_chain_ids
-
-        offset = np.uint32(len(vertices))
-
-        vertices = np.vstack([vertices, av])
-        normals = np.vstack([normals, an])
-        colors = np.vstack([colors, ac])
-        indices = np.concatenate([indices, ai.astype(np.uint32) + offset])
+        mesh_data.append_mesh(arrow_mesh)
 
         chain_tail = context.chain_ids[-1] if context.chain_ids else ""
-        vertex_chain_ids.extend([chain_tail] * len(av))
+        vertex_chain_ids.extend([chain_tail] * len(arrow_mesh.vertices))
 
     except Exception as e:
         log.message(f"Ribbon end arrow skipped: {e}", scope="ribbon")
 
-    return vertices, normals, colors, indices, vertex_chain_ids
+    return mesh_data, vertex_chain_ids
 
 
 def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuildContext) -> MeshData:
@@ -208,11 +208,18 @@ def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuil
     vertex_chain_ids = [context.chain_ids[i] for i in nearest]
 
     # Arrow
-    vertices, normals, colors, indices, vertex_chain_ids = _append_arrow(
-        vertices, normals, colors, indices, vertex_chain_ids,
-        context, config, ribbon_edges, ribbon_frenet
+    mesh_data, _ = _append_arrow(
+        vertices,
+        normals,
+        colors,
+        indices,
+        vertex_chain_ids,
+        context,
+        config,
+        ribbon_edges,
+        ribbon_frenet,
     )
-    return as_meshdata(positions=vertices, normals=normals, colors=colors, indices=indices)
+    return mesh_data
 
 
 def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5) -> MeshData:
