@@ -4,11 +4,72 @@ PDB Utils for loading PDB files
 """
 
 from typing import Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 import gemmi
 from biopandas.pdb import PandasPdb
 from decologr import Decologr as log
 from molib.xtal.cif import validate_structure
+
+
+def _http_get_text(url: str, *, quiet: bool = False) -> Optional[str]:
+    """GET url and return decoded UTF-8 text, or None on failure."""
+    try:
+        response = urlopen(url)
+        raw = response.read()
+        text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+        return text if text and text.strip() else None
+    except HTTPError as e:
+        if not quiet:
+            if e.code == 404:
+                log.warning(f"Not found (404): {url}")
+            else:
+                log.warning(f"HTTP {e.code} fetching {url}")
+        return None
+    except URLError as e:
+        if not quiet:
+            log.warning(f"URL error fetching {url}: {e}")
+        return None
+
+
+def _pdb_from_text(pdb_text: str, source_url: str) -> PandasPdb:
+    """Build PandasPdb from raw PDB text (avoids biopandas bug when fetch returns None)."""
+    ppdb = PandasPdb().read_pdb_from_list(pdb_text.splitlines(True))
+    ppdb.pdb_path = source_url
+    return ppdb
+
+
+def _fetch_alphafold_ebi(uniprot_id: str) -> Optional[PandasPdb]:
+    """
+    Download AlphaFold PDB from EBI. Tries model v6, then v4, then v3 (DB layout varies).
+    Biopandas' fetch_pdb leaves pdb_text None on 404 then crashes in splitlines().
+    """
+    uid = uniprot_id.strip().upper()
+    log.message(f"pdb_fetch_as_biopandas uniprot_id {uid}", silent=True)
+    last_url = ""
+    for version in (6, 4, 3):
+        last_url = (
+            f"https://alphafold.ebi.ac.uk/files/AF-{uid}-F1-model_v{version}.pdb"
+        )
+        text = _http_get_text(last_url, quiet=True)
+        if text:
+            return _pdb_from_text(text, last_url)
+    log.warning(
+        f"No AlphaFold PDB at alphafold.ebi.ac.uk for UniProt {uid} "
+        f"(tried model v6, v4, and v3; 404 or empty). Last URL: {last_url}"
+    )
+    return None
+
+
+def _fetch_rcsb(pdb_code: str) -> Optional[PandasPdb]:
+    code = pdb_code.strip().lower()
+    log.message(f"pdb_fetch_as_biopandas pdb_code {code}", silent=True)
+    url = f"https://files.rcsb.org/download/{code}.pdb"
+    text = _http_get_text(url, quiet=False)
+    if not text:
+        return None
+    return _pdb_from_text(text, url)
 
 
 def fetch_pdb_biopandas(
@@ -25,13 +86,13 @@ def fetch_pdb_biopandas(
     """
     try:
         if uniprot_id:
-            log.message(f"pdb_fetch_as_biopandas uniprot_id {uniprot_id}", silent=True)
-            ppdb = PandasPdb().fetch_pdb(uniprot_id=uniprot_id, source="alphafold2-v4")
+            ppdb = _fetch_alphafold_ebi(uniprot_id)
         elif pdb_code:
-            log.message(f"pdb_fetch_as_biopandas pdb_code {pdb_code}", silent=True)
-            ppdb = PandasPdb().fetch_pdb(pdb_code=pdb_code)
+            ppdb = _fetch_rcsb(pdb_code)
         else:
             log.warning("No UniProt ID or PDB code provided.")
+            return None
+        if ppdb is None:
             return None
         if validate:
             validation_report = perform_cif_dict_validation(ppdb)
@@ -108,14 +169,15 @@ def perform_cif_dict_validation(pandas_pdb: PandasPdb) -> dict | None:
     return validation_report
 
 
-def fetch_pdb_by_source_and_id(identifier: str, source: str) -> PandasPdb:
+def fetch_pdb_by_source_and_id(
+    identifier: str, source: str
+) -> Optional[PandasPdb]:
     """
     fetch_pdb_by_source_and_id
 
     :param identifier: str
     :param source: str
-    :return: pdb_data
-    :rtype: PandasPdb
+    :return: pdb_data or None if the structure is not available
     """
     if source == "pdb":
         pdb_data = fetch_pdb_biopandas(pdb_code=identifier)
