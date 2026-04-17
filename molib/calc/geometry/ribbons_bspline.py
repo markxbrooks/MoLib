@@ -22,6 +22,9 @@ from molib.calc.math.numpy_util import generate_colors_from_positions
 from molib.core.constants import MoLibConstant
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from picogl.buffers.geometry import GeometryData
+from picogl.renderer import MeshData
+
+
 class _ResgeomContext(Protocol):
     num_threads: int
     num_samples: int
