@@ -22,7 +22,7 @@ from collections import defaultdict
 from decologr import Decologr as log
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
-    generate_ribbon_geometry_ribbons_style)
+    generate_ribbon_geometry_ribbons_style, generate_ribbon_geometry_ribbons_style_from_context)
 from molib.calc.geometry.spline import catmull_rom_chain
 from molib.pdb.structure.ribbons.arrow import generate_arrow_geometry
 from molib.pdb.structure.ribbons.style import RibbonStyleConfig
@@ -194,15 +194,7 @@ def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuil
     # B-spline uses get_width(ss)*width and a 0.5 factor in guide points, so effective
     # half-width is smaller than legacy (constant 0.5). Use ribbon_width_scale
     # so modern ribbons match legacy visibility (helix half-width ~0.5).
-    geo_data, ribbon_edges, ribbon_frenet = generate_ribbon_geometry_ribbons_style(
-        context.coords,
-        o_coords=context.o_coords,
-        ss_types=context.ss_types,
-        width=config.width_scale,
-        samples_per_segment=4,
-        style=config.style,
-        num_threads=8,
-    )
+    geo_data, ribbon_edges, ribbon_frenet = generate_ribbon_geometry_ribbons_style_from_context(config, context)
 
     vertices = geo_data.vertices
     normals = geo_data.normals

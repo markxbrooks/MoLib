@@ -22,8 +22,10 @@ from numpy._typing import _64Bit
 from elmo.core.calc.utils import compute_tangents
 
 from molib.core.constants import MoLibConstant
+from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.entities.secondary_structure_type import SecondaryStructureType, normalize_ss, HELIX_TYPES, SHEET_TYPES, \
     SecondaryStructureWidth
+from molib.pdb.structure.ribbons.style import RibbonStyleConfig
 from picogl.buffers.geometry import GeometryData
 
 class _ResgeomContext(Protocol):
@@ -532,6 +534,7 @@ def initialize_frame(centerline: ndarray) -> tuple[
     ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], int, ndarray[
         Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]], ndarray[
         Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[Any, dtype[Any]]]:
+    """initialize frame """
     n_points = len(centerline)
     tangents = np.zeros((n_points, 3), dtype=np.float32)
     normals = np.zeros((n_points, 3), dtype=np.float32)
@@ -625,6 +628,20 @@ def calculate_parallel_transport_frames(centerline: np.ndarray):
     return tangents, normals, binormals
 
 
+def generate_ribbon_geometry_ribbons_style_from_context(config: RibbonStyleConfig, context: RibbonBuildContext) -> \
+tuple[Any, Any, Any]:
+    """generate ribbon geometry ribbons"""
+    mesh_data, ribbon_edges, ribbon_frenet = generate_ribbon_geometry_ribbons_style(
+        context.coords,
+        o_coords=context.o_coords,
+        ss_types=context.ss_types,
+        width=config.width_scale,
+        samples_per_segment=4,
+        style=config.style,
+        num_threads=8,
+    )
+    return mesh_data, ribbon_edges, ribbon_frenet
+
 def generate_ribbon_geometry_ribbons_style(
     ca_coords: np.ndarray,
     o_coords: Optional[np.ndarray]= None,
@@ -637,7 +654,7 @@ def generate_ribbon_geometry_ribbons_style(
     helix_radius_scale: float = 1.0
 ) -> tuple[
          ndarray, ndarray, ndarray, ndarray, tuple[ndarray, ndarray] | None, tuple[ndarray, ndarray, ndarray] | None] | \
-     tuple[GeometryData, tuple[float | Any, float | Any] | None | tuple[Any, Any], tuple[Any, Any, Any] | None]:
+     tuple[MeshData, tuple[float | Any, float | Any] | None | tuple[Any, Any], tuple[Any, Any, Any] | None]:
     """
     Generate ribbon meshdata using Ribbons' B-spline approach. RIBBON_PATH
 
@@ -792,8 +809,8 @@ def generate_ribbon_geometry_ribbons_style(
         ribbon_edges = (vertices[-2], vertices[-1])
 
         ribbon_frenet = get_frenet_frame(binormals, centerline, normals, ribbon_frenet, tangents)
-    geo_data = GeometryData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
-    return geo_data, ribbon_edges, ribbon_frenet
+    mesh_data = MeshData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
+    return mesh_data, ribbon_edges, ribbon_frenet
 
 
 def generate_eliptical_ribbon(binormals: ndarray[Any, dtype[floating[_64Bit]]] | ndarray[Any, dtype[generic]] | ndarray[
