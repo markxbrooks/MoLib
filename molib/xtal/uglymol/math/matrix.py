@@ -1,5 +1,5 @@
 """Matrix 4x4"""
-
+from molib.calc.math import matrix_util, normal
 from molib.calc.math.vector import Vector3
 
 _zero = Vector3(0, 0, 0)
@@ -108,19 +108,19 @@ class Matrix4:
         if z.length_sq() == 0:
             z.z = 1
 
-        z.normalize()
-        x = up.copy().cross(z)
+        normal.normalize()
+        x = matrix_util.cross(z)
         if x.length_sq() == 0:
             # up and z are parallel
             if abs(up.z) == 1:
                 z.x += 0.0001
             else:
                 z.z += 0.0001
-            z.normalize()
-            x = up.copy().cross(z)
+            normal.normalize()
+            x = matrix_util.cross(z)
 
         x.normalize()
-        y = z.copy().cross(x)
+        y = matrix_util.cross(x)
 
         te[0] = x.x
         te[4] = y.x

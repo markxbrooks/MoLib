@@ -12,40 +12,25 @@ This module supports two ribbon generation methods:
 
 """
 
-from dataclasses import dataclass
-from typing import Any, Optional, Callable
+from typing import Any, Optional
 
 import numpy as np
-from numpy import bool_, dtype, ndarray, floating, generic
 
 from decologr import Decologr as log
-from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
     generate_ribbon_geometry_ribbons_style, RibbonStyle,
 )
 from molib.calc.geometry.spline import catmull_rom_chain
+from molib.pdb.structure.ribbons.arrow import generate_arrow_geometry
+from molib.pdb.structure.ribbons.style import RIBBON_WIDTH_SCALE, RibbonStyleConfig
 
 from picogl.buffers.geometry import GeometryData
 from picogl.buffers.vertex.data import VertexData
 from picogl.buffers.vertex.meta_data import VertexMetadata
 from picogl.renderer import MeshData
 
-# B-spline ribbon effective half-width is 0.5 * get_width(ss) * width (guide-point factor).
-# Legacy ribbons use constant half-width 0.5. To match, use width so 0.5*0.6*width ≈ 0.5 → width ≈ 1.67.
-# RIBBON_WIDTH_SCALE =
-RIBBON_WIDTH_SCALE = 2.7
 
-
-@dataclass
-class RibbonStyleConfig:
-    """Ribbon cross-section style and B-spline width scale (context-based API)."""
-
-    style: str
-    width_scale: float = RIBBON_WIDTH_SCALE
-    use_ribbons_style: bool = True
-    #: Append a Ribbons-style arrowhead at the C-terminus when geometry exposes ribbon edges.
-    has_arrow: bool = False
 
 
 def generate_ribbon_geometry_per_chain_color_by_ca(
@@ -144,264 +129,6 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     )
 
 
-def normalize(v) -> float:
-    """normalize"""
-    # Helper function to normalize vectors
-    norm = np.linalg.norm(v)
-    if norm < MoLibConstant.EPSILON:
-        return v
-    return v / norm
-
-
-def generate_arrow_geometry(
-    p1: np.ndarray,
-    p2: np.ndarray,
-    width: float = 0.3,
-    color: tuple = (1.0, 1.0, 1.0),
-    ribbon_plane_normal: Optional[np.ndarray] = None,
-    ribbon_binormal: Optional[np.ndarray] = None,
-    ribbon_left_edge: Optional[np.ndarray] = None,
-    ribbon_right_edge: Optional[np.ndarray] = None,
-    arrow_base_width: Optional[float] = None,
-    arrow_head_width: Optional[float] = None,
-    num_samples: int = 8,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Generate vertex/normal/index/colour arrays for a beta-sheet arrow
-    that follows the ribbon plane (Ribbons-style).
-
-    This implements Ribbons' ArrowLines approach, which modifies the ribbon
-    edges to create an arrowhead that naturally follows the ribbon plane.
-
-    Args:
-        p1: Start point of arrow (base, typically end of ribbon)
-        p2: End point of arrow (tip direction)
-        width: Base width of arrow (if ribbon edges not provided)
-        color: RGB color tuple
-        ribbon_plane_normal: Normal to ribbon plane (for proper orientation)
-        ribbon_binormal: Binormal vector (width direction in ribbon plane)
-        ribbon_left_edge: Left edge point of ribbon at arrow base (preferred)
-        ribbon_right_edge: Right edge point of ribbon at arrow base (preferred)
-        arrow_base_width: Width at arrow base (defaults to width)
-        arrow_head_width: Width at arrow head (defaults to 0.0 for point)
-        num_samples: Number of samples along arrow length
-
-    Returns:
-        Tuple of (vertices, normals, indices, colors) arrays
-    """
-    p1 = get_np_array(p1)
-    p2 = get_np_array(p2)
-
-    # Direction vector (arrow direction)
-    direction = p2 - p1
-    length = np.linalg.norm(direction)
-    if length < MoLibConstant.EPSILON:
-        return (
-            np.zeros((0, 3)),
-            np.zeros((0, 3)),
-            np.zeros((0,), dtype=np.uint32),
-            np.zeros((0, 3)),
-        )
-
-    direction = direction / length
-
-    # If ribbon edges are provided, use them (Ribbons approach)
-    if ribbon_left_edge is not None and ribbon_right_edge is not None:
-        base_width, binormal, head_width = _use_ribbon_edges_to_determine_arrow_plane(arrow_base_width,
-                                                                                      arrow_head_width, direction,
-                                                                                      ribbon_binormal, ribbon_left_edge,
-                                                                                      ribbon_plane_normal,
-                                                                                      ribbon_right_edge)
-
-    else:
-        # Fallback: calculate plane from direction and provided vectors
-        if ribbon_binormal is not None:
-            binormal = normalize(get_np_array(ribbon_binormal))
-        else:
-            # Calculate binormal from direction and a hint vector
-            up = to_up_vec3()
-            binormal = cross(direction, up)
-            if np.linalg.norm(binormal) < MoLibConstant.EPSILON:
-                up = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-                binormal = cross(direction, up)
-            binormal = normalize(binormal)
-
-        if ribbon_plane_normal is not None:
-            normal = normalize(get_np_array(ribbon_plane_normal))
-        else:
-            cross_normalize(binormal, direction)
-
-        base_width = arrow_base_width if arrow_base_width is not None else width
-        head_width = arrow_head_width if arrow_head_width is not None else 0.0
-
-    # Generate arrow meshdata using Ribbons' approach
-    # Create samples along arrow length, tapering from base_width to head_width
-    vertices = []
-    vertex_normals = []
-    indices = []
-
-    # Ribbons' ArrowLines approach: taper width along the arrow
-    for i in range(num_samples + 1):
-        t = i / num_samples  # Parameter from 0 (base) to 1 (tip)
-
-        # Taper width from base to head
-        current_width = base_width * (1.0 - t) + head_width * t
-
-        # Position along arrow
-        pos = p1 + direction * (length * t)
-
-        # Calculate left and right edges at this position
-        # Using binormal for width direction
-        half_width = current_width * 0.5
-        left = pos - binormal * half_width
-        right = pos + binormal * half_width
-
-        vertices.append(left)
-        vertices.append(right)
-
-        # Calculate normals (pointing outward from arrow center)
-        # Normal should be perpendicular to arrow surface
-        if i == 0:
-            _calculate_normals_along_binormal(binormal, vertex_normals)
-        elif i == num_samples:
-            _calculate_normals_along_direction(left, normalize, pos, right, vertex_normals)
-        else:
-            _calculate_normals_along_binormal_and_direction(left, normalize, pos, right, vertex_normals)
-
-    # Add arrow tip (point)
-    tip = p2
-    vertices.append(tip)
-    # Tip normal points along direction
-    vertex_normals.append(direction)
-
-    vertices = np.array(vertices, dtype=np.float32)
-    vertex_normals = np.array(vertex_normals, dtype=np.float32)
-
-    # Generate triangle indices
-    # Body: quad strips connecting adjacent samples
-    for i in range(num_samples):
-        base = i * 2
-        # Quad as two triangles
-        indices.extend([base, base + 1, base + 2])  # Triangle 1
-        indices.extend([base + 1, base + 3, base + 2])  # Triangle 2
-
-    # Arrow head: triangle connecting last sample to tip
-    tip_idx = len(vertices) - 1
-    last_base = num_samples * 2
-    indices.extend([last_base, last_base + 1, tip_idx])
-
-    indices = np.array(indices, dtype=np.uint32)
-
-    # Color buffer
-    colors = np.tile(color, (len(vertices), 1)).astype(np.float32)
-
-    return vertices, vertex_normals, indices, colors
-
-
-def to_up_vec3() -> np.ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
-    return np.array([0.0, 0.0, 1.0], dtype=np.float32)
-
-
-def cross_normalize(binormal: float, direction: ndarray[Any, dtype[floating[Any]]]) -> np.ndarray:
-    """Calculate normal from cross product"""
-    normal = cross(binormal, direction)
-    normal = normalize(normal)
-    return normal
-
-
-def cross(binormal: float, direction: ndarray[Any, dtype[floating[Any]]]) -> np.ndarray[Any, dtype[floating[Any]]]:
-    """cross helper"""
-    return np.cross(binormal, direction)
-
-
-def get_np_array(p1: ndarray) -> np.ndarray[Any, dtype[Any]] | ndarray[Any, dtype[generic]]:
-    """get as numpy array"""
-    return np.asarray(p1, dtype=np.float32)
-
-
-def _use_ribbon_edges_to_determine_arrow_plane(arrow_base_width: float | None, arrow_head_width: float | None,
-                                               direction: ndarray[Any, dtype[floating[Any]]],
-                                               ribbon_binormal: ndarray | None, ribbon_left_edge: ndarray,
-                                               ribbon_plane_normal: ndarray | None, ribbon_right_edge: ndarray) -> \
-tuple[float | ndarray[Any, dtype[floating[Any]]], float, Any]:
-    """Use actual ribbon edges to determine arrow plane"""
-    left_edge = np.asarray(ribbon_left_edge, dtype=np.float32)
-    right_edge = np.asarray(ribbon_right_edge, dtype=np.float32)
-
-    ribbon_width, ribbon_width_vec = _calculate_ribbon_width_attrs(left_edge, right_edge)
-
-    binormal = _calculate_binormal_from_ribbon_edges(normalize, ribbon_binormal, ribbon_width_vec)
-
-    _calculate_normal_perpendicular_to_ribbon_plane(binormal, direction, ribbon_plane_normal)
-
-    # Arrow base width from ribbon width
-    base_width = (
-        arrow_base_width if arrow_base_width is not None else ribbon_width * 0.5
-    )
-    head_width = arrow_head_width if arrow_head_width is not None else 0.0
-    return base_width, binormal, head_width
-
-
-def _calculate_ribbon_width_attrs(left_edge: ndarray[Any, dtype[Any]], right_edge: ndarray[Any, dtype[Any]]) -> tuple[
-    floating[Any], ndarray[Any, dtype[Any]]]:
-    """Calculate ribbon center and width from edges"""
-    ribbon_center = 0.5 * (left_edge + right_edge)
-    ribbon_width_vec = right_edge - left_edge
-    ribbon_width = np.linalg.norm(ribbon_width_vec)
-    return ribbon_width, ribbon_width_vec
-
-
-def _calculate_binormal_from_ribbon_edges(normalize: Callable[..., Any],
-                                          ribbon_binormal: ndarray | None,
-                                          ribbon_width_vec: ndarray[Any, dtype[Any]]) -> Any:
-    """Calculate binormal (width direction) from ribbon edges"""
-    if ribbon_binormal is not None:
-        binormal = normalize(np.asarray(ribbon_binormal, dtype=np.float32))
-    else:
-        binormal = normalize(ribbon_width_vec)
-    return binormal
-
-
-def _calculate_normal_perpendicular_to_ribbon_plane(binormal: Any,
-                                                    direction: ndarray[Any, dtype[floating[Any]]],
-                                                    ribbon_plane_normal: ndarray | None):
-    """Calculate normal (perpendicular to ribbon plane)"""
-    if ribbon_plane_normal is not None:
-        normal = normalize(np.asarray(ribbon_plane_normal, dtype=np.float32))
-    else:
-        # Calculate normal from cross product of direction and binormal
-        normal = np.cross(direction, binormal)
-        if np.linalg.norm(normal) < MoLibConstant.EPSILON:
-            # Fallback: use cross product of binormal and direction
-            normal = np.cross(binormal, direction)
-        normal = normalize(normal)
-
-
-def _calculate_normals_along_binormal_and_direction(left: float | Any, normalize: Callable[..., Any],
-                                                    pos: ndarray[Any, dtype[bool_]] | Any,
-                                                    right: ndarray[Any, dtype[bool_]] | float | Any,
-                                                    vertex_normals: list[Any]):
-    """Middle: average of binormal and direction"""
-    left_normal = normalize(left - pos)
-    right_normal = normalize(right - pos)
-    vertex_normals.append(left_normal)
-    vertex_normals.append(right_normal)
-
-
-def _calculate_normals_along_direction(left: float | Any, normalize: Callable[..., Any],
-                                       pos: ndarray[Any, dtype[bool_]] | Any,
-                                       right: ndarray[Any, dtype[bool_]] | float | Any, vertex_normals: list[Any]):
-    """Tip: normals point along direction"""
-    vertex_normals.append(normalize(left - pos))
-    vertex_normals.append(normalize(right - pos))
-
-
-def _calculate_normals_along_binormal(binormal: Any, vertex_normals: list[Any]):
-    """Base: normals point along binormal"""
-    vertex_normals.append(-binormal)
-    vertex_normals.append(binormal)
-
-
 def generate_ribbon_geometry_per_chain(
     all_ca_coords: np.ndarray,
     all_chain_ids: list,
@@ -439,7 +166,7 @@ def generate_ribbon_geometry_per_chain(
             ca_colors = np.tile(color, (len(ca_array), 1)).astype(np.float32)
 
             context = RibbonBuildContext(coords=ca_array, colors=ca_colors, chain_ids=chain_id_list)
-            config = RibbonStyleConfig(style=style,width_scale=ribbon_width_scale, use_ribbons_style=True)
+            config = RibbonStyleConfig(style=style, width_scale=ribbon_width_scale, use_ribbons_style=True)
 
             vertex_data = generate_ribbon_geometry_with_colors_from_context(
                 context,
