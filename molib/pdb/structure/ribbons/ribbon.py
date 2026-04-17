@@ -32,7 +32,6 @@ from picogl.buffers.vertex.meta_data import VertexMetadata
 from picogl.renderer import MeshData
 
 
-
 def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     context: RibbonBuildContext,
     config: RibbonStyleConfig) -> dict[Any, MeshData]:
