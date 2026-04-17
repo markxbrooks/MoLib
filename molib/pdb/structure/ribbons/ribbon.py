@@ -193,10 +193,6 @@ def generate_ribbon_geometry_with_colors_from_context(
     config: RibbonStyleConfig) -> VertexData:
     """generate ribbon geometry from context"""
     if config.use_ribbons_style:
-        # Use Ribbons-style B-spline approach for better accuracy.
-        # B-spline uses get_width(ss)*width and a 0.5 factor in guide points, so effective
-        # half-width is smaller than legacy (constant 0.5). Use ribbon_width_scale
-        # so modern ribbons match legacy visibility (helix half-width ~0.5).
         try:
             return generate_ribbon_ribbons_style(config, context)
 
@@ -210,6 +206,10 @@ def generate_ribbon_geometry_with_colors_from_context(
 
 def generate_ribbon_ribbons_style(config: RibbonStyleConfig, context: RibbonBuildContext) -> VertexData:
     """generate ribbon ribbons style"""
+    # Use Ribbons-style B-spline approach for better accuracy.
+    # B-spline uses get_width(ss)*width and a 0.5 factor in guide points, so effective
+    # half-width is smaller than legacy (constant 0.5). Use ribbon_width_scale
+    # so modern ribbons match legacy visibility (helix half-width ~0.5).
     geo_data, ribbon_edges, ribbon_frenet = (
         generate_ribbon_geometry_ribbons_style(
             context.coords,
