@@ -26,7 +26,8 @@ from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.entities.secondary_structure_type import SecondaryStructureType, normalize_ss, HELIX_TYPES, SHEET_TYPES, \
     SecondaryStructureWidth
 from molib.pdb.structure.ribbons.style import RibbonStyleConfig
-from picogl.buffers.geometry import GeometryData
+from picogl.renderer import MeshData
+
 
 class _ResgeomContext(Protocol):
     num_threads: int

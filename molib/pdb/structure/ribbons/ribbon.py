@@ -22,7 +22,7 @@ from collections import defaultdict
 from decologr import Decologr as log
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.calc.geometry.ribbons_bspline import (
-    generate_ribbon_geometry_ribbons_style, generate_ribbon_geometry_ribbons_style_from_context)
+    generate_ribbon_geometry_ribbons_style_from_context)
 from molib.calc.geometry.spline import catmull_rom_chain
 from molib.pdb.structure.ribbons.arrow import generate_arrow_geometry
 from molib.pdb.structure.ribbons.style import RibbonStyleConfig
