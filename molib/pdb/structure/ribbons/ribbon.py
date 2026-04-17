@@ -37,7 +37,6 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     context: RibbonBuildContext,
     config: RibbonStyleConfig) -> dict[Any, MeshData]:
     """generate ribbon geometry per chain by ca"""
-    from collections import defaultdict
 
     # Group CA coordinates, colors, O coords, and SS types by chain
     coords_by_chain = defaultdict(list)
