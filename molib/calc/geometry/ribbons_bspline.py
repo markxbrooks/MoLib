@@ -1212,8 +1212,8 @@ def generate_ribbon_geometry_ribbons_style(
                     normals[last_idx],
                     binormals[last_idx],
                 )
-    geo_data = GeometryData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
-    return geo_data, ribbon_edges, ribbon_frenet
+    mesh_data = MeshData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
+    return mesh_data, ribbon_edges, ribbon_frenet
 
 
 def generate_ribbon_geometry_ribbons_style_from_context(
@@ -1463,8 +1463,7 @@ def generate_resgeom_flat(
     # Front face: all threads, all samples
     # Back face: all threads (reversed), all samples
     # This matches ResGeomFlat lines 1741-1753
-    vertices = []
-    normals = []
+    vertices, normals = [], []
 
     # Front face vertices and normals
     for k in range(num_threads):
@@ -1494,24 +1493,11 @@ def generate_resgeom_flat(
     for k in range(num_threads - 1):
         for j in range(ns):
             # Front face quad
-            v0 = front_base + k * (ns + 1) + j
-            v1 = front_base + k * (ns + 1) + j + 1
-            v2 = front_base + (k + 1) * (ns + 1) + j
-            v3 = front_base + (k + 1) * (ns + 1) + j + 1
-
-            # Two triangles per quad (matching DrawRibnFlat QUAD_STRIP)
-            indices.extend([v0, v1, v2])
-            indices.extend([v1, v3, v2])
+            generate_front_base(front_base, indices, j, k, ns)
 
             # Back face quad (reversed winding)
-            v0_b = back_base + k * (ns + 1) + j
-            v1_b = back_base + k * (ns + 1) + j + 1
-            v2_b = back_base + (k + 1) * (ns + 1) + j
-            v3_b = back_base + (k + 1) * (ns + 1) + j + 1
-
-            # Two triangles per quad (reversed for backface)
-            indices.extend([v0_b, v2_b, v1_b])
-            indices.extend([v1_b, v2_b, v3_b])
+            generate_front_base(back_base, indices, j, k, ns)
+            generate_back_base(back_base, indices, j, k, ns)
 
     indices = np.array(indices, dtype=np.uint32)
 
@@ -1519,6 +1505,33 @@ def generate_resgeom_flat(
     colors = generate_colors_from_positions(vertices, 1.0, 1.0, 1.0)
 
     return vertices, normals, indices, colors
+
+
+def generate_back_base(base: int, indices: list[Any], j: int, k: int, ns: int) -> list:
+    """generate front base - different winding order to front"""
+    v0, v1, v2, v3 = _generate_base(base, j, k, ns)
+
+    # Two triangles per quad (reversed for backface)
+    indices.extend([v0, v2, v1])
+    indices.extend([v1, v2, v3])
+
+
+def generate_front_base(base: int, indices: list[Any], j: int, k: int, ns: int) -> list:
+    """generate front base - different winding order to back"""
+    v0, v1, v2, v3 = _generate_base(base, j, k, ns)
+
+    # Two triangles per quad (matching DrawRibnFlat QUAD_STRIP)
+    indices.extend([v0, v1, v2])
+    indices.extend([v1, v3, v2])
+
+
+def _generate_base(base: int, j: int, k: int, ns: int) -> tuple[int, int, int, int]:
+    """generate base"""
+    v0 = base + k * (ns + 1) + j
+    v1 = base + k * (ns + 1) + j + 1
+    v2 = base + (k + 1) * (ns + 1) + j
+    v3 = base + (k + 1) * (ns + 1) + j + 1
+    return v0, v1, v2, v3
 
 
 def create_resgeom_flat_from_context(
