@@ -37,19 +37,18 @@ def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     context: RibbonBuildContext,
     config: RibbonStyleConfig) -> dict[Any, MeshData]:
     """generate ribbon geometry per chain by ca"""
-    return generate_ribbon_geometry_per_chain_color_by_ca(
-        context.coords,
-        context.chain_ids,
-        context.colors,
-        use_ribbons_style=config.use_ribbons_style,
-        style=config.style,
-        ribbon_width_scale=config.width_scale,
-        has_arrow=config.has_arrow,
-    )
-    
+    # return generate_ribbon_geometry_per_chain_color_by_ca(
+    all_chain_ids=context.coords
+    all_chain_ids=context.chain_ids
+    all_ca_colors=context.colors
+    use_ribbons_style=config.use_ribbons_style
+    style=config.style
+    ribbon_width_scale=config.width_scale,
+    has_arrow=config.has_arrow,
+    # )
 
-def generate_ribbon_geometry_per_chain_color_by_ca(
-    all_ca_coords: np.ndarray,
+    # def generate_ribbon_geometry_per_chain_color_by_ca(
+    """ all_ca_coords: np.ndarray,
     all_chain_ids: list,
     all_ca_colors: np.ndarray,
     use_ribbons_style: bool = True,
@@ -58,8 +57,8 @@ def generate_ribbon_geometry_per_chain_color_by_ca(
     style: str = RibbonStyle.SQUARE,
     ribbon_width_scale: float = RIBBON_WIDTH_SCALE,
     has_arrow: bool = False,
-) -> dict[Any, MeshData]:
-    """
+    ) -> dict[Any, MeshData]:
+    
     Generate ribbon meshdata for each chain separately, with per-CA colors.
 
     Uses Ribbons-style B-splines by default for better visual accuracy.
