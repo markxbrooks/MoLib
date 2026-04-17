@@ -140,8 +140,8 @@ def generate_ribbon_geometry_with_colors_from_context(
 def _append_arrow(
     mesh_data: MeshData,
     vertex_chain_ids,
-    context,
-    config,
+    context: RibbonBuildContext,
+    config: ArrowConfig,
     ribbon_edges,
     ribbon_frenet,
 ) -> tuple[MeshData, list[str]]:
