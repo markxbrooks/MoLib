@@ -15,13 +15,14 @@ from picogl.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 
 
-def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1: Any, p2: Any, ribbon_geom: RibbonGeometryContext, arrow_config: ArrowConfig) -> MeshData:
+def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1: Any, p2: Any,
+                                         ribbon_geom: RibbonGeometryContext, arrow_config: ArrowConfig) -> MeshData:
     """generate arrow geometry"""
-    color=tuple(context.colors[-1])
-    ribbon_plane_normal=ribbon_geom.plane_normal
-    ribbon_binormal=ribbon_geom.binormal
-    ribbon_left_edge=ribbon_geom.left_edge
-    ribbon_right_edge=ribbon_geom.right_edge
+    color = tuple(context.colors[-1])
+    ribbon_plane_normal = ribbon_geom.plane_normal
+    ribbon_binormal = ribbon_geom.binormal
+    ribbon_left_edge = ribbon_geom.left_edge
+    ribbon_right_edge = ribbon_geom.right_edge
     p1 = get_np_array(p1)
     p2 = get_np_array(p2)
 
@@ -30,10 +31,10 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
     length = np.linalg.norm(direction)
     if length < MoLibConstant.EPSILON:
         return as_meshdata(positions=np.zeros((0, 3)),
-            colors=np.zeros((0, 3)),
-            normals=np.zeros((0,), dtype=np.uint32),
-            indices=np.zeros((0, 3)),
-        )
+                           colors=np.zeros((0, 3)),
+                           normals=np.zeros((0,), dtype=np.uint32),
+                           indices=np.zeros((0, 3)),
+                           )
 
     direction = direction / length
 
@@ -65,7 +66,7 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
 
     # Generate arrow meshdata using Ribbons' approach
     # Create samples along arrow length, tapering from base_width to head_width
-    vertices,  vertex_normals, indices = [], [], []
+    vertices, vertex_normals, indices = [], [], []
 
     # Ribbons' ArrowLines approach: taper width along the arrow
     for i in range(arrow_config.num_samples + 1):
