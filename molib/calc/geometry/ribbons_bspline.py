@@ -1319,7 +1319,7 @@ def generate_resgeom_flat(
     return as_meshdata(positions=vertices, normals=normals, indices=indices, colors=colors)
 
 
-def generate_triangle_indices(ns: ndarray[Any, Any], num_threads: int) -> ndarray[Any, Any]:
+def generate_triangle_indices(ns: int, num_threads: int) -> ndarray[Any, Any]:
     # Generate triangle indices (QUAD_STRIP converted to triangles)
     # Front face: quads between adjacent threads
     # This matches DrawRibnFlat's QUAD_STRIP logic
@@ -1340,8 +1340,8 @@ def generate_triangle_indices(ns: ndarray[Any, Any], num_threads: int) -> ndarra
     return indices
 
 
-def build_output_arrays(max_samples: int, ns: ndarray[Any, Any], num_threads: int, xn: ndarray[Any, Any], xn_back,
-                        xv: int, xv_back) -> tuple[
+def build_output_arrays(max_samples: int, ns: int, num_threads: int, xn: ndarray[Any, Any], xn_back,
+                        xv: ndarray, xv_back) -> tuple[
     ndarray[Any, dtype[floating[_32Bit]]], ndarray[Any, dtype[floating[_32Bit]]]]:
     # Step 6: Build output arrays (matching ResGeomFlat structure)
     # Front face: all threads, all samples
@@ -1369,7 +1369,7 @@ def build_output_arrays(max_samples: int, ns: ndarray[Any, Any], num_threads: in
     return normals, vertices
 
 
-def create_backface(max_samples: int, ns: ndarray[Any, Any], num_threads: int, xn: ndarray[Any, Any], xv: int) -> tuple[
+def create_backface(max_samples: int, ns: int, num_threads: int, xn: ndarray[Any, Any], xv: ndarray) -> tuple[
     Any, ndarray[Any, dtype[Any]]]:
     # Step 5: FlipLineNormals - Create backface with thickness
     # This matches Ribbons' FlipLineNormals function (lines 1707-1714)
@@ -1387,7 +1387,7 @@ def create_backface(max_samples: int, ns: ndarray[Any, Any], num_threads: int, x
     return xn_back, xv_back
 
 
-def set_line_normals(max_samples: int, ns: ndarray[Any, Any], num_threads: int, xv: int) -> np.ndarray:
+def set_line_normals(max_samples: int, ns: int, num_threads: int, xv: ndarray) -> np.ndarray:
     # Step 4: SetLineNormals - Calculate normals from cross products
     # This matches Ribbons' SetLineNormals function for RIB_FLAT (lines 1465-1501)
     # Set edge wrapping for flat style
@@ -1418,7 +1418,7 @@ def set_line_normals(max_samples: int, ns: ndarray[Any, Any], num_threads: int, 
 
 
 def taper_arrowhead(arrow_base_width: float | floating[Any] | None, arrow_head_width: float | None, has_arrow: bool,
-                    ns: ndarray[Any, Any], num_threads: int, xv: int):
+                    ns: int, num_threads: int, xv: ndarray):
     # Step 3: ArrowLines - Taper ribbon width for arrowhead (if requested)
     # This matches Ribbons' ArrowLines function (lines 1524-1555)
     if has_arrow and num_threads >= 2:

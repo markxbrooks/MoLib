@@ -8,3 +8,4 @@ class ArrowConfig:
     base_width: Optional[float] = None
     head_width: Optional[float] = 0.0
     num_samples: int = 8
+    width_scale: float = 0.25
