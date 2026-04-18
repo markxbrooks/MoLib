@@ -48,7 +48,7 @@ def empty_vertex(n_points: int, components: int) -> np.ndarray:
     rows, cols = _buffer_shape(n_points, components)
     return np.empty((rows, cols), dtype=np.float32)
 
-def empty_ribbon_buffers(n_points: int, with_indices: bool = False) -> MeshLayout:
+def empty_mesh_buffers(n_points: int, with_indices: bool = False) -> MeshLayout:
     if n_points < 1:
         raise ValueError("n_points must be at least 1")
     components = 3
