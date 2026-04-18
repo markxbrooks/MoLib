@@ -705,6 +705,18 @@ class RibbonMeta:
 
 
 @dataclass
+class RibbonMetaExtractContext:
+    """Inputs for ribbon edge / Frenet extraction (arrow placement)."""
+    centerline: np.ndarray
+    tangents: np.ndarray
+    normals: np.ndarray
+    binormals: np.ndarray
+    width: float
+    widths: Optional[np.ndarray]
+    vertices: np.ndarray
+
+
+@dataclass
 class MeshResult:
     """Mesh Result"""
     vertices: np.ndarray
@@ -809,32 +821,38 @@ def generate_ribbon_geometry_ribbons_style(
     ribbon_edges = None
     ribbon_frenet = None
 
-    META_EXTRACTORS = {
+    meta_extractors = {
         RibbonStyle.SQUARE: extract_square_meta,
         RibbonStyle.ELLIPSE: extract_ellipse_meta,
         RibbonStyle.CIRCLE: extract_circle_meta,
         RibbonStyle.FLAT: extract_flat_meta,
     }
-    extractor = META_EXTRACTORS[style]
+    extractor = meta_extractors.get(style)
+    if extractor is not None and should_extract_ribbon_meta(style, vertices, centerline):
+        meta_ctx = RibbonMetaExtractContext(
+            centerline=centerline,
+            tangents=tangents,
+            normals=normals,
+            binormals=binormals,
+            width=width,
+            widths=widths,
+            vertices=vertices,
+        )
+        ribbon_edges, ribbon_frenet = extractor(meta_ctx)
 
-    if style == RibbonStyle.SQUARE and len(vertices) >= 4:
-        ribbon_edges, ribbon_frenet = extractor(binormals, centerline, normals, ribbon_edges, ribbon_frenet,
-                                                          tangents, vertices)
-
-    elif style == RibbonStyle.ELLIPSE and len(centerline) > 0:
-        ribbon_edges, ribbon_frenet = extractor(binormals, centerline, normals, ribbon_edges, ribbon_frenet,
-                                                           tangents, width, widths)
-
-    elif style == RibbonStyle.CIRCLE and len(centerline) > 0:
-        ribbon_edges, ribbon_frenet = extractor(binormals, centerline, normals, ribbon_edges, ribbon_frenet,
-                                                          tangents, width, widths)
-
-    elif style == RibbonStyle.FLAT and len(vertices) >= 2:
-        ribbon_edges, ribbon_frenet = extractor(binormals, centerline, normals, ribbon_edges, ribbon_frenet,
-                                                        tangents, vertices)
     mesh_data = MeshData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
 
     return mesh_data, ribbon_edges, ribbon_frenet
+
+
+def should_extract_ribbon_meta(style: str, vertices: np.ndarray, centerline: np.ndarray) -> bool:
+    if style == RibbonStyle.SQUARE:
+        return len(vertices) >= 4
+    if style == RibbonStyle.FLAT:
+        return len(vertices) >= 2
+    if style in (RibbonStyle.ELLIPSE, RibbonStyle.CIRCLE):
+        return len(centerline) > 0
+    return False
 
 
 def has_mesh_cross_section(style, vertices):
@@ -848,103 +866,100 @@ def has_curve_data(centerline):
     return len(centerline) > 0
 
 
-def extract_flat_meta(binormals: ndarray, centerline: ndarray, normals: ndarray, ribbon_edges: tuple[Any, Any],
-                      ribbon_frenet: tuple[Any, Any, Any], tangents: ndarray, vertices: ndarray) -> tuple[
-    tuple[Any, Any], tuple[Any, Any, Any]]:
+def extract_flat_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any | None]:
     # For flat style, last two vertices are the edges
-    ribbon_edges = (vertices[-2], vertices[-1])
-
-    # Return Frenet frame
-    if len(centerline) > 0:
-        last_idx = len(centerline) - 1
+    ribbon_edges = (ctx.vertices[-2], ctx.vertices[-1])
+    ribbon_frenet = None
+    if len(ctx.centerline) > 0:
+        last_idx = len(ctx.centerline) - 1
         if (
-                last_idx < len(tangents)
-                and last_idx < len(normals)
-                and last_idx < len(binormals)
+                last_idx < len(ctx.tangents)
+                and last_idx < len(ctx.normals)
+                and last_idx < len(ctx.binormals)
         ):
             ribbon_frenet = (
-                tangents[last_idx],
-                normals[last_idx],
-                binormals[last_idx],
+                ctx.tangents[last_idx],
+                ctx.normals[last_idx],
+                ctx.binormals[last_idx],
             )
     return ribbon_edges, ribbon_frenet
 
 
-def extract_circle_meta(binormals: ndarray, centerline: ndarray, normals: ndarray,
-                        ribbon_edges: tuple[float | Any, float | Any], ribbon_frenet: tuple[Any, Any, Any],
-                        tangents: ndarray, width: float, widths: ndarray | ndarray[Any, dtype[floating[Any]]]) -> tuple[
-    tuple[float | Any, float | Any], tuple[Any, Any, Any]]:
+def extract_circle_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any | None]:
+    ribbon_edges = None
+    ribbon_frenet = None
+    widths = ctx.widths
+    if widths is None:
+        return ribbon_edges, ribbon_frenet
     # For circle, use last cross-section extremes along major axis
-    last_idx = len(centerline) - 1
+    last_idx = len(ctx.centerline) - 1
     if (
-            last_idx < len(tangents)
-            and last_idx < len(normals)
-            and last_idx < len(binormals)
+            last_idx < len(ctx.tangents)
+            and last_idx < len(ctx.normals)
+            and last_idx < len(ctx.binormals)
     ):
-        center = centerline[last_idx]
-        b = binormals[last_idx]
-        tube_radius = widths[last_idx] if last_idx < len(widths) else width
+        center = ctx.centerline[last_idx]
+        b = ctx.binormals[last_idx]
+        tube_radius = widths[last_idx] if last_idx < len(widths) else ctx.width
         left_edge = center + b * tube_radius
         right_edge = center - b * tube_radius
         ribbon_edges = (left_edge, right_edge)
         ribbon_frenet = (
-            tangents[last_idx],
-            normals[last_idx],
-            binormals[last_idx],
+            ctx.tangents[last_idx],
+            ctx.normals[last_idx],
+            ctx.binormals[last_idx],
         )
     return ribbon_edges, ribbon_frenet
 
 
-def extract_ellipse_meta(binormals: ndarray, centerline: ndarray, normals: ndarray,
-                         ribbon_edges: tuple[float | Any, float | Any], ribbon_frenet: tuple[Any, Any, Any],
-                         tangents: ndarray, width: float, widths: ndarray | ndarray[Any, dtype[floating[Any]]]) -> \
-tuple[tuple[float | Any, float | Any], tuple[Any, Any, Any]]:
+def extract_ellipse_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any | None]:
+    ribbon_edges = None
+    ribbon_frenet = None
+    widths = ctx.widths
+    if widths is None:
+        return ribbon_edges, ribbon_frenet
     # For ellipse, use last cross-section extremes along major axis
-    last_idx = len(centerline) - 1
+    last_idx = len(ctx.centerline) - 1
     if (
-            last_idx < len(tangents)
-            and last_idx < len(normals)
-            and last_idx < len(binormals)
+            last_idx < len(ctx.tangents)
+            and last_idx < len(ctx.normals)
+            and last_idx < len(ctx.binormals)
     ):
-        center = centerline[last_idx]
-        b = binormals[last_idx]
-        rmaj = 0.5 * (widths[last_idx] if last_idx < len(widths) else width)
-        depth = width * 0.4
+        center = ctx.centerline[last_idx]
+        b = ctx.binormals[last_idx]
+        rmaj = 0.5 * (widths[last_idx] if last_idx < len(widths) else ctx.width)
         left_edge = center + b * rmaj
         right_edge = center - b * rmaj
         ribbon_edges = (left_edge, right_edge)
         ribbon_frenet = (
-            tangents[last_idx],
-            normals[last_idx],
-            binormals[last_idx],
+            ctx.tangents[last_idx],
+            ctx.normals[last_idx],
+            ctx.binormals[last_idx],
         )
     return ribbon_edges, ribbon_frenet
 
 
-def extract_square_meta(binormals: ndarray, centerline: ndarray, normals: ndarray,
-                        ribbon_edges: tuple[float | Any, float | Any], ribbon_frenet: tuple[Any, Any, Any],
-                        tangents: ndarray, vertices: ndarray) -> tuple[
-    tuple[float | Any, float | Any], tuple[Any, Any, Any]]:
-
+def extract_square_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any | None]:
     # For square style, get the last 4 corners (last cross-section)
-    last_corners = vertices[-4:]
+    last_corners = ctx.vertices[-4:]
     # Calculate left and right edges (average of opposite corners)
     left_edge = (last_corners[0] + last_corners[3]) * 0.5
     right_edge = (last_corners[1] + last_corners[2]) * 0.5
     ribbon_edges = (left_edge, right_edge)
 
+    ribbon_frenet = None
     # Also return Frenet frame at the end for arrow orientation
-    if len(centerline) > 0:
-        last_idx = len(centerline) - 1
+    if len(ctx.centerline) > 0:
+        last_idx = len(ctx.centerline) - 1
         if (
-                last_idx < len(tangents)
-                and last_idx < len(normals)
-                and last_idx < len(binormals)
+                last_idx < len(ctx.tangents)
+                and last_idx < len(ctx.normals)
+                and last_idx < len(ctx.binormals)
         ):
             ribbon_frenet = (
-                tangents[last_idx],
-                normals[last_idx],
-                binormals[last_idx],
+                ctx.tangents[last_idx],
+                ctx.normals[last_idx],
+                ctx.binormals[last_idx],
             )
     return ribbon_edges, ribbon_frenet
 
