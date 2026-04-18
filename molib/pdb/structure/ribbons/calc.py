@@ -18,8 +18,8 @@ tuple[float | ndarray[Any, dtype[floating[Any]]], float, Any]:
     ribbon_plane_normal = ribbon_geom.plane_normal
     ribbon_right_edge = ribbon_geom.right_edge
     """Use actual ribbon edges to determine arrow plane"""
-    left_edge = np.asarray(ribbon_left_edge, dtype=np.float32)
-    right_edge = np.asarray(ribbon_right_edge, dtype=np.float32)
+    left_edge = np.asarray(ribbon_geom.left_edge, dtype=np.float32)
+    right_edge = np.asarray(ribbon_geom.right_edge, dtype=np.float32)
 
     ribbon_width, ribbon_width_vec = _calculate_ribbon_width_attrs(left_edge, right_edge)
 
