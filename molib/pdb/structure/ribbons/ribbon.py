@@ -43,17 +43,20 @@ class MeshLayout:
     colors: np.ndarray
     indices: Optional[np.ndarray]
     
-
-def empty_vertex(n_points, components) -> np.ndarray:
-    rows, cols = _buffer-shape(n_points, components)
+    
+def empty_vertex(n_points: int, components: int) -> np.ndarray:
+    rows, cols = _buffer_shape(n_points, components)
     return np.empty((rows, cols), dtype=np.float32)
 
-def empty_ribbon_buffers(n_points: int, with_indices: bool = False) -> RibbonLayout:
+def empty_ribbon_buffers(n_points: int, with_indices: bool = False) -> MeshLayout:
+    if n_points < 1:
+        raise ValueError("n_points must be at least 1")
     components = 3
     vertices = empty_vertex(n_points, components)
     normals  = empty_vertex(n_points, components)
     colors   = empty_vertex(n_points, components)
-    indices  = np.empty(((n_points - 1) * 6,), dtype=np.uint32) if with_indices else None
+    indices  = (np.empty(((n_points - 1) * 6,), dtype=np.uint32)
+                if with_indices and n_points > 1 else None)
 
     return MeshLayout(
         vertices=vertices,
