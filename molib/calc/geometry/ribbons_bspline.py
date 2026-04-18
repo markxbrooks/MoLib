@@ -866,76 +866,84 @@ def has_curve_data(centerline):
     return len(centerline) > 0
 
 
+def safe_width(ctx: RibbonBuilderGeometryContext | RibbonMetaExtractContext, i: int) -> Any:
+    """Width at sample ``i``, falling back to ``ctx.width`` when out of range or missing ``widths``."""
+    if ctx.widths is None:
+        return ctx.width
+    return ctx.widths[i] if i < len(ctx.widths) else ctx.width
+
+
+def last_i(ctx: RibbonBuilderGeometryContext | RibbonMetaExtractContext) -> int:
+    """Last valid centerline index, or ``-1`` when ``centerline`` is missing or empty."""
+    if ctx.centerline is None:
+        return -1
+    return len(ctx.centerline) - 1
+
+
+def get_last_frenet(ctx: RibbonMetaExtractContext) -> tuple[Any, Any, Any] | None:
+    """Frenet triple at the last centerline sample, or ``None`` if unavailable."""
+    i = last_i(ctx)
+    if i < 0:
+        return None
+
+    if (
+            i >= len(ctx.tangents)
+            or i >= len(ctx.normals)
+            or i >= len(ctx.binormals)
+    ):
+        return None
+
+    return (
+        ctx.tangents[i],
+        ctx.normals[i],
+        ctx.binormals[i],
+    )
+
+
 def extract_flat_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any | None]:
     # For flat style, last two vertices are the edges
     ribbon_edges = (ctx.vertices[-2], ctx.vertices[-1])
-    ribbon_frenet = None
-    if len(ctx.centerline) > 0:
-        last_idx = len(ctx.centerline) - 1
-        if (
-                last_idx < len(ctx.tangents)
-                and last_idx < len(ctx.normals)
-                and last_idx < len(ctx.binormals)
-        ):
-            ribbon_frenet = (
-                ctx.tangents[last_idx],
-                ctx.normals[last_idx],
-                ctx.binormals[last_idx],
-            )
+    ribbon_frenet = get_last_frenet(ctx)
     return ribbon_edges, ribbon_frenet
 
 
 def extract_circle_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any | None]:
     ribbon_edges = None
-    ribbon_frenet = None
-    widths = ctx.widths
-    if widths is None:
+    if ctx.widths is None:
+        return ribbon_edges, None
+
+    ribbon_frenet = get_last_frenet(ctx)
+    if ribbon_frenet is None:
         return ribbon_edges, ribbon_frenet
+
+    li = last_i(ctx)
     # For circle, use last cross-section extremes along major axis
-    last_idx = len(ctx.centerline) - 1
-    if (
-            last_idx < len(ctx.tangents)
-            and last_idx < len(ctx.normals)
-            and last_idx < len(ctx.binormals)
-    ):
-        center = ctx.centerline[last_idx]
-        b = ctx.binormals[last_idx]
-        tube_radius = widths[last_idx] if last_idx < len(widths) else ctx.width
-        left_edge = center + b * tube_radius
-        right_edge = center - b * tube_radius
-        ribbon_edges = (left_edge, right_edge)
-        ribbon_frenet = (
-            ctx.tangents[last_idx],
-            ctx.normals[last_idx],
-            ctx.binormals[last_idx],
-        )
+    center = ctx.centerline[li]
+    b = ctx.binormals[li]
+    tube_radius = safe_width(ctx, li)
+    left_edge = center + b * tube_radius
+    right_edge = center - b * tube_radius
+    ribbon_edges = (left_edge, right_edge)
     return ribbon_edges, ribbon_frenet
 
 
 def extract_ellipse_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any | None]:
     ribbon_edges = None
-    ribbon_frenet = None
-    widths = ctx.widths
-    if widths is None:
+    if ctx.widths is None:
+        return ribbon_edges, None
+
+    ribbon_frenet = get_last_frenet(ctx)
+    if ribbon_frenet is None:
         return ribbon_edges, ribbon_frenet
+
+    li = last_i(ctx)
     # For ellipse, use last cross-section extremes along major axis
-    last_idx = len(ctx.centerline) - 1
-    if (
-            last_idx < len(ctx.tangents)
-            and last_idx < len(ctx.normals)
-            and last_idx < len(ctx.binormals)
-    ):
-        center = ctx.centerline[last_idx]
-        b = ctx.binormals[last_idx]
-        rmaj = 0.5 * (widths[last_idx] if last_idx < len(widths) else ctx.width)
-        left_edge = center + b * rmaj
-        right_edge = center - b * rmaj
-        ribbon_edges = (left_edge, right_edge)
-        ribbon_frenet = (
-            ctx.tangents[last_idx],
-            ctx.normals[last_idx],
-            ctx.binormals[last_idx],
-        )
+    center = ctx.centerline[li]
+    b = ctx.binormals[li]
+    rmaj = 0.5 * safe_width(ctx, li)
+    left_edge = center + b * rmaj
+    right_edge = center - b * rmaj
+    ribbon_edges = (left_edge, right_edge)
     return ribbon_edges, ribbon_frenet
 
 
@@ -947,20 +955,7 @@ def extract_square_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any 
     right_edge = (last_corners[1] + last_corners[2]) * 0.5
     ribbon_edges = (left_edge, right_edge)
 
-    ribbon_frenet = None
-    # Also return Frenet frame at the end for arrow orientation
-    if len(ctx.centerline) > 0:
-        last_idx = len(ctx.centerline) - 1
-        if (
-                last_idx < len(ctx.tangents)
-                and last_idx < len(ctx.normals)
-                and last_idx < len(ctx.binormals)
-        ):
-            ribbon_frenet = (
-                ctx.tangents[last_idx],
-                ctx.normals[last_idx],
-                ctx.binormals[last_idx],
-            )
+    ribbon_frenet = get_last_frenet(ctx)
     return ribbon_edges, ribbon_frenet
 
 
@@ -1138,9 +1133,6 @@ def build_flat_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     normals = ctx.normals
     p_spline = ctx.p_spline
     q_spline = ctx.q_spline
-    widths = ctx.widths
-    width = ctx.width
-
     n_points = len(ctx.centerline)
     for i in range(n_points):
         # Use the p and q splines directly (these are the actual ribbon edges)
@@ -1153,7 +1145,7 @@ def build_flat_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
         else:
             # Fallback to centerline + offset using actual width
             center = ctx.centerline[i]
-            actual_width = widths[i] if widths is not None and i < len(widths) else width
+            actual_width = safe_width(ctx, i)
             nvec = normals[i]
             left = center - nvec * actual_width * 0.5
             right = center + nvec * actual_width * 0.5
