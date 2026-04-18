@@ -11,7 +11,8 @@ This module supports two ribbon generation methods:
 2. B-splines (Ribbons approach) - more accurate, uses peptide plane meshdata
 
 """
-from typing import Any
+from typing import Any, Tuple
+import numpy as np
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -32,6 +33,7 @@ from molib.pdb.structure.ribbons.style import RibbonStyleConfig
 
 from picogl.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
+
 
 class RibbonLayout(NamedTuple):
     vertices: np.ndarray
@@ -298,9 +300,26 @@ def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5)
     return as_meshdata(positions=vertices, normals=normals, colors=colors, indices=indices)
 
 
-def _vec3_empty_indices(n_points: int) -> np.ndarray:
-    return np.empty(((n_points - 1) * 6,), dtype=np.uint32)
+# def _vec3_empty_indices(n_points: int) -> np.ndarray:
+#.   return np.empty(((n_points - 1) * 6,), dtype=np.uint32)
 
+
+# def _vec3_points(n_points: int) -> np.ndarray:
+#.   return np.empty((n_points * 2, 3), dtype=np.float32)
+    
+
+def _buffer_shape(n_points: int, components: int = 3) -> Tuple[int, int]:
+    """Generic shape for a 3-component (or n-component) per-point buffer.
+       For ribbons: 2 points per control point -> rows = n_points * 2, cols = components."""
+    return (n_points * 2, components)
 
 def _vec3_points(n_points: int) -> np.ndarray:
-    return np.empty((n_points * 2, 3), dtype=np.float32)
+    """Allocate a 3-component per-vertex buffer for ribbon points."""
+    rows, cols = _buffer_shape(n_points, components=3)
+    return np.empty((rows, cols), dtype=np.float32)
+
+def _vec3_empty_indices(n_points: int) -> np.ndarray:
+    """Allocate indices buffer for a strip between consecutive points (3 components implied)."""
+    # If your indexing uses 6 indices per segment for a double-sided quad strip:
+    return np.empty(((n_points - 1) * 6,), dtype=np.uint32)
+
