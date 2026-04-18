@@ -11,27 +11,21 @@ def use_ribbon_edges_to_determine_arrow_plane(arrow_config | None,
                                               direction: ndarray[Any, dtype[floating[Any]]],
                                               ribbon_geom) -> \
 tuple[float | ndarray[Any, dtype[floating[Any]]], float, Any]:
-    arrow_base_width = arrow_config.base_width
-    arrow_head_width = arrow_config.head_width
-    ribbon_binormal = ribbon_geom.binormal
-    ribbon_left_edge = ribbon_geom.left_edge
-    ribbon_plane_normal = ribbon_geom.plane_normal
-    ribbon_right_edge = ribbon_geom.right_edge
     """Use actual ribbon edges to determine arrow plane"""
     left_edge = np.asarray(ribbon_geom.left_edge, dtype=np.float32)
     right_edge = np.asarray(ribbon_geom.right_edge, dtype=np.float32)
 
     ribbon_width, ribbon_width_vec = _calculate_ribbon_width_attrs(left_edge, right_edge)
 
-    binormal = _calculate_binormal_from_ribbon_edges(normalize, ribbon_binormal, ribbon_width_vec)
+    binormal = _calculate_binormal_from_ribbon_edges(normalize, ribbon_geom.binormal, ribbon_width_vec)
 
-    _calculate_normal_perpendicular_to_ribbon_plane(binormal, direction, ribbon_plane_normal)
+    _calculate_normal_perpendicular_to_ribbon_plane(binormal, direction, ribbon_geom.plane_normal)
 
     # Arrow base width from ribbon width
     base_width = (
-        arrow_base_width if arrow_base_width is not None else ribbon_width * 0.5
+        arrow_config.base_width if arrow_config.base_width is not None else ribbon_width * 0.5
     )
-    head_width = arrow_head_width if arrow_head_width is not None else 0.0
+    head_width = arrow_config.head_width if arrow_config.head_width is not None else 0.0
     return base_width, binormal, head_width
 
 
