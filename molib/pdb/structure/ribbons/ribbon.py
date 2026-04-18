@@ -49,10 +49,10 @@ def empty_vertex(n_points, components) -> np.ndarray:
     return np.empty((rows, cols), dtype=np.float32)
 
 def empty_ribbon_buffers(n_points: int, with_indices: bool = False) -> RibbonLayout:
-    
-    vertices = empty_vertex(n_points)
-    normals  = empty_vertex(n_points)
-    colors   = empty_vertex(n_points)
+    components = 3
+    vertices = empty_vertex(n_points, components)
+    normals  = empty_vertex(n_points, components)
+    colors   = empty_vertex(n_points, components)
     indices  = np.empty(((n_points - 1) * 6,), dtype=np.uint32) if with_indices else None
 
     return MeshLayout(
