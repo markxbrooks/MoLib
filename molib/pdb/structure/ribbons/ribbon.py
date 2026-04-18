@@ -13,8 +13,6 @@ This module supports two ribbon generation methods:
 """
 from typing import Any, Tuple, Optional
 import numpy as np
-
-import numpy as np
 from scipy.spatial import cKDTree
 
 from dataclasses import dataclass
@@ -271,10 +269,11 @@ def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5)
 
     n_points = len(spline)
 
-    vertices = _vec3_points(n_points)
-    normals = _vec3_points(n_points)
-    colors = _vec3_points(n_points)
-    indices = _vec3_empty_indices(n_points)
+    layout = empty_mesh_buffers(n_points, with_indices=True)
+    vertices = layout.vertices
+    normals = layout.normals
+    colors = layout.colors
+    indices = layout.indices
 
     vertex_chain_ids = []
 
@@ -312,27 +311,7 @@ def generate_ribbon_catmull_rom(context: RibbonBuildContext, width: float = 0.5)
     return as_meshdata(positions=vertices, normals=normals, colors=colors, indices=indices)
 
 
-# def _vec3_empty_indices(n_points: int) -> np.ndarray:
-#.   return np.empty(((n_points - 1) * 6,), dtype=np.uint32)
-
-
-# def _vec3_points(n_points: int) -> np.ndarray:
-#.   return np.empty((n_points * 2, 3), dtype=np.float32)
-
-
 def _buffer_shape(n_points: int, components: int = 3) -> Tuple[int, int]:
     """Generic shape for a 3-component (or n-component) per-point buffer.
        For ribbons: 2 points per control point -> rows = n_points * 2, cols = components."""
     return (n_points * 2, components)
-
-
-def _vec3_points(n_points: int) -> np.ndarray:
-    """Allocate a 3-component per-vertex buffer for ribbon points."""
-    rows, cols = _buffer_shape(n_points, components=3)
-    return np.empty((rows, cols), dtype=np.float32)
-
-
-def _vec3_empty_indices(n_points: int) -> np.ndarray:
-    """Allocate indices buffer for a strip between consecutive points (3 components implied)."""
-    # If your indexing uses 6 indices per segment for a double-sided quad strip:
-    return np.empty(((n_points - 1) * 6,), dtype=np.uint32)
