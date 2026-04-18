@@ -33,6 +33,29 @@ from molib.pdb.structure.ribbons.style import RibbonStyleConfig
 from picogl.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 
+class RibbonLayout(NamedTuple):
+    vertices: np.ndarray
+    normals: np.ndarray
+    colors: np.ndarray
+    indices: Optional[np.ndarray]
+
+def empty_ribbon_vertex(n_points: int) -> np.ndarray:
+    return np.empty((n_points * 2, 3), dtype=np.float32)
+
+def empty_ribbon_buffers(n_points: int, with_indices: bool = False) -> RibbonLayout:
+    shape = (n_points * 2, 3)
+    vertices = empty_ribbon_vertex(n_points)
+    normals  = empty_ribbon_vertex(n_points)
+    colors   = empty_ribbon_vertex(n_points)
+    indices  = np.empty(((n_points - 1) * 6,), dtype=np.uint32) if with_indices else None
+
+    return RibbonLayout(
+        vertices=vertices,
+        normals=normals,
+        colors=colors,
+        indices=indices,
+    )
+
 
 def generate_ribbon_geometry_per_chain_color_by_ca_from_context(
     context: RibbonBuildContext,
