@@ -35,23 +35,27 @@ from picogl.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 
 
-class RibbonLayout(NamedTuple):
+@dataclass
+class MeshLayout:
+    """Mesh Layout"""
     vertices: np.ndarray
     normals: np.ndarray
     colors: np.ndarray
     indices: Optional[np.ndarray]
+    
 
-def empty_ribbon_vertex(n_points: int) -> np.ndarray:
-    return np.empty((n_points * 2, 3), dtype=np.float32)
+def empty_vertex(n_points, components) -> np.ndarray:
+    rows, cols = _buffer-shape(n_points, components)
+    return np.empty((rows, cols), dtype=np.float32)
 
 def empty_ribbon_buffers(n_points: int, with_indices: bool = False) -> RibbonLayout:
-    shape = (n_points * 2, 3)
-    vertices = empty_ribbon_vertex(n_points)
-    normals  = empty_ribbon_vertex(n_points)
-    colors   = empty_ribbon_vertex(n_points)
+    
+    vertices = empty_vertex(n_points)
+    normals  = empty_vertex(n_points)
+    colors   = empty_vertex(n_points)
     indices  = np.empty(((n_points - 1) * 6,), dtype=np.uint32) if with_indices else None
 
-    return RibbonLayout(
+    return MeshLayout(
         vertices=vertices,
         normals=normals,
         colors=colors,
