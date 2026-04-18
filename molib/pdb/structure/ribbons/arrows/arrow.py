@@ -39,11 +39,8 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
 
     # If ribbon edges are provided, use them (Ribbons approach)
     if ribbon_left_edge is not None and ribbon_right_edge is not None:
-        base_width, binormal, head_width = use_ribbon_edges_to_determine_arrow_plane(arrow_config.base_width,
-                                                                                     arrow_config.head_width, direction,
-                                                                                     ribbon_geom.binormal, ribbon_geom.left_edge,
-                                                                                     ribbon_geom.plane_normal,
-                                                                                     ribbon_geom.right_edge)
+        base_width, binormal, head_width = use_ribbon_edges_to_determine_arrow_plane(arrow_config, direction,
+                                                                                     ribbon_geom)
 
     else:
         # Fallback: calculate plane from direction and provided vectors
