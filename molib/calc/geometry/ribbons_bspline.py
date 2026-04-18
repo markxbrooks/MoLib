@@ -857,8 +857,8 @@ def should_extract_ribbon_meta(style: str, vertices: np.ndarray, centerline: np.
 
 def has_mesh_cross_section(style, vertices):
     return (
-        (style == RibbonStyle.SQUARE and len(vertices) >= 4) or
-        (style == RibbonStyle.FLAT and len(vertices) >= 2)
+            (style == RibbonStyle.SQUARE and len(vertices) >= 4) or
+            (style == RibbonStyle.FLAT and len(vertices) >= 2)
     )
 
 
