@@ -17,6 +17,7 @@ import numpy as np
 import numpy as np
 from scipy.spatial import cKDTree
 
+from dataclasses import dataclass
 from collections import defaultdict
 
 from decologr import Decologr as log
