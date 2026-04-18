@@ -7,11 +7,16 @@ from molib.calc.math.normal import normalize
 from molib.core.constants import MoLibConstant
 
 
-def use_ribbon_edges_to_determine_arrow_plane(arrow_base_width: float | None, arrow_head_width: float | None,
+def use_ribbon_edges_to_determine_arrow_plane(arrow_config | None,
                                               direction: ndarray[Any, dtype[floating[Any]]],
-                                              ribbon_binormal: ndarray | None, ribbon_left_edge: ndarray,
-                                              ribbon_plane_normal: ndarray | None, ribbon_right_edge: ndarray) -> \
+                                              ribbon_geom) -> \
 tuple[float | ndarray[Any, dtype[floating[Any]]], float, Any]:
+    arrow_base_width = arrow_config.base_width
+    arrow_head_width = arrow_config.head_width
+    ribbon_binormal = ribbon_geom.binormal
+    ribbon_left_edge = ribbon_geom.left_edge
+    ribbon_plane_normal = ribbon_geom.plane_normal
+    ribbon_right_edge = ribbon_geom.right_edge
     """Use actual ribbon edges to determine arrow plane"""
     left_edge = np.asarray(ribbon_left_edge, dtype=np.float32)
     right_edge = np.asarray(ribbon_right_edge, dtype=np.float32)
