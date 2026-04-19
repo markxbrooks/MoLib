@@ -8,6 +8,7 @@ class MoLibConstant:
     """MoLib Constant"""
     EPSILON_SMALL = 1e-8
     EPSILON = 1e-6
+    # Ribbon / chain-trace backbone guides: polypeptide uses CA; nucleic acid uses P.
     PEPTIDE_CHAIN_ATOMNAME = "CA" # MoLibConstant.PEPTIDE_CHAIN_ATOMNAME
     PEPTIDE_DISTANCE = 4.2
     NUCLEOTIDE_CHAIN_ATOMNAME = "P"

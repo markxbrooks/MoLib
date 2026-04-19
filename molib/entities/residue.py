@@ -92,6 +92,24 @@ class Res3D(Structure3D):
             return False
         return not np.allclose(self.atoms[MoLibConstant.PEPTIDE_CHAIN_ATOMNAME].pos, 0.0)
 
+    def ribbon_backbone_position(self) -> "np.ndarray":
+        """
+        Backbone point for ribbon splines: ``CA`` for standard polypeptide residues,
+        phosphate ``P`` for nucleotide residues (:data:`MoLibConstant.NUCLEOTIDE_CHAIN_ATOMNAME`).
+        """
+        from molib.entities.molecule import STANDARD_POLYPEPTIDE_RESIDUES
+
+        name = (self.name or "").strip().upper()
+        ca = MoLibConstant.PEPTIDE_CHAIN_ATOMNAME
+        p = MoLibConstant.NUCLEOTIDE_CHAIN_ATOMNAME
+        if name in STANDARD_POLYPEPTIDE_RESIDUES and ca in self.atoms:
+            return np.asarray(self.atoms[ca].pos, dtype=np.float32)
+        if p in self.atoms:
+            return np.asarray(self.atoms[p].pos, dtype=np.float32)
+        if ca in self.atoms:
+            return np.asarray(self.atoms[ca].pos, dtype=np.float32)
+        return np.asarray(self.pos, dtype=np.float32)
+
     def get_atom_positions(self) -> "np.ndarray":
         """Return all atom positions as a NumPy array."""
         return np.array([atom.pos for atom in self.atoms.values()], dtype=np.float32)

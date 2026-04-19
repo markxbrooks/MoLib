@@ -43,7 +43,7 @@ class SecondaryStructureColorProvider:
     """Secondary Structure Provider"""
     def __init__(self, mol3d):
         """constructor"""
-        self.residues = list(mol3d.residues_with_ca_protein_only())
+        self.residues = list(mol3d.get_ribbon_guide_residues())
 
     def get_color(self, index: int, chain_id: str):
         res = self.residues[index]
