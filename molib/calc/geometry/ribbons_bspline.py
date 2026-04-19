@@ -958,6 +958,37 @@ def extract_square_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any 
     ribbon_frenet = get_last_frenet(ctx)
     return ribbon_edges, ribbon_frenet
 
+import numpy as np
+
+def rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
+    """
+    Rodrigues' rotation formula.
+
+    Args:
+        axis: (3,) normalized rotation axis
+        angle: rotation angle in radians
+
+    Returns:
+        (3,3) rotation matrix
+    """
+    axis = np.asarray(axis, dtype=np.float32)
+
+    # ensure normalization (critical for stability)
+    norm = np.linalg.norm(axis)
+    if norm < 1e-8:
+        return np.eye(3, dtype=np.float32)
+    axis = axis / norm
+
+    x, y, z = axis
+    c = np.cos(angle)
+    s = np.sin(angle)
+    C = 1.0 - c
+
+    return np.array([
+        [c + x*x*C,     x*y*C - z*s, x*z*C + y*s],
+        [y*x*C + z*s,   c + y*y*C,   y*z*C - x*s],
+        [z*x*C - y*s,   z*y*C + x*s, c + z*z*C],
+    ], dtype=np.float32)
 
 def build_ellipse_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     # --- VECTORIZE ELLIPSE STYLE ---
@@ -1040,6 +1071,160 @@ def build_ellipse_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
 
 
 def build_square_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
+    # --- PARAMETERS ---
+    depth = ctx.width * 0.4
+    centerline = ctx.centerline
+    n = len(centerline)
+
+    widths = ctx.widths
+    width = ctx.width
+
+    # --- Tangents (stable, normalized) ---
+    tangents = compute_tangents(centerline).astype(np.float32)
+    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
+
+    # --- Allocate frames ---
+    normals = np.zeros((n, 3), dtype=np.float32)
+    binormals = np.zeros((n, 3), dtype=np.float32)
+
+    # --- Initial frame ---
+    up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+
+    t0 = tangents[0]
+    n0 = np.cross(t0, up)
+
+    if np.linalg.norm(n0) < 1e-6:
+        up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+        n0 = np.cross(t0, up)
+
+    n0 /= np.linalg.norm(n0)
+    b0 = np.cross(t0, n0)
+
+    normals[0] = n0
+    binormals[0] = b0
+
+    # --- Parallel transport frame propagation ---
+    for i in range(1, n):
+        v = centerline[i] - centerline[i - 1]
+        v /= np.linalg.norm(v)
+
+        axis = np.cross(tangents[i - 1], v)
+        axis_norm = np.linalg.norm(axis)
+
+        if axis_norm < 1e-8:
+            n_vec = normals[i - 1]
+        else:
+            axis /= axis_norm
+            angle = np.arccos(np.clip(np.dot(tangents[i - 1], v), -1.0, 1.0))
+            R = rotation_matrix(axis, angle)
+
+            n_vec = R @ normals[i - 1]
+
+        # enforce orthogonality
+        n_vec -= np.dot(n_vec, v) * v
+        n_vec /= np.linalg.norm(n_vec)
+
+        b = np.cross(v, n_vec)
+
+        normals[i] = n_vec
+        binormals[i] = b / np.linalg.norm(b)
+    """for i in range(1, n):
+        t_prev = tangents[i - 1]
+        t_curr = tangents[i]
+
+        v = np.cross(t_prev, t_curr)
+        s = np.linalg.norm(v)
+
+        if s < 1e-6:
+            n_vec = normals[i - 1]
+        else:
+            c = np.dot(t_prev, t_curr)
+
+            vx = np.array([
+                [0, -v[2], v[1]],
+                [v[2], 0, -v[0]],
+                [-v[1], v[0], 0],
+            ], dtype=np.float32)
+
+            R = np.eye(3, dtype=np.float32) + vx + vx @ vx * ((1 - c) / (s ** 2))
+
+            n_vec = R @ normals[i - 1]
+
+        n_vec /= np.linalg.norm(n_vec)
+        b = np.cross(t_curr, n_vec)
+
+        normals[i] = n_vec
+        binormals[i] = b / np.linalg.norm(b)"""
+
+    # --- Width safety ---
+    # Ensure widths shape is correct
+    if widths is None or len(widths) != n:
+        widths = np.full(n, width, dtype=np.float32)
+
+    # --- Corner coefficients (square cross-section) ---
+    ca4 = np.array([-0.70710678, 0.70710678, 0.70710678, -0.70710678], dtype=np.float32)
+    sa4 = np.array([0.70710678, 0.70710678, -0.70710678, -0.70710678], dtype=np.float32)
+
+    # --- Scales ---
+    rmaj = 0.5 * widths[:, None]
+    rmin = 0.5 * depth
+
+    a = binormals * rmaj
+    b_scaled = normals * rmin
+
+    # --- Build corners ---
+    corners = (
+        centerline[:, None, :]
+        + sa4[None, :, None] * a[:, None, :]
+        + ca4[None, :, None] * b_scaled[:, None, :]
+    )
+
+    vertices = corners.reshape(-1, 3)
+
+    # --- Tangent reuse (already stable) ---
+    edge_along = tangents
+
+    # --- Edge vectors ---
+    edge_across = np.roll(corners, -1, axis=1) - corners
+
+    # --- Normals (consistent with frame, not Frenet) ---
+    normals_all = np.cross(edge_across, edge_along[:, None, :])
+
+    norms = np.linalg.norm(normals_all, axis=2, keepdims=True)
+    norms[norms < 1e-8] = 1.0
+    normals_all /= norms
+
+    vertex_normals = normals_all.reshape(-1, 3)
+
+    # --- Indices ---
+    n_segments = n - 1
+
+    base1 = np.arange(n_segments) * 4
+    base2 = (np.arange(n_segments) + 1) * 4
+
+    indices = np.stack([
+        base1 + 0, base2 + 0, base1 + 1,
+        base1 + 1, base2 + 0, base2 + 1,
+
+        base1 + 1, base2 + 1, base1 + 2,
+        base1 + 2, base2 + 1, base2 + 2,
+
+        base1 + 2, base2 + 2, base1 + 3,
+        base1 + 3, base2 + 2, base2 + 3,
+
+        base1 + 3, base2 + 3, base1 + 0,
+        base1 + 0, base2 + 3, base2 + 0,
+    ], axis=1).reshape(-1).astype(np.uint32)
+
+    return MeshResult(
+        vertices=vertices,
+        normals=vertex_normals,
+        indices=indices,
+        widths=widths
+    )
+
+
+def build_square_ribbon_old(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     # --- VECTORIZE SQUARE STYLE ---
 
     depth = ctx.width * 0.4
