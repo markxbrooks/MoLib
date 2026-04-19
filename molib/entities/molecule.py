@@ -45,6 +45,33 @@ STANDARD_POLYPEPTIDE_RESIDUES = frozenset(
     }
 )
 
+# HETATM/solvent that can carry phosphate but are not nucleotide polymer ribbons.
+_RIBBON_EXCLUDE_RESIDUE_NAMES = frozenset(
+    {
+        "HOH",
+        "WAT",
+        "PO4",
+        "SO4",
+        "EDO",
+        "ACT",
+        "FMT",
+        "MPD",
+        "GOL",
+    }
+)
+
+
+def _is_nucleotide_ribbon_residue(res: Res3D, res_name: str) -> bool:
+    """True if residue is treated as nucleic acid backbone (phosphate ``P``)."""
+    if res_name in STANDARD_POLYPEPTIDE_RESIDUES:
+        return False
+    if res_name in _RIBBON_EXCLUDE_RESIDUE_NAMES:
+        return False
+    p = MoLibConstant.NUCLEOTIDE_CHAIN_ATOMNAME
+    if p not in res.atoms:
+        return False
+    return not np.allclose(res.atoms[p].pos, 0.0)
+
 
 class Molecule3D:
     """
@@ -409,6 +436,30 @@ class Molecule3D:
     def get_ca_residues_protein_only(self) -> list:
         """Single authoritative ordered CA residue list."""
         return list(self.residues_with_ca_protein_only())
+
+    def residues_for_ribbon_backbone(self) -> Iterator[Res3D]:
+        """
+        Residues that define ribbon centerlines: polypeptide ``CA`` and nucleotide ``P``
+        (:data:`~molib.core.constants.MoLibConstant.NUCLEOTIDE_CHAIN_ATOMNAME`), in model/chain order.
+        """
+        for res in self.get_all_residues():
+            res_name = (
+                (getattr(res, "name", "") or getattr(res, "type", "") or "")
+                .strip()
+                .upper()
+            )
+            if res_name in STANDARD_POLYPEPTIDE_RESIDUES:
+                if res.has_ca():
+                    yield res
+            elif _is_nucleotide_ribbon_residue(res, res_name):
+                yield res
+            elif res.has_ca():
+                # Non-standard or rare residue names that still carry a real CA (e.g. UNK).
+                yield res
+
+    def get_ribbon_guide_residues(self) -> list:
+        """Ordered list of residues used for ribbon splines (protein + nucleic acid)."""
+        return list(self.residues_for_ribbon_backbone())
 
     def get_ca_coords_protein_only(self) -> np.ndarray:
         residues = self.get_ca_residues_protein_only()
