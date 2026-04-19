@@ -35,11 +35,11 @@ def extract_unit_cell_from_pdb(pdb_data) -> Optional[Dict[str, Any]]:
         if hasattr(pdb_data, "CRYST1"):
             return _parse_cryst1_line(pdb_data.CRYST1)
 
-        log.warning("No CRYST1 record found in PDB file")
+        log.warning("No CRYST1 record found in PDB file", scope="validate_unit_cell", silent=True)
         return None
 
     except Exception as e:
-        log.error(f"Error extracting unit cell from PDB: {e}")
+        log.error(f"Error extracting unit cell from PDB: {e}", scope="validate_unit_cell", silent=True)
         return None
 
 
@@ -61,7 +61,7 @@ def _parse_cryst1_line(cryst1_line: str) -> Optional[Dict[str, Any]]:
         parts = cryst1_line.split()
 
         if len(parts) < 6:
-            log.warning(f"Invalid CRYST1 line format: {cryst1_line}")
+            log.warning(f"Invalid CRYST1 line format: {cryst1_line}", scope="validate_unit_cell", silent=True)
             return None
 
         # Extract unit cell parameters
@@ -86,11 +86,11 @@ def _parse_cryst1_line(cryst1_line: str) -> Optional[Dict[str, Any]]:
             "source": "PDB_CRYST1",
         }
 
-        log.info(f"✅ Extracted unit cell from PDB: a={a:.2f}, b={b:.2f}, c={c:.2f} Å")
+        log.info(f"✅ Extracted unit cell from PDB: a={a:.2f}, b={b:.2f}, c={c:.2f} Å", scope="validate_unit_cell", silent=True)
         return unit_cell_info
 
     except (ValueError, IndexError) as e:
-        log.error(f"Error parsing CRYST1 line '{cryst1_line}': {e}")
+        log.error(f"Error parsing CRYST1 line '{cryst1_line}': {e}", scope="validate_unit_cell", silent=True)
         return None
 
 
@@ -125,15 +125,15 @@ def extract_unit_cell_from_mtz(mtz_data) -> Optional[Dict[str, Any]]:
 
             log.info(
                 f"✅ Extracted unit cell from MTZ: a={unit_cell.a:.2f}, "
-                f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å"
+                f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å", scope="validate_unit_cell", silent=True
             )
             return unit_cell_info
 
-        log.warning("No unit cell information found in MTZ data")
+        log.warning("No unit cell information found in MTZ data", scope="validate_unit_cell", silent=True)
         return None
 
     except Exception as e:
-        log.error(f"Error extracting unit cell from MTZ: {e}")
+        log.error(f"Error extracting unit cell from MTZ: {e}", scope="validate_unit_cell", silent=True)
         return None
 
 
@@ -167,16 +167,16 @@ def extract_unit_cell_from_ccp4(ccp4_data) -> Optional[Dict[str, Any]]:
             }
 
             log.info(
-                f"✅ Extracted unit cell from CCP4: a={unit_cell.a:.2f}, "
-                f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å"
+                f"✅ Extracted unit cell from CCP4: a={unit_cell.a:.2f}, ", scope="validate_unit_cell", silent=True
+                f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å", scope="validate_unit_cell", silent=True
             )
             return unit_cell_info
 
-        log.warning("No unit cell information found in CCP4 data")
+        log.warning("No unit cell information found in CCP4 data", scope="validate_unit_cell", silent=True)
         return None
 
     except Exception as e:
-        log.error(f"Error extracting unit cell from CCP4: {e}")
+        log.error(f"Error extracting unit cell from CCP4: {e}", scope="validate_unit_cell", silent=True)
         return None
 
 
@@ -197,23 +197,23 @@ def validate_unit_cell(unit_cell_info: Dict[str, Any]) -> bool:
 
     # Check if all required keys are present
     if not all(key in unit_cell_info for key in required_keys):
-        log.warning("Missing required unit cell parameters")
+        log.warning("Missing required unit cell parameters", scope="validate_unit_cell", silent=True)
         return False
 
     # Check if values are reasonable
     for key in ["a", "b", "c"]:
         value = unit_cell_info[key]
         if not isinstance(value, (int, float)) or value <= 0 or value > 1000:
-            log.warning(f"Invalid unit cell length {key}: {value}")
+            log.warning(f"Invalid unit cell length {key}: {value}", scope="validate_unit_cell", silent=True)
             return False
 
     for key in ["alpha", "beta", "gamma"]:
         value = unit_cell_info[key]
         if not isinstance(value, (int, float)) or value <= 0 or value >= 180:
-            log.warning(f"Invalid unit cell angle {key}: {value}")
+            log.warning(f"Invalid unit cell angle {key}: {value}", scope="validate_unit_cell", silent=True)
             return False
 
-    log.info("✅ Unit cell parameters validated successfully")
+    log.info("✅ Unit cell parameters validated successfully", scope="validate_unit_cell", silent=True)
     return True
 
 
