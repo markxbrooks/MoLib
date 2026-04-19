@@ -13,6 +13,8 @@ class ColorScheme(Enum):
     B_FACTOR = auto()
     VALIDATION = auto()
     CONTACT_DISTANCE = auto()
+    #: UniProt domain colours (PDBe mapping); ElMo applies per-residue RGB on top of chain fallbacks.
+    DOMAIN = auto()
 
     def __str__(self) -> str:
         """

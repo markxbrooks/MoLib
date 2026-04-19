@@ -339,6 +339,7 @@ class Atom3D(Structure3D):
                 ColorScheme.B_FACTOR: cls._color_by_b_factor,
                 ColorScheme.VALIDATION: cls._color_by_validation,
                 ColorScheme.CONTACT_DISTANCE: cls._color_by_contact_distance,
+                ColorScheme.DOMAIN: cls._color_by_chain,
             }
         return _COLOR_SCHEME_CACHE[scheme]
 
