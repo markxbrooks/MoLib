@@ -64,7 +64,7 @@ def generate_coordinate_data(
         (hetatm_df["residue_name"] == "HOH") & (hetatm_df["atom_name"] == "O")
     ]
     num_water_atoms = len(water_df)
-    log.message(num_water_atoms)
+    log.message(num_water_atoms, silent=True, scope="generate_coordinate_data")
 
     # Tag record type so downstream picking can distinguish ATOM vs HETATM reliably
     if not atom_df.empty:
