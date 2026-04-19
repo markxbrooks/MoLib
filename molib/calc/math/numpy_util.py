@@ -17,3 +17,15 @@ def generate_colors_from_positions(positions: np.ndarray,
                                    r: float, g: float, b: float) -> np.ndarray:
     """generate colors from positions"""
     return np.tile([r, g, b], (len(positions), 1)).astype(np.float32)
+
+
+def np_array_32(indices: list[Any]) -> np.ndarray:
+    return np.array(indices, dtype=np.uint32)
+
+
+def vec3_normals() -> np.ndarray:
+    return np.zeros((0,), dtype=np.uint32)
+
+
+def vec3_zeroes() -> np.ndarray:
+    return np.zeros((0, 3))

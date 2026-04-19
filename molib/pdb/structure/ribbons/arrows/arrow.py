@@ -4,7 +4,8 @@ import numpy as np
 
 from molib.calc.math.matrix_util import cross, cross_normalize
 from molib.calc.math.normal import normalize
-from molib.calc.math.numpy_util import get_np_array, to_up_vec3, generate_colors_from_positions
+from molib.calc.math.numpy_util import get_np_array, to_up_vec3, generate_colors_from_positions, vec3_zeroes, \
+    vec3_normals, np_array_32
 from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.pdb.structure.ribbons.arrows.config import ArrowConfig
@@ -30,10 +31,10 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
     direction = p2 - p1
     length = np.linalg.norm(direction)
     if length < MoLibConstant.EPSILON:
-        return as_meshdata(positions=np.zeros((0, 3)),
-                           colors=np.zeros((0, 3)),
-                           normals=np.zeros((0,), dtype=np.uint32),
-                           indices=np.zeros((0, 3)),
+        return as_meshdata(positions=vec3_zeroes(),
+                           colors=vec3_zeroes(),
+                           normals=vec3_normals(),
+                           indices=vec3_zeroes(),
                            )
 
     direction = direction / length
@@ -102,8 +103,8 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
     # Tip normal points along direction
     vertex_normals.append(direction)
 
-    vertices = np.array(vertices, dtype=np.float32)
-    vertex_normals = np.array(vertex_normals, dtype=np.float32)
+    vertices = np_array_32(vertices)
+    vertex_normals = np_array_32(vertex_normals)
 
     # Generate triangle indices
     # Body: quad strips connecting adjacent samples
@@ -118,7 +119,7 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
     last_base = arrow_config.num_samples * 2
     indices.extend([last_base, last_base + 1, tip_idx])
 
-    indices = np.array(indices, dtype=np.uint32)
+    indices = np_array_32(indices)
 
     # Color buffer
     colors = generate_colors_from_positions(
@@ -126,3 +127,6 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
     )
 
     return as_meshdata(positions=vertices, normals=vertex_normals, indices=indices, colors=colors)
+
+
+
