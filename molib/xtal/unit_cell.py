@@ -167,7 +167,7 @@ def extract_unit_cell_from_ccp4(ccp4_data) -> Optional[Dict[str, Any]]:
             }
 
             log.info(
-                f"✅ Extracted unit cell from CCP4: a={unit_cell.a:.2f}, ", scope="validate_unit_cell", silent=True
+                f"✅ Extracted unit cell from CCP4: a={unit_cell.a:.2f}, ",
                 f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å", scope="validate_unit_cell", silent=True
             )
             return unit_cell_info
