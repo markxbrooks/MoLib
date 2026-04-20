@@ -24,6 +24,12 @@ class MolEntityType(str, Enum):
         CALPHAS,
         WATER,
     ]
+    REGULAR = [
+        ATOM_HETATM,
+        ATOM,
+        HETATM,
+        CALPHAS
+    ]
 
     def __str__(self):
         return self.value
