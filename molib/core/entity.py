@@ -9,6 +9,8 @@ class MolEntityType(str, Enum):
     """Mol Entity Type"""
 
     ATOM = "ATOM"
+    #: Canonical façade key for the drawable primary structure (Phase C); resolves like ATOM.
+    PRIMARY = "PRIMARY"
     ATOM_HETATM = "ATOM_HETATM"
     CALPHAS = "CALPHAS"
     HETATM = "HETATM"
