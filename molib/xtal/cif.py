@@ -3,7 +3,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, Any
 
 import gemmi
 import pandas as pd
@@ -92,7 +92,7 @@ def get_unique_hetatm_cif_dicts(
     cif_blocks: Dict[str, gemmi.cif.Block] = {}
 
     for resname in hetatm_df["residue_name"].unique():
-        cif_path = clibd_mon / resname[0].upper() / f"{resname.upper()}.cif"
+        cif_path = monomer_cif_path(clibd_mon, resname)
         if cif_path.is_file():
             doc = gemmi.cif.read_file(str(cif_path))
             cif_blocks[resname] = doc[0]
@@ -104,6 +104,12 @@ def get_unique_hetatm_cif_dicts(
                 log.warning(msg)
 
     return cif_blocks
+
+
+def monomer_cif_path(clibd_mon: str | Path | None, resname) -> Path:
+    """generate path for a cif file from monomer cif location and resname"""
+    cif_path = clibd_mon / resname[0].lower() / f"{resname.upper()}.cif"
+    return cif_path
 
 
 def get_clibd_monomers_directory(clibd_mon: Optional[Union[str, Path]] = None) -> Path:

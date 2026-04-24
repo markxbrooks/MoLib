@@ -2,7 +2,7 @@ from typing import Dict, List, Optional
 
 from decologr import Decologr as log
 from molib.ligand.pdb.info import PDBLigandInfo
-from molib.ligand.pdb.parser import PDBLigandData
+
 
 try:
     from rdkit import Chem
@@ -558,7 +558,7 @@ def create_molecule_from_coordinates(
         return None
 
 
-def create_pdb_ligand_info(ligand_data: PDBLigandData) -> Optional["PDBLigandInfo"]:
+def create_pdb_ligand_info(ligand_data: "PDBLigandData") -> Optional["PDBLigandInfo"]:
     """Create PDBLigandInfo from grouped ligand data"""
     try:
         res_name = ligand_data.res_name
