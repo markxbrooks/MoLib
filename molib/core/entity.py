@@ -26,7 +26,7 @@ class MolEntityType(str, Enum):
         CALPHAS,
         WATER,
     ]
-    REGULAR = [
+    NON_WATER = [
         ATOM_HETATM,
         ATOM,
         HETATM,
