@@ -32,6 +32,7 @@ class MolEntityType(str, Enum):
         HETATM,
         CALPHAS
     ]
+    NON_WATER = REGULAR
 
     def __str__(self):
         return self.value
