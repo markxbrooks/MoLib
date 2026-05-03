@@ -7,6 +7,32 @@ from molib.calc.math.numpy_util import generate_colors_from_positions
 from skimage import measure
 
 
+def _clamp_isosurface_level_to_data_range(
+    volume: np.ndarray, level: float
+) -> float | None:
+    """
+    skimage.measure.marching_cubes requires ``level`` strictly inside the voxel
+    value range. Sigma UI (e.g. 1.0σ) is often passed through as an absolute
+    threshold that does not match carved/normalized map statistics — clamp like
+    ``extract_isosurface_with_density``.
+    """
+    volume_min, volume_max = float(volume.min()), float(volume.max())
+    volume_range = volume_max - volume_min
+    if volume_range == 0 or not np.isfinite(volume_range):
+        return None
+    if level < volume_min:
+        log.warning(
+            f"⚠️ Isosurface level {level:.6f} below data minimum {volume_min:.6f}; clamping"
+        )
+        return volume_min + 0.1 * volume_range
+    if level > volume_max:
+        log.warning(
+            f"⚠️ Isosurface level {level:.6f} above data maximum {volume_max:.6f}; clamping"
+        )
+        return volume_max - 0.1 * volume_range
+    return level
+
+
 def extract_isosurface(volume: np.ndarray, level: float = 1.0):
     """
     extract_isosurface
@@ -15,20 +41,46 @@ def extract_isosurface(volume: np.ndarray, level: float = 1.0):
     :param level: level
     :return: tuple of (vertices, faces, normals) or None if extraction fails
     """
-    log.message("extracting isosurface")
+    log.message("extracting isosurface", silent=True)
     try:
-        vertices, faces, normals, _ = measure.marching_cubes(volume, level=level)
+        adj = _clamp_isosurface_level_to_data_range(volume, level)
+        if adj is None:
+            log.warning("⚠️ Volume has no variation - cannot extract isosurface")
+            return None
+        try:
+            vertices, faces, normals, _ = measure.marching_cubes(
+                volume, level=adj
+            )
+        except ValueError as ex:
+            if "within volume data range" in str(ex).lower():
+                # Fallback: isosurface near median density (common for odd grids)
+                vm, vx = float(volume.min()), float(volume.max())
+                adj2 = vm + 0.5 * (vx - vm)
+                log.warning(
+                    f"⚠️ marching_cubes rejected level {adj:.6f}; retrying at {adj2:.6f}: {ex}"
+                )
+                try:
+                    vertices, faces, normals, _ = measure.marching_cubes(
+                        volume, level=adj2
+                    )
+                except ValueError as ex2:
+                    log.warning(
+                        f"extract_isosurface: marching_cubes failed after clamp: {ex2}"
+                    )
+                    return None
+            else:
+                raise
 
         # Compute better normals using PicoGL's method for improved lighting
         from picogl.buffers.vertex.normals.compute import compute_vertex_normals
 
         normals = compute_vertex_normals(vertices, faces)
 
-        log.parameter("vertices", vertices)
-        log.parameter("faces", faces)
+        log.parameter("vertices", vertices, silent=True)
+        log.parameter("faces", faces, silent=True)
         return vertices, faces, normals
     except Exception as ex:
-        log.error(f"Error {ex} extracting isosurface")
+        log.warning(f"extract_isosurface failed: {ex}")
         return None
 
 
@@ -48,33 +100,15 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
                contains the density values at each vertex for coloring and normals
                contains the surface normals for proper lighting
     """
-    log.message("extracting isosurface with density values for fo-fc coloring")
+    log.message(
+        "extracting isosurface with density values for fo-fc coloring", silent=True
+    )
     try:
-        # Check volume data range and adjust level if necessary
-        volume_min, volume_max = volume.min(), volume.max()
-        volume_range = volume_max - volume_min
-
-        log.info(f"Volume data range: {volume_min:.6f} to {volume_max:.6f}")
-        log.info(f"Requested isosurface level: {level:.6f}")
-
-        # If volume has no variation, return empty result
-        if volume_range == 0:
+        adj = _clamp_isosurface_level_to_data_range(volume, level)
+        if adj is None:
             log.warning("⚠️ Volume has no variation - cannot extract isosurface")
-            return None, None, None
-
-        # If level is outside the data range, adjust it
-        if level < volume_min:
-            log.warning(
-                f"⚠️ Isosurface level {level:.6f} below data minimum {volume_min:.6f}"
-            )
-            level = volume_min + 0.1 * volume_range
-            log.info(f"🔧 Adjusted isosurface level to: {level:.6f}")
-        elif level > volume_max:
-            log.warning(
-                f"⚠️ Isosurface level {level:.6f} above data maximum {volume_max:.6f}"
-            )
-            level = volume_max - 0.1 * volume_range
-            log.info(f"🔧 Adjusted isosurface level to: {level:.6f}")
+            return None, None, None, None
+        level = adj
 
         vertices, faces, normals, _ = measure.marching_cubes(volume, level=level)
 
@@ -108,7 +142,7 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
         return vertices, faces, vertex_densities, normals
 
     except Exception as ex:
-        log.error(f"Error {ex} extracting isosurface with density values")
+        log.warning(f"extract_isosurface_with_density failed: {ex}")
         return None, None, None, None
 
 
