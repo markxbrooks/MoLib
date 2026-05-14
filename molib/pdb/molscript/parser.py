@@ -1,7 +1,5 @@
 import numpy as np
 import pandas as pd
-
-from molib.pdb.structure.sscode import SSCode
 from molib.entities.atom import Atom3D
 from molib.entities.chain import Chain3D
 from molib.entities.model import Model3D
@@ -9,6 +7,7 @@ from molib.entities.molecule import Molecule3D
 from molib.entities.residue import Res3D
 from molib.ligand.pdb.spec import PDBLineSpec
 from molib.pdb.coordinate.data import CoordinateData
+from molib.pdb.structure.sscode import SSCode
 from picogl.utils.strenum import StrEnum
 
 
@@ -364,8 +363,7 @@ def parse_pdb_atoms_to_mol3d(
     # geometry so ribbons and segment extraction match structures like 2VUG_NoSS.pdb.
     from molib.pdb.molscript.structure.secondary import (
         mol3d_protein_has_explicit_secondary_structure,
-        set_secondary_structure,
-    )
+        set_secondary_structure)
 
     if infer_missing_secondary_structure and not mol3d_protein_has_explicit_secondary_structure(
         mol

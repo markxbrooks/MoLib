@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 
 import numpy as np
-
 from molib.core.color.provider import ColorProvider
 
 

@@ -11,8 +11,8 @@ Classes:
 """
 
 from typing import Protocol
-import numpy as np
 
+import numpy as np
 from molib.core import ColorMap
 
 

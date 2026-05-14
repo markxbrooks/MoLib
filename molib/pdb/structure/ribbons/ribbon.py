@@ -11,27 +11,26 @@ This module supports two ribbon generation methods:
 2. B-splines (Ribbons approach) - more accurate, uses peptide plane meshdata
 
 """
-from typing import Any, Tuple, Optional
-import numpy as np
-from scipy.spatial import cKDTree
-
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import Any, Optional, Tuple
 
+import numpy as np
 from decologr import Decologr as log
+from molib.calc.geometry.ribbons_bspline import \
+    generate_ribbon_geometry_ribbons_style_from_context
+from molib.calc.geometry.spline import catmull_rom_chain
 from molib.calc.math.numpy_util import generate_colors_from_positions
 from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
-from molib.calc.geometry.ribbons_bspline import (
-    generate_ribbon_geometry_ribbons_style_from_context)
-from molib.calc.geometry.spline import catmull_rom_chain
-from molib.pdb.structure.ribbons.arrows.arrow import generate_arrow_geometry_from_context
+from molib.pdb.structure.ribbons.arrows.arrow import \
+    generate_arrow_geometry_from_context
 from molib.pdb.structure.ribbons.arrows.config import ArrowConfig
 from molib.pdb.structure.ribbons.ribbon_geometry import RibbonGeometryContext
 from molib.pdb.structure.ribbons.style import RibbonStyleConfig
-
 from picogl.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
+from scipy.spatial import cKDTree
 
 
 @dataclass

@@ -6,8 +6,10 @@ from typing import List, Optional, Union
 
 import numpy as np
 from decologr import Decologr as log
-from elmo.gl.buffers.secondary_structure.sheet.strand.helpers import empty_vec3_array
 from molib.core.color.strategy import ColorScheme
+
+from elmo.gl.buffers.secondary_structure.sheet.strand.helpers import \
+    empty_vec3_array
 
 
 class Chain3D:

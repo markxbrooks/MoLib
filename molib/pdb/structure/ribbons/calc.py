@@ -1,10 +1,9 @@
 from typing import Any, Callable
 
 import numpy as np
-from numpy import ndarray, dtype, floating, bool_
-
 from molib.calc.math.normal import normalize
 from molib.core.constants import MoLibConstant
+from numpy import bool_, dtype, floating, ndarray
 
 
 def use_ribbon_edges_to_determine_arrow_plane(arrow_config,

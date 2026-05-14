@@ -1,6 +1,7 @@
-from elmo.gl.molscript.segment.sided import SidedSegment
 from molib.calc.math.vector import Vector3
 from molib.pdb.molscript.math import v3_difference, v3_normalize
+
+from elmo.gl.molscript.segment.sided import SidedSegment
 
 
 def calculate_side_vector(ss_last: SidedSegment) -> Vector3:

@@ -1,1 +1,1 @@
-from .color import ColorMap, ChainColorManager, ColorScheme
+from .color import ChainColorManager, ColorMap, ColorScheme

@@ -10,7 +10,6 @@ from typing import Tuple
 
 import numpy as np
 from decologr import Decologr as log
-
 from molib.calc.math.numpy_util import generate_colors_from_positions
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import laplacian

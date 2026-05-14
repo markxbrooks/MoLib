@@ -1,5 +1,4 @@
 import numpy as np
-
 from molib.calc.math.vector import Vector3
 from molib.core.constants import MoLibConstant
 from molib.pdb.molscript.math import v3_cross_product, v3_normalize

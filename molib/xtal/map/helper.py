@@ -11,10 +11,8 @@ from typing import Callable, Dict, Optional, Tuple
 import gemmi
 import numpy as np
 from decologr import Decologr as log
-from molib.xtal.uglymol.map.helpers import (
-    extract_symop_text,
-    parse_symmetry_operator_to_matrix,
-)
+from molib.xtal.uglymol.map.helpers import (extract_symop_text,
+                                            parse_symmetry_operator_to_matrix)
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
 faulthandler.enable()
@@ -1413,9 +1411,7 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         import re
 
         from molib.xtal.uglymol.map.helpers import (
-            extract_symop_text,
-            parse_symmetry_operator_to_matrix,
-        )
+            extract_symop_text, parse_symmetry_operator_to_matrix)
 
         log.info(f"🔄 Expanding symmetry for {map_path}")
 

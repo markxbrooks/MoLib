@@ -1,7 +1,6 @@
 import numpy as np
-
 from molib.core.constants import MoLibConstant
-from molib.entities.molecule import Molecule3D, STANDARD_POLYPEPTIDE_RESIDUES
+from molib.entities.molecule import STANDARD_POLYPEPTIDE_RESIDUES, Molecule3D
 from molib.entities.residue import Res3D
 from molib.entities.secondary_structure_type import SecondaryStructureType
 

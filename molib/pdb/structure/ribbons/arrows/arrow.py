@@ -1,16 +1,19 @@
 from typing import Any
 
 import numpy as np
-
 from molib.calc.math.matrix_util import cross, cross_normalize
 from molib.calc.math.normal import normalize
-from molib.calc.math.numpy_util import get_np_array, to_up_vec3, generate_colors_from_positions, vec3_zeroes, \
-    vec3_normals, np_array_32
+from molib.calc.math.numpy_util import (generate_colors_from_positions,
+                                        get_np_array, np_array_32, to_up_vec3,
+                                        vec3_normals, vec3_zeroes)
 from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.pdb.structure.ribbons.arrows.config import ArrowConfig
-from molib.pdb.structure.ribbons.calc import use_ribbon_edges_to_determine_arrow_plane, \
-    calculate_normals_along_binormal_and_direction, calculate_normals_along_direction, calculate_normals_along_binormal
+from molib.pdb.structure.ribbons.calc import (
+    calculate_normals_along_binormal,
+    calculate_normals_along_binormal_and_direction,
+    calculate_normals_along_direction,
+    use_ribbon_edges_to_determine_arrow_plane)
 from molib.pdb.structure.ribbons.ribbon_geometry import RibbonGeometryContext
 from picogl.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
