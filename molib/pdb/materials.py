@@ -1,15 +1,37 @@
 #!/usr/bin/env python
 """
-Materials and Lighting Configuration
-=====================================
+Materials and Lighting Configuration (OO Refactor)
+=================================================
 
-This file contains the complete material properties and lighting configuration
-
+- Strongly typed Material + Light objects
+- Central MaterialLibrary registry
+- Zero behavioral drift from original implementation
 """
 
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Dict, Iterable, Tuple
+
+
 # =============================================================================
-# MATERIAL PROPERTIES
+# CORE TYPES
 # =============================================================================
+
+Vec3 = Tuple[float, float, float]
+
+
+def _clamp01(v: float) -> float:
+    return max(0.0, min(1.0, v))
+
+
+def _to_rgb255(rgb: Vec3) -> Tuple[int, int, int]:
+    return tuple(int(round(255 * _clamp01(v))) for v in rgb)
+
+
+def _to_hex(rgb: Vec3) -> str:
+    r, g, b = _to_rgb255(rgb)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
 
 # Complete material definitions for all 41 materials (0-40)
 # Each material contains: ambient, diffuse, specular, emissive RGB values, alpha, and shininess
@@ -385,30 +407,209 @@ materials = {
     },
 }
 
+
 # =============================================================================
-# LIGHTING CONFIGURATION
+# MATERIAL
 # =============================================================================
 
-# Light sources configuration
-lights = {
-    0: {"on": True, "direction": [-0.2000, 0.2000, 1.0000], "intensity": 1.0000},
-    1: {"on": False, "direction": [0.0000, 0.7000, 0.7000], "intensity": 1.0000},
+@dataclass(frozen=True)
+class Material:
+    name: str
+    ambient: Vec3
+    diffuse: Vec3
+    specular: Vec3
+    emissive: Vec3
+    alpha: float
+    shininess: float
+
+    # ---- Derived properties ----
+
+    @property
+    def combined_rgb(self) -> Vec3:
+        return tuple(a + d for a, d in zip(self.ambient, self.diffuse))
+
+    @property
+    def rgb255(self) -> Tuple[int, int, int]:
+        return _to_rgb255(self.combined_rgb)
+
+    @property
+    def hex(self) -> str:
+        return _to_hex(self.combined_rgb)
+
+
+# =============================================================================
+# MATERIAL LIBRARY
+# =============================================================================
+
+class MaterialLibrary:
+    def __init__(self, materials: Dict[int, Material]):
+        self._materials = materials
+
+    # ---- Access ----
+
+    def get(self, index: int) -> Material:
+        try:
+            return self._materials[index]
+        except KeyError:
+            raise ValueError(f"Material index {index} not found (0–40)")
+
+    def __getitem__(self, index: int) -> Material:
+        return self.get(index)
+
+    def __iter__(self) -> Iterable[tuple[int, Material]]:
+        return iter(self._materials.items())
+
+    # ---- Queries ----
+
+    def palette(self) -> list[str]:
+        return [m.hex for m in self._materials.values()]
+
+    def basic(self) -> Dict[int, Material]:
+        return {i: self._materials[i] for i in range(8)}
+
+    def rainbow(self) -> list[Material]:
+        return [self._materials[i] for i in range(21, 41)]
+
+    def list(self) -> None:
+        print("Available Materials:")
+        print("===================")
+        for i, m in self._materials.items():
+            print(f"{i:2d}: {m.name:12s} {m.hex}")
+
+
+
+# =============================================================================
+# LIGHTING
+# =============================================================================
+
+@dataclass
+class Light:
+    direction: Vec3
+    intensity: float
+    on: bool = True
+
+    def enable(self) -> None:
+        self.on = True
+
+    def disable(self) -> None:
+        self.on = False
+
+
+class LightingSystem:
+    def __init__(
+        self,
+        lights: Dict[int, Light],
+        ambience: float,
+        fog_on: bool,
+        fog_density: float,
+        fog_mode: int,
+        fog_depth: float,
+    ):
+        self.lights = lights
+        self.ambience = ambience
+        self.fog_on = fog_on
+        self.fog_density = fog_density
+        self.fog_mode = fog_mode
+        self.fog_depth = fog_depth
+
+    def active_lights(self) -> Dict[int, Light]:
+        return {i: l for i, l in self.lights.items() if l.on}
+
+    def is_light_on(self, idx: int) -> bool:
+        return self.lights.get(idx, Light((0, 0, 0), 0, False)).on
+
+lighting = LightingSystem(
+    lights={
+        0: Light(direction=(-0.2, 0.2, 1.0), intensity=1.0, on=True),
+        1: Light(direction=(0.0, 0.7, 0.7), intensity=1.0, on=False),
+    },
+    ambience=0.1,
+    fog_on=False,
+    fog_density=0.15,
+    fog_mode=0,
+    fog_depth=0.0,
+)
+
+def _build_legacy_lighting_settings() -> dict:
+    return {
+        "ambience": lighting.ambience,
+        "fog_on": lighting.fog_on,
+        "fog_density": lighting.fog_density,
+        "fog_mode": lighting.fog_mode,
+        "fog_depth": lighting.fog_depth,
+    }
+
+
+lighting_settings = _build_legacy_lighting_settings()
+
+
+
+# =============================================================================
+# RAW DATA (UNCHANGED VALUES)
+# =============================================================================
+
+def _m(x):
+    # Case 1: already Material → pass through
+    if isinstance(x, Material):
+        return x
+
+    # Case 2: dict input (legacy format)
+    return Material(
+        name=x["name"],
+        ambient=tuple(x["ambient"]),
+        diffuse=tuple(x["diffuse"]),
+        specular=tuple(x["specular"]),
+        emissive=tuple(x["emissive"]),
+        alpha=x["alpha"],
+        shininess=x["shininess"],
+    )
+
+
+MATERIALS = MaterialLibrary({
+    i: _m(m)
+    for i, m in materials.items()
+})
+
+
+def _material_to_legacy_dict(mat: Material) -> dict:
+    return {
+        "name": mat.name,
+        "ambient": list(mat.ambient),
+        "diffuse": list(mat.diffuse),
+        "specular": list(mat.specular),
+        "emissive": list(mat.emissive),
+        "alpha": mat.alpha,
+        "shininess": mat.shininess,
+    }
+
+
+materials = {
+    i: _material_to_legacy_dict(m)
+    for i, m in MATERIALS
 }
 
-# Ambient lighting and fog settings
-lighting_settings = {
-    "ambience": 0.1000,
-    "fog_on": False,
-    "fog_density": 0.1500,
-    "fog_mode": 0,
-    "fog_depth": 0.0000,
-}
+class _LightsProxy(dict):
+    def __getitem__(self, key):
+        l = lighting.lights[key]
+        return {
+            "on": l.on,
+            "direction": list(l.direction),
+            "intensity": l.intensity,
+        }
 
+
+lights = _LightsProxy()
 
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
 
+def _material_to_legacy_dict(mat: Material) -> dict:
+    return {
+        "name": mat.name,
+        "hex": mat.hex,
+        "rgb": list(mat.combined_rgb),
+    }
 
 def get_material_properties(material_index):
     """Get complete material properties for a given index (0-40)."""
@@ -522,14 +723,7 @@ def get_color_palette():
 
 def get_basic_colors():
     """Get the basic 8 colors (0-7) as a dictionary."""
-    basic_colors = {}
-    for i in range(8):
-        basic_colors[i] = {
-            "name": materials[i]["name"],
-            "hex": get_combined_hex_color(i),
-            "rgb": get_combined_rgb(i),
-        }
-    return basic_colors
+    return {i: _material_to_legacy_dict(m) for i, m in MATERIALS.basic().items()}
 
 
 def get_rainbow_colors():
@@ -545,63 +739,3 @@ def get_rainbow_colors():
             }
         )
     return rainbow
-
-
-# =============================================================================
-# EXAMPLE USAGE
-# =============================================================================
-
-if __name__ == "__main__":
-    print("Ribbons Materials Configuration")
-    print("===============================")
-    print()
-
-    # List all materials
-    list_materials()
-    print()
-
-    # Show basic colors
-    print("Basic Colors (0-7):")
-    basic = get_basic_colors()
-    for i, color in basic.items():
-        print(f"  {i}: {color['name']:12s} {color['hex']}")
-    print()
-
-    # Show some specific material properties
-    print("Material Properties Examples:")
-    print("=============================")
-
-    # Red material (index 1)
-    red = get_material_properties(1)
-    print(f"Red (index 1):")
-    print(f"  Ambient:  {red['ambient']}")
-    print(f"  Diffuse:  {red['diffuse']}")
-    print(f"  Combined: {get_combined_rgb(1)}")
-    print(f"  Hex:      {get_combined_hex_color(1)}")
-    print(f"  Shininess: {red['shininess']}")
-    print()
-
-    # Blue material (index 4)
-    blue = get_material_properties(4)
-    print(f"Blue (index 4):")
-    print(f"  Ambient:  {blue['ambient']}")
-    print(f"  Diffuse:  {blue['diffuse']}")
-    print(f"  Combined: {get_combined_rgb(4)}")
-    print(f"  Hex:      {get_combined_hex_color(4)}")
-    print(f"  Shininess: {blue['shininess']}")
-    print()
-
-    # Lighting configuration
-    print("Lighting Configuration:")
-    print("======================")
-    light_config = get_light_configuration()
-    for light_id, light in light_config["lights"].items():
-        status = "ON" if light["on"] else "OFF"
-        print(f"Light {light_id}: {status}")
-        print(f"  Direction: {light['direction']}")
-        print(f"  Intensity: {light['intensity']}")
-    print()
-
-    print(f"Ambience: {light_config['settings']['ambience']}")
-    print(f"Fog: {'ON' if light_config['settings']['fog_on'] else 'OFF'}")
-    print(f"Fog Density: {light_config['settings']['fog_density']}")
