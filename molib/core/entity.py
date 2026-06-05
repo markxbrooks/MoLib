@@ -44,4 +44,3 @@ class MolEntityType(str, Enum):
 
     def get_display_name(self):
         return self.value + "_model"
-
