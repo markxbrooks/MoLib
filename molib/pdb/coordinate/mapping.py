@@ -2,7 +2,8 @@ from biopandas.pdb import PandasPdb
 from decologr import Decologr as log
 from molib.core.constants import MoLibConstant
 from molib.core.entity import MolEntityType
-from molib.pdb.calculate.residue_index import get_residue_from_by_index_and_chain_id
+from molib.pdb.calculate.residue_index import \
+    get_residue_from_by_index_and_chain_id
 
 
 def get_pdb_residue_mapping(

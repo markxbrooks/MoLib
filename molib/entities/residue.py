@@ -7,7 +7,6 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 import numpy as np
-
 from molib.core.constants import MoLibConstant
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from molib.entities.structure import Structure3D

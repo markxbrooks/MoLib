@@ -12,20 +12,19 @@ Key differences from Catmull-Rom:
 - Generates 3D tube meshdata with proper normals for lighting
 """
 from dataclasses import dataclass
-from typing import Optional, Tuple, Any, Protocol
+from typing import Any, Optional, Protocol, Tuple
 
 import numpy as np
-from numpy import ndarray, dtype, floating
-from numpy._typing import _32Bit
-
-from elmo.core.calc.utils import compute_tangents
-
 from molib.calc.math.numpy_util import generate_colors_from_positions
 from molib.core.constants import MoLibConstant
 from molib.entities.secondary_structure_type import SecondaryStructureType
+from numpy import dtype, floating, ndarray
+from numpy._typing import _32Bit
 from picogl.buffers.geometry import GeometryData
 from picogl.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
+
+from elmo.core.calc.utils import compute_tangents
 
 
 class _ResgeomContext(Protocol):
@@ -959,6 +958,7 @@ def extract_square_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any 
     return ribbon_edges, ribbon_frenet
 
 import numpy as np
+
 
 def rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
     """

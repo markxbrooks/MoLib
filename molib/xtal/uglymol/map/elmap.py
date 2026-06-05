@@ -67,21 +67,16 @@ import re
 from typing import Iterable, SupportsBytes, SupportsIndex
 
 import numpy as np
-from molib.xtal.ccp4.map.globals import (
-    CCP4_HEADER_SIZE,
-    CCP4_LABEL_SIZE,
-    CCP4_MAP_SIGNATURE,
-    CCP4_SYMOP_CHUNK_SIZE,
-)
+from molib.xtal.ccp4.map.globals import (CCP4_HEADER_SIZE, CCP4_LABEL_SIZE,
+                                         CCP4_MAP_SIGNATURE,
+                                         CCP4_SYMOP_CHUNK_SIZE)
 from molib.xtal.ccp4.map.header import Ccp4MapHeaderLocation
 from molib.xtal.ccp4.map.parameters import Ccp4MapParameters
 from molib.xtal.uglymol.block import Block
 from molib.xtal.uglymol.map.grid_array import GridArray
-from molib.xtal.uglymol.map.helpers import (
-    extract_symop_text,
-    match_symop_text,
-    parse_symmetry_operator_to_matrix,
-)
+from molib.xtal.uglymol.map.helpers import (extract_symop_text,
+                                            match_symop_text,
+                                            parse_symmetry_operator_to_matrix)
 from molib.xtal.uglymol.math.helpers import calculate_stddev
 from molib.xtal.uglymol.unit_cell import UnitCell
 from typing_extensions import Buffer

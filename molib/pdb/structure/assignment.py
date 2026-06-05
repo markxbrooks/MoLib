@@ -4,7 +4,6 @@ Assign Secondary Structure
 
 import pandas as pd
 from Bio.PDB import DSSP, PDBParser
-
 from molib.core.constants import MoLibConstant
 from molib.entities.molecule import Molecule3D
 

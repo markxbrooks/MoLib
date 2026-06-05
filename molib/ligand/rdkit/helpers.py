@@ -3,7 +3,6 @@ from typing import Dict, List, Optional
 from decologr import Decologr as log
 from molib.ligand.pdb.info import PDBLigandInfo
 
-
 try:
     from rdkit import Chem
     from rdkit.Chem import AllChem, Descriptors, Mol, rdMolDescriptors

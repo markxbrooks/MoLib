@@ -9,12 +9,11 @@ from typing import Literal
 import gemmi
 import pandas as pd
 import requests
-from rdkit.Chem import AllChem
-
 from decologr import Decologr as log
 from decologr import setup_logging
 from molib.ligand import PDBLigandInfo, PDBLigandParser
 from rdkit import Chem
+from rdkit.Chem import AllChem
 
 
 @lru_cache(maxsize=1)

@@ -3,7 +3,6 @@
 import math
 
 import numpy as np
-
 from molib.core.constants import MoLibConstant
 from molib.xtal.uglymol.cubicles import Cubicles
 from molib.xtal.uglymol.molecule.atom import Atom

@@ -2,7 +2,6 @@
 Parser
 """
 import numpy as np
-
 # from molib.entities.atom import Atom3D
 from molib.ligand.pdb.spec import PDBLineSpec
 

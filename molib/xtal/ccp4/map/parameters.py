@@ -2,10 +2,8 @@ from dataclasses import dataclass
 
 import numpy as np
 from molib.xtal.uglymol.map.grid_array import GridArray
-from molib.xtal.uglymol.map.helpers import (
-    extract_symop_text,
-    parse_symmetry_operator_to_matrix,
-)
+from molib.xtal.uglymol.map.helpers import (extract_symop_text,
+                                            parse_symmetry_operator_to_matrix)
 
 
 @dataclass

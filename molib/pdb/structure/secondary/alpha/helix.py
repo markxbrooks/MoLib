@@ -4,12 +4,8 @@ Code for alpha helices
 
 import numpy as np
 from OpenGL.GLU import gluNewQuadric
-from OpenGL.raw.GL.VERSION.GL_1_0 import (
-    glPopMatrix,
-    glPushMatrix,
-    glRotatef,
-    glTranslatef,
-)
+from OpenGL.raw.GL.VERSION.GL_1_0 import (glPopMatrix, glPushMatrix, glRotatef,
+                                          glTranslatef)
 from OpenGL.raw.GLU import gluCylinder, gluDeleteQuadric
 
 

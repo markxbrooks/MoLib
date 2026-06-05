@@ -1,9 +1,7 @@
 import numpy as np
-from molib.calc.geometry.angle import (
-    dihedral_angle,
-    rotate_vector_around_axis,
-    smooth_torsion_angles,
-)
+from molib.calc.geometry.angle import (dihedral_angle,
+                                       rotate_vector_around_axis,
+                                       smooth_torsion_angles)
 from scipy import ndimage
 from scipy.signal import savgol_filter
 

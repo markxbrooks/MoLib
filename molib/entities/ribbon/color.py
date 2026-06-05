@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TypeAlias, Sequence
+from typing import Sequence, TypeAlias
 
 from molib.core.vectorlike import Vector3Like
 

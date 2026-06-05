@@ -412,28 +412,7 @@ omega_ranges = {"ranges": [3.0, 3.5, 4.0, 4.5, 5.0], "colors": [1, 8, 3, 2, 6, 1
 # =============================================================================
 
 # Import comprehensive material and lighting system
-from .materials import (
-    convert_to_hex_color,
-    convert_to_rgb_255,
-    get_alpha,
-    get_ambient_color,
-    get_basic_colors,
-    get_color_palette,
-    get_combined_hex_color,
-    get_combined_rgb,
-    get_diffuse_color,
-    get_emissive_color,
-    get_light_configuration,
-    get_light_direction,
-    get_light_intensity,
-    get_material_properties,
-    get_rainbow_colors,
-    get_shininess,
-    get_specular_color,
-    is_light_on,
-)
-from .materials import lighting_settings as ambient_lighting
-from .materials import lights, materials
+from .materials import get_combined_hex_color, get_combined_rgb, get_material_properties
 
 # =============================================================================
 # SECONDARY STRUCTURE FILE FORMAT

@@ -1,7 +1,6 @@
 import numpy as np
-from numpy import ndarray
-
 from molib.calc.math.normal import normalize
+from numpy import ndarray
 
 
 def cross_normalize(binormal: float, direction: ndarray) -> float:
