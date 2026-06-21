@@ -185,7 +185,7 @@ class Atom3D(Structure3D):
 
     # ------------------------------------------------------------------
     # Geometry, predicates, labels (shared ergonomics with xtal UglyMol Atom).
-    # Optional distance-based bond guesses live in ``atom_bond_heuristics`` (not ElMo gl bonds).
+    # Optional distance-based bond guesses live in ``atom_bond_heuristics`` (not ElMo GL bonds).
     # ------------------------------------------------------------------
 
     def _coords_float3(self) -> Tuple[float, float, float]:

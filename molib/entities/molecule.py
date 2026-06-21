@@ -312,7 +312,7 @@ class Molecule3D:
         :param b: float, blue component (0–1)
 
         Optional: ``_elmo_ss_selection_color_hook`` — if set (e.g. by ElMo's
-        :class:`~elmo.gl.renderer.molecule.MoleculeRenderer`), called as
+        :class:`~elmo.GL.renderer.molecule.MoleculeRenderer`), called as
         ``hook(selection, r, g, b)`` after residue colours are updated so rendered
         secondary-structure quads can follow the same span.
         """
