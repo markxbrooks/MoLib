@@ -20,7 +20,7 @@ from molib.core.constants import MoLibConstant
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from numpy import dtype, floating, ndarray
 from numpy._typing import _32Bit
-from picogl.buffers.geometry import GeometryData
+from picogl.gpu.buffers.geometry import GeometryData
 from picogl.gpu.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 
