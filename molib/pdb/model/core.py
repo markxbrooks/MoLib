@@ -126,7 +126,7 @@ def molecule3d_to_model(mol: Molecule3D) -> MoleculeModel:
     """
     Convert a Molecule3D (rendering-aware) into a pure MoleculeModel.
 
-    This provides a GL‑free representation that can be used by parsing,
+    This provides a gl‑free representation that can be used by parsing,
     analysis, and validation code.
     """
     models = [model3d_to_model(m) for m in mol.models]
