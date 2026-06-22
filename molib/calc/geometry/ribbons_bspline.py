@@ -21,7 +21,7 @@ from molib.entities.secondary_structure_type import SecondaryStructureType
 from numpy import dtype, floating, ndarray
 from numpy._typing import _32Bit
 from picogl.buffers.geometry import GeometryData
-from picogl.buffers.helper import as_meshdata
+from picogl.gpu.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 
 from elmo.core.calc.utils import compute_tangents

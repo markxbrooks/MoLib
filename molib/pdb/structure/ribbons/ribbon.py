@@ -28,7 +28,7 @@ from molib.pdb.structure.ribbons.arrows.arrow import \
 from molib.pdb.structure.ribbons.arrows.config import ArrowConfig
 from molib.pdb.structure.ribbons.ribbon_geometry import RibbonGeometryContext
 from molib.pdb.structure.ribbons.style import RibbonStyleConfig
-from picogl.buffers.helper import as_meshdata
+from picogl.gpu.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 from scipy.spatial import cKDTree
 

@@ -15,7 +15,7 @@ from molib.pdb.structure.ribbons.calc import (
     calculate_normals_along_direction,
     use_ribbon_edges_to_determine_arrow_plane)
 from molib.pdb.structure.ribbons.ribbon_geometry import RibbonGeometryContext
-from picogl.buffers.helper import as_meshdata
+from picogl.gpu.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 
 
