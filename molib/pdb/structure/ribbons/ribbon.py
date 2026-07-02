@@ -206,17 +206,17 @@ def _append_arrow(
         arrow_config = ArrowConfig(base_width=config.width_scale * 0.5)
         arrow_mesh = generate_arrow_geometry_from_context(config, context, p1=p1, p2=p2, ribbon_geom=ribbon_geom,
                                                           arrow_config=arrow_config)
-        if arrow_mesh.CUBE_DATA is not None:
-            if len(arrow_mesh.CUBE_DATA) == 0:
+        if arrow_mesh.vertices is not None:
+            if len(arrow_mesh.vertices) == 0:
                 return arrow_mesh, vertex_chain_ids
 
-        if arrow_mesh.CUBE_DATA is None or len(arrow_mesh.CUBE_DATA) == 0:
+        if arrow_mesh.vertices is None or len(arrow_mesh.vertices) == 0:
             return mesh_data, vertex_chain_ids
 
         mesh_data.append_mesh(arrow_mesh)
 
         chain_tail = context.chain_ids[-1] if context.chain_ids else ""
-        vertex_chain_ids.extend([chain_tail] * len(arrow_mesh.CUBE_DATA))
+        vertex_chain_ids.extend([chain_tail] * len(arrow_mesh.vertices))
 
     except Exception as e:
         log.message(f"Ribbon end arrow skipped: {e}", scope="ribbon")
