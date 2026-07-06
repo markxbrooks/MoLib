@@ -1,6 +1,6 @@
 from enum import Enum
-from typing import Dict, List, Optional
-
+from typing import Dict, List, Optional, Sequence
+from dataclasses import dataclass
 from decologr import Decologr as log
 from molib.ligand.pdb.info import PDBLigandInfo
 
@@ -17,6 +17,7 @@ except ImportError:
     rdMolDescriptors = None
     AllChem = None
 
+
 class StrEnum(str, Enum):
     """
     Python 3.10 compatible StrEnum.
@@ -26,6 +27,30 @@ class StrEnum(str, Enum):
 
     def __str__(self) -> str:
         return str(self.value)
+
+
+@dataclass(frozen=True, slots=True)
+class Element:
+    symbol: str
+    covalent_radius: float
+
+    @property
+    def is_hydrogen(self) -> bool:
+        return self.symbol == "H"
+
+
+ELEMENTS: dict[str, Element] = {
+    "H": Element("H", 0.31),
+    "C": Element("C", 0.76),
+    "N": Element("N", 0.71),
+    "O": Element("O", 0.66),
+    "F": Element("F", 0.57),
+    "P": Element("P", 1.07),
+    "S": Element("S", 1.05),
+    "Cl": Element("Cl", 0.99),
+    "Br": Element("Br", 1.20),
+    "I": Element("I", 1.39),
+}
 
 def get_covalent_radii(covalent_radii, element_symbols, i, j):
     """Get covalent radii"""
@@ -117,20 +142,6 @@ def detect_bonds(
     """Detect bonds between atoms based on distance and chemical rules"""
     bonds_added = 0
 
-    # --- Define covalent radii for common elements (in Angstroms)
-    covalent_radii = {
-        "H": 0.31,
-        "C": 0.76,
-        "N": 0.71,
-        "O": 0.66,
-        "F": 0.57,
-        "P": 1.07,
-        "S": 1.05,
-        "Cl": 0.99,
-        "Br": 1.20,
-        "I": 1.39,
-    }
-
     # --- Check all pairs of atoms
     for i in range(len(coordinates)):
         for j in range(i + 1, len(coordinates)):
@@ -140,16 +151,20 @@ def detect_bonds(
                 covalent_radii, element_symbols, i, j
             )
 
+            element1 = ELEMENTS[element_symbols[i]]
+            element2 = ELEMENTS[element_symbols[j]]
+
             # Bond if distance is less than sum of covalent radii + tolerance
             # Use different tolerances for different element pairs
-            if elem1 == "H" or elem2 == "H":
-                max_bond_distance = (
-                    radius1 + radius2
-                ) * 1.2  # 20% tolerance for H bonds
+            if "H" in (element1.symbol, element2.symbol):
+                tolerance = 1.2
             else:
-                max_bond_distance = (
-                    radius1 + radius2
-                ) * 1.3  # 30% tolerance for other bonds
+                tolerance = 1.3
+
+            max_bond_distance = (
+                                        element1.covalent_radius +
+                                        element2.covalent_radius
+                                ) * tolerance
 
             if distance <= max_bond_distance:
                 bond_order = determine_bond_order_based_on_distance(
@@ -312,14 +327,85 @@ def create_common_ligand_molecule(
         return None
 
 
-class SmilesConstant(StrEnum):
-    """Smiles Character"""
+class SmilesSymbol(StrEnum):
+    """Smiles Symbols"""
     COMPONENT_SEPARATOR = "."
     BRANCH_START = "("
     BRANCH_END = ")"
+
     SINGLE_BOND = "-"
     DOUBLE_BOND = "="
     TRIPLE_BOND = "#"
+    AROMATIC_BOND = ":"
+
+    RING_0 = "0"
+    RING_1 = "1"
+    RING_2 = "2"
+    RING_3 = "3"
+    RING_4 = "4"
+    RING_5 = "5"
+    RING_6 = "6"
+    RING_7 = "7"
+    RING_8 = "8"
+    RING_9 = "9"
+
+    BRACKET_START = "["
+    BRACKET_END = "]"
+
+    CHARGE_POSITIVE = "+"
+    CHARGE_NEGATIVE = "-"
+
+    DISCONNECTED = "."
+
+    @staticmethod
+    def is_ring_digit(ch: str) -> bool:
+        return ch.isdigit()
+
+    @staticmethod
+    def is_bond(ch: str) -> bool:
+        return ch in {
+            SmilesSymbol.SINGLE_BOND,
+            SmilesSymbol.DOUBLE_BOND,
+            SmilesSymbol.TRIPLE_BOND,
+            SmilesSymbol.AROMATIC_BOND,
+        }
+
+    @staticmethod
+    def is_branch(ch: str) -> bool:
+        return ch in {
+            SmilesSymbol.BRANCH_START,
+            SmilesSymbol.BRANCH_END,
+        }
+
+
+class SmilesComponent:
+    """Smiles Component"""
+
+    @staticmethod
+    def contains_multiple(smiles: str) -> bool:
+        """contains multiple components"""
+        return SmilesSymbol.COMPONENT_SEPARATOR in smiles
+
+    @staticmethod
+    def split(smiles: str) -> Sequence[str]:
+        """Split SMILES into components"""
+        return smiles.split(SmilesSymbol.COMPONENT_SEPARATOR)
+
+    @staticmethod
+    def largest(components: Sequence[str]) -> str:
+        """find largest component"""
+        return max(components, key=len, default="")
+
+    @staticmethod
+    def largest_from_smiles(smiles: str) -> str:
+        """Return the largest connected SMILES component."""
+        if SmilesSymbol.COMPONENT_SEPARATOR not in smiles:
+            return smiles
+
+        return SmilesComponent.largest(
+            SmilesComponent.split(smiles)
+        )
+
 
 def generate_clean_smiles(mol: "Chem.Mol") -> str:
     """Generate a clean, chemically accurate SMILES string"""
@@ -329,54 +415,15 @@ def generate_clean_smiles(mol: "Chem.Mol") -> str:
 
         # Generate canonical SMILES
         smiles = Chem.MolToSmiles(mol, canonical=True)
+        smiles = SmilesComponent.largest_from_smiles(smiles)
 
-        # Check if SMILES contains disconnected components (dots)
-        if smiles_contains_multiple_molecules(smiles):
-            # Try to get the largest connected component
-            try:
-                # Split by dots and get the largest component
-                components = smiles_split_into_components(smiles)
-                return smiles_find_largest_component(components)
-            except:
-                # If that fails, return the original
-                return smiles
-
-        # Validate SMILES by parsing it back
-        try:
-            test_mol = Chem.MolFromSmiles(smiles)
-            if test_mol is None:
-                # log.warning(
-                #     f"⚠️ PDBLigandParser: Generated SMILES is invalid: {smiles}"
-                # )
-                return ""
-
-            # log.info(f"✅ PDBLigandParser: Valid SMILES generated: {smiles}")
-            return smiles
-
-        except Exception as e:
-            log.warning(f"⚠️ PDBLigandParser: Error validating SMILES: {e}")
-            return smiles
+        test_mol = Chem.MolFromSmiles(smiles)
+        return smiles if test_mol is not None else ""
 
     except Exception as e:
         print(f"❌ PDBLigandParser: Error generating SMILES: {e}")
         log.warning(f"❌ PDBLigandParser: Error generating SMILES: {e}")
         return ""
-
-
-def smiles_find_largest_component(components: list[str]) -> str:
-    largest_component = max(components, key=len)
-    log.info(
-        f"🔄 PDBLigandParser: Using largest component: {largest_component}"
-    )
-    return largest_component
-
-
-def smiles_contains_multiple_molecules(smiles: str) -> bool:
-    return SmilesConstant.COMPONENT_SEPARATOR in smiles
-
-def smiles_split_into_components(smiles: str) -> list[str]:
-    components = smiles.split(SmilesConstant.COMPONENT_SEPARATOR)
-    return components
 
 
 def create_molecule_alternative(
