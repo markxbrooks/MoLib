@@ -45,7 +45,9 @@ class Atom3D(Structure3D):
         b_factor: float = 0.0,
         occupancy: float = 1.0,
         # Coordinates
-        coords: Optional["np.ndarray"] = None, # np.asarray(coords) if coords is not None else np.zeros(3)
+        coords: Optional[
+            "np.ndarray"
+        ] = None,  # np.asarray(coords) if coords is not None else np.zeros(3)
         # Hierarchy
         parent: Optional["Res3D"] = None,
         # Visualization
@@ -92,7 +94,7 @@ class Atom3D(Structure3D):
         self.set_element_color()
         if self.selected:
             self.color = np.array([1.0, 1.0, 1.0], dtype=np.float32)
-            
+
         # Further initializations
         self.segment_id = segment_id
         self.atom_validated = atom_validated
@@ -105,7 +107,7 @@ class Atom3D(Structure3D):
         self.b_factor = b_factor
         self.occupancy = occupancy
         self.coords = coords
-        
+
         # For comparison with uglymol
         # self.name = ""
         # self.altloc = ""
@@ -121,7 +123,7 @@ class Atom3D(Structure3D):
         self.i_seq = -1
         self.is_ligand = None
         self.bonds = []
-        
+
     def from_pdb_line(self, pdb_line):
         """from_pdb_line"""
         if len(pdb_line) < 66:
@@ -129,22 +131,22 @@ class Atom3D(Structure3D):
         rec_type = pdb_line[0:6]
         if rec_type not in ["HETATM", "ATOM  "]:
             raise ValueError(f"Wrong record type: {rec_type}")
-        
+
         x = PDBLayout.x.parse(line)
         y = PDBLayout.y.parse(line)
         z = PDBLayout.z.parse(line)
-            
-        serial=PDBLayout.atom_serial.parse(line)
-        name=PDBLayout.atom_name.parse(line)
-        alt_loc=PDBLayout.alt_loc.parse(line)
-        chain_id=PDBLayout.chain_id.parse(line)
-        element=PDBLayout.element.parse(line)
-        res_name=PDBLayout.res_name.parse(line)
-        res_seq=PDBLayout.res_seq.parse(line)
-        coords=np.array([x, y, z], dtype=np.float32)
-        occupancy=PDBLayout.occupancy.parse(line) or 1.0
-        b_factor=PDBLayout.temp_factor.parse(line) or 0.0
-        
+
+        serial = PDBLayout.atom_serial.parse(line)
+        name = PDBLayout.atom_name.parse(line)
+        alt_loc = PDBLayout.alt_loc.parse(line)
+        chain_id = PDBLayout.chain_id.parse(line)
+        element = PDBLayout.element.parse(line)
+        res_name = PDBLayout.res_name.parse(line)
+        res_seq = PDBLayout.res_seq.parse(line)
+        coords = np.array([x, y, z], dtype=np.float32)
+        occupancy = PDBLayout.occupancy.parse(line) or 1.0
+        b_factor = PDBLayout.temp_factor.parse(line) or 0.0
+
         self.name = name
         self.alt_loc = alt_loc
         self.res_seq = res_seq
@@ -434,7 +436,9 @@ class Atom3D(Structure3D):
         )
 
         log.debug(
-            f"Atom {self.name} secstruc {secstruc_str} -> colour {color}", silent=True, scope=self.__class__.__name__
+            f"Atom {self.name} secstruc {secstruc_str} -> colour {color}",
+            silent=True,
+            scope=self.__class__.__name__,
         )
         return np.array(color, dtype=np.float32)
 
@@ -447,14 +451,16 @@ class Atom3D(Structure3D):
             color = ColorMap.b_factor_to_color(self.b_factor)
             log.debug(
                 f"Atom {self.name} B-factor {self.b_factor} -> colour {color}",
-                silent=True, scope=self.__class__.__name__
+                silent=True,
+                scope=self.__class__.__name__,
             )
             return np.array(color, dtype=np.float32)
         else:
             # Fallback to element colour if no B-factor
             log.debug(
                 f"Atom {self.name} using element colour (B-factor: {self.b_factor})",
-                silent=True, scope=self.__class__.__name__,
+                silent=True,
+                scope=self.__class__.__name__,
             )
             return self._color_by_element()
 
@@ -468,15 +474,27 @@ class Atom3D(Structure3D):
             if self.atom_validated:
                 # Valid atom - green
                 color = (0.0, 1.0, 0.0)  # Green
-                log.debug(f"Atom {self.name} validated -> green", silent=True, scope=self.__class__.__name__ )
+                log.debug(
+                    f"Atom {self.name} validated -> green",
+                    silent=True,
+                    scope=self.__class__.__name__,
+                )
             else:
                 # Invalid atom - red
                 color = ColorMap.INVALID  # (1.0, 0.0, 0.0)  # Red
-                log.debug(f"Atom {self.name} not validated -> red", silent=True, scope=self.__class__.__name__ )
+                log.debug(
+                    f"Atom {self.name} not validated -> red",
+                    silent=True,
+                    scope=self.__class__.__name__,
+                )
         else:
             # No validation data - gray
             color = (0.5, 0.5, 0.5)  # Gray
-            log.debug(f"Atom {self.name} no validation data -> gray", scope=self.__class__.__name__, silent=True)
+            log.debug(
+                f"Atom {self.name} no validation data -> gray",
+                scope=self.__class__.__name__,
+                silent=True,
+            )
 
         return np.array(color, dtype=np.float32)
 
@@ -489,13 +507,15 @@ class Atom3D(Structure3D):
             color = ColorMap.contact_distance_to_color(self.atom_contact_distance)
             log.debug(
                 f"Atom {self.name} contact distance {self.atom_contact_distance} -> colour {color}",
-                silent=True, scope=self.__class__.__name__
+                silent=True,
+                scope=self.__class__.__name__,
             )
             return np.array(color, dtype=np.float32)
         else:
             # Fallback to element colour if no contact distance
             log.debug(
                 f"Atom {self.name} using element colour (contact distance: {self.atom_contact_distance})",
-                silent=True, scope=self.__class__.__name__
+                silent=True,
+                scope=self.__class__.__name__,
             )
             return self._color_by_element()

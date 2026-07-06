@@ -1,9 +1,17 @@
+"""
+Defines utilities for handling chemical elements, bond detection, and molecule
+manipulations using RDKit. Includes classes and functions for element
+properties, bond specifications, and various chemical computations.
+"""
+
+from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Sequence
-from dataclasses import dataclass
-from decologr import Decologr as log
-from molib.ligand.pdb.info import PDBLigandInfo
 
+from decologr import Decologr as log
+from molib.ligand.bond import add_bond, add_conformer, detect_bonds
+from molib.ligand.element import calculate_distance, get_covalent_radii
+from molib.ligand.pdb.info import PDBLigandInfo
 
 try:
     from rdkit import Chem
@@ -16,112 +24,6 @@ except ImportError:
     Descriptors = None
     rdMolDescriptors = None
     AllChem = None
-
-
-class StrEnum(str, Enum):
-    """
-    Python 3.10 compatible StrEnum.
-
-    Behaves like Python 3.11 enum.StrEnum.
-    """
-
-    def __str__(self) -> str:
-        return str(self.value)
-
-
-@dataclass(frozen=True, slots=True)
-class Element:
-    """
-    Represents a chemical element with its symbol and covalent radius.
-
-    This class provides a model for storing basic information about a chemical
-    element. It includes a symbol representing the element and its covalent
-    radius, which is a key property used in various chemical computations.
-    """
-    symbol: str
-    covalent_radius: float
-
-    @property
-    def is_hydrogen(self) -> bool:
-        return self.symbol == "H"
-
-
-ELEMENTS: dict[str, Element] = {
-    "H": Element("H", 0.31),
-    "C": Element("C", 0.76),
-    "N": Element("N", 0.71),
-    "O": Element("O", 0.66),
-    "F": Element("F", 0.57),
-    "P": Element("P", 1.07),
-    "S": Element("S", 1.05),
-    "Cl": Element("Cl", 0.99),
-    "Br": Element("Br", 1.20),
-    "I": Element("I", 1.39),
-}
-
-def get_covalent_radii(covalent_radii, element_symbols, i, j):
-    """Get covalent radii"""
-    elem1 = element_symbols[i]
-    elem2 = element_symbols[j]
-    radius1 = covalent_radii.get(elem1, 1.0)
-    radius2 = covalent_radii.get(elem2, 1.0)
-    return elem1, elem2, radius1, radius2
-
-
-def calculate_distance(coordinates, i, j):
-    """Calculate distance between atoms"""
-    coord1 = coordinates[i]
-    coord2 = coordinates[j]
-    distance = (
-        (coord1[0] - coord2[0]) ** 2
-        + (coord1[1] - coord2[1]) ** 2
-        + (coord1[2] - coord2[2]) ** 2
-    ) ** 0.5
-    return distance
-
-
-def add_bond(
-    atom_indices: dict[int, int],
-    bond_order: int,
-    bonds_added: int,
-    distance: float,
-    elem1: str,
-    elem2: str,
-    i: int,
-    j: int,
-    mol: Mol,
-):
-    """Add bond"""
-    try:
-        mol.AddBond(atom_indices[i], atom_indices[j], Chem.BondType(bond_order))
-        bonds_added += 1
-        log.debug(
-            f"  🔗 Bond {bonds_added}: {elem1}-{elem2} (distance: {distance:.2f}Å, order: {bond_order})"
-        )
-    except Exception as e:
-        log.warning(f"  ⚠️ Failed to add bond {elem1}-{elem2}: {e}")
-    return bonds_added
-
-
-def determine_bond_order_based_on_distance(
-    distance: float, elem1: str, elem2: str, radius1: float, radius2: float
-):
-    """Determine bond order based on distance"""
-    bond_order = 1
-    if distance <= (radius1 + radius2) * 0.9:  # Very close = double/triple bond
-        if elem1 == "C" and elem2 == "C":
-            bond_order = 2  # Assume double bond for C-C
-        elif elem1 in ["C", "N", "O"] and elem2 in ["C", "N", "O"]:
-            bond_order = 2
-    return bond_order
-
-
-def add_conformer(atom_indices: dict[int, int], coordinates: list, mol: Mol):
-    """Add conformer with 3D coordinates"""
-    conf = Chem.Conformer(len(atom_indices))
-    for i, coord in enumerate(coordinates):
-        conf.SetAtomPosition(i, (coord[0], coord[1], coord[2]))
-    mol.AddConformer(conf)
 
 
 def embed_and_optimize(mol_with_h: Mol):
@@ -139,107 +41,6 @@ def embed_and_optimize(mol_with_h: Mol):
         mol = Chem.RemoveHs(mol_with_h)
     return mol
 
-
-def detect_bonds(
-    mol: "Chem.RWMol",
-    coordinates: List[tuple],
-    element_symbols: List[str],
-    atom_indices: Dict[int, int],
-) -> int:
-    """Detect bonds between atoms based on distance and chemical rules"""
-    bonds_added = 0
-
-    # --- Check all pairs of atoms
-    for i in range(len(coordinates)):
-        for j in range(i + 1, len(coordinates)):
-            distance = calculate_distance(coordinates, i, j)
-
-            elem1, elem2, radius1, radius2 = get_covalent_radii(
-                covalent_radii, element_symbols, i, j
-            )
-
-            element1 = ELEMENTS[element_symbols[i]]
-            element2 = ELEMENTS[element_symbols[j]]
-
-            # Bond if distance is less than sum of covalent radii + tolerance
-            # Use different tolerances for different element pairs
-            if "H" in (element1.symbol, element2.symbol):
-                tolerance = 1.2
-            else:
-                tolerance = 1.3
-
-            max_bond_distance = (
-                                        element1.covalent_radius +
-                                        element2.covalent_radius
-                                ) * tolerance
-
-            if distance <= max_bond_distance:
-                bond_order = determine_bond_order_based_on_distance(
-                    distance, elem1, elem2, radius1, radius2
-                )
-
-                bonds_added = add_bond(
-                    atom_indices,
-                    bond_order,
-                    bonds_added,
-                    distance,
-                    elem1,
-                    elem2,
-                    i,
-                    j,
-                    mol,
-                )
-
-    return bonds_added
-
-
-def create_sulfate_from_coordinates(
-    coordinates: List[tuple], element_symbols: List[str], atom_names: List[str]
-) -> Optional["Chem.Mol"]:
-    """Create sulfate ion from coordinates with proper tetrahedral meshdata"""
-    try:
-        log.info(f"🔄 PDBLigandParser: Creating sulfate from {len(coordinates)} atoms")
-
-        # --- Create sulfate ion from SMILES
-        mol = Chem.MolFromSmiles("[O-]S(=O)(=O)[O-]")
-        if mol is None:
-            log.error("❌ PDBLigandParser: Failed to create sulfate from SMILES")
-            return None
-
-        # --- Find the sulfur atom in coordinates
-        sulfur_idx = None
-        for i, element in enumerate(element_symbols):
-            if element == "S":
-                sulfur_idx = i
-                break
-
-        if sulfur_idx is None:
-            print("❌ PDBLigandParser: No sulfur atom found in coordinates")
-            log.error("❌ PDBLigandParser: No sulfur atom found in coordinates")
-            return None
-
-        # Create conformer with actual coordinates
-        conf = Chem.Conformer(mol.GetNumAtoms())
-
-        # --- Place sulfur at the sulfur coordinate
-        sulfur_coord = coordinates[sulfur_idx]
-        conf.SetAtomPosition(0, (sulfur_coord[0], sulfur_coord[1], sulfur_coord[2]))
-
-        # --- Place oxygen atoms at the oxygen coordinates
-        oxygen_coords = [
-            coord for i, coord in enumerate(coordinates) if element_symbols[i] == "O"
-        ]
-        for i, oxy_coord in enumerate(oxygen_coords[:4]):  # Take up to 4 oxygen atoms
-            conf.SetAtomPosition(i + 1, (oxy_coord[0], oxy_coord[1], oxy_coord[2]))
-
-        mol.AddConformer(conf)
-
-        log.info(f"✅ PDBLigandParser: Created sulfate with {mol.GetNumAtoms()} atoms")
-        return mol
-
-    except Exception as e:
-        log.warning(f"❌ PDBLigandParser: Error creating sulfate from coordinates: {e}")
-        return None
 
 
 def create_mol_with_conformer(coordinates, ligand_id, smiles):
@@ -333,58 +134,6 @@ def create_common_ligand_molecule(
         )
         return None
 
-
-class SmilesSymbol(StrEnum):
-    """Smiles Symbols"""
-    COMPONENT_SEPARATOR = "."
-    BRANCH_START = "("
-    BRANCH_END = ")"
-
-    SINGLE_BOND = "-"
-    DOUBLE_BOND = "="
-    TRIPLE_BOND = "#"
-    AROMATIC_BOND = ":"
-
-    RING_0 = "0"
-    RING_1 = "1"
-    RING_2 = "2"
-    RING_3 = "3"
-    RING_4 = "4"
-    RING_5 = "5"
-    RING_6 = "6"
-    RING_7 = "7"
-    RING_8 = "8"
-    RING_9 = "9"
-
-    BRACKET_START = "["
-    BRACKET_END = "]"
-
-    CHARGE_POSITIVE = "+"
-    CHARGE_NEGATIVE = "-"
-
-    DISCONNECTED = "."
-
-    @staticmethod
-    def is_ring_digit(ch: str) -> bool:
-        return ch.isdigit()
-
-    @staticmethod
-    def is_bond(ch: str) -> bool:
-        return ch in {
-            SmilesSymbol.SINGLE_BOND,
-            SmilesSymbol.DOUBLE_BOND,
-            SmilesSymbol.TRIPLE_BOND,
-            SmilesSymbol.AROMATIC_BOND,
-        }
-
-    @staticmethod
-    def is_branch(ch: str) -> bool:
-        return ch in {
-            SmilesSymbol.BRANCH_START,
-            SmilesSymbol.BRANCH_END,
-        }
-
-
 class SmilesComponent:
     """Smiles Component"""
 
@@ -409,9 +158,7 @@ class SmilesComponent:
         if SmilesSymbol.COMPONENT_SEPARATOR not in smiles:
             return smiles
 
-        return SmilesComponent.largest(
-            SmilesComponent.split(smiles)
-        )
+        return SmilesComponent.largest(SmilesComponent.split(smiles))
 
 
 def generate_clean_smiles(mol: "Chem.Mol") -> str:

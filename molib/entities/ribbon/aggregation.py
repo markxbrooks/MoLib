@@ -12,6 +12,7 @@ from molib.entities.ribbon.color import RibbonColor
 @dataclass
 class RibbonAggregation:
     """Ribbon Aggregation"""
+
     colors_by_chain: dict[str, list[RibbonColor]]
     coords_by_chain: dict[str, list[Vector3Like]]
     o_coords_by_chain: Optional[dict[str, list[Vector3Like]]]

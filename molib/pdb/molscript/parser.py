@@ -243,6 +243,7 @@ def _prepare_validation_data(validation_report: dict) -> dict:
 
 class PDBPandaColumns(StrEnum):
     """PDB columns for pandas dataframe"""
+
     RECORD_NAME = "record_name"
     ATOM_NAME = "atom_name"
     CHAIN_ID = "chain_id"
@@ -363,10 +364,12 @@ def parse_pdb_atoms_to_mol3d(
     # geometry so ribbons and segment extraction match structures like 2VUG_NoSS.pdb.
     from molib.pdb.molscript.structure.secondary import (
         mol3d_protein_has_explicit_secondary_structure,
-        set_secondary_structure)
+        set_secondary_structure,
+    )
 
-    if infer_missing_secondary_structure and not mol3d_protein_has_explicit_secondary_structure(
-        mol
+    if (
+        infer_missing_secondary_structure
+        and not mol3d_protein_has_explicit_secondary_structure(mol)
     ):
         set_secondary_structure(mol, "PDB", coil_mode=False)
 

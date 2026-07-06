@@ -69,7 +69,10 @@ def mol3d_protein_has_explicit_secondary_structure(mol: Molecule3D) -> bool:
             if ss != SecondaryStructureType.COIL:
                 return True
             continue
-        if SecondaryStructureType.from_string(str(ss).strip()) != SecondaryStructureType.COIL:
+        if (
+            SecondaryStructureType.from_string(str(ss).strip())
+            != SecondaryStructureType.COIL
+        ):
             return True
     return False
 
@@ -78,23 +81,21 @@ def _polypeptide_residue_with_ca(res: Res3D) -> bool:
     if not res.has_ca():
         return False
     res_name = (
-        (getattr(res, "name", "") or getattr(res, "type", "") or "")
-        .strip()
-        .upper()
+        (getattr(res, "name", "") or getattr(res, "type", "") or "").strip().upper()
     )
     return res_name in STANDARD_POLYPEPTIDE_RESIDUES
 
 
-def _virtual_ca_bend_deg(ca_prev: np.ndarray, ca_mid: np.ndarray, ca_next: np.ndarray) -> float:
+def _virtual_ca_bend_deg(
+    ca_prev: np.ndarray, ca_mid: np.ndarray, ca_next: np.ndarray
+) -> float:
     """Angle ∠(Cα(i−1), Cα(i), Cα(i+1)); helices ~90°, extended strands ~120°+."""
     u = ca_prev - ca_mid
     v = ca_next - ca_mid
     nu, nv = np.linalg.norm(u), np.linalg.norm(v)
     if nu < 1e-9 or nv < 1e-9:
         return 180.0
-    return float(
-        np.degrees(np.arccos(np.clip(np.dot(u / nu, v / nv), -1.0, 1.0)))
-    )
+    return float(np.degrees(np.arccos(np.clip(np.dot(u / nu, v / nv), -1.0, 1.0))))
 
 
 def _mol3d_secstruc_ca_geom_residue_run(residues: list[Res3D]) -> None:

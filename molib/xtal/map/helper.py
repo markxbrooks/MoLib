@@ -11,8 +11,10 @@ from typing import Callable, Dict, Optional, Tuple
 import gemmi
 import numpy as np
 from decologr import Decologr as log
-from molib.xtal.uglymol.map.helpers import (extract_symop_text,
-                                            parse_symmetry_operator_to_matrix)
+from molib.xtal.uglymol.map.helpers import (
+    extract_symop_text,
+    parse_symmetry_operator_to_matrix,
+)
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
 faulthandler.enable()
@@ -656,7 +658,9 @@ def load_ccp4_map(
                     if hasattr(ccp4_map, "ccp4_header") and isinstance(
                         ccp4_map.ccp4_header, (bytes, bytearray)
                     ):
-                        header_ints = struct.unpack("<256i", ccp4_map.ccp4_header[:1024])
+                        header_ints = struct.unpack(
+                            "<256i", ccp4_map.ccp4_header[:1024]
+                        )
                         header = SimpleHeader(
                             nsymbt=header_ints[23],
                             nx=header_ints[7],
@@ -695,11 +699,11 @@ def load_ccp4_map(
                         if isinstance(ccp4_map, type(np)) or not os.path.exists(
                             map_path
                         ):
-                            _ = expand_ccp4_symmetry(np_array, map_path, header)  # smoke
-                        else:
-                            np_array = expand_ccp4_symmetry(
+                            _ = expand_ccp4_symmetry(
                                 np_array, map_path, header
-                            )
+                            )  # smoke
+                        else:
+                            np_array = expand_ccp4_symmetry(np_array, map_path, header)
                         log.info(f"✅ Symmetry expanded - new shape: {np_array.shape}")
                     except Exception as _:
                         # On any expansion error, proceed with unexpanded array
@@ -1411,7 +1415,9 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         import re
 
         from molib.xtal.uglymol.map.helpers import (
-            extract_symop_text, parse_symmetry_operator_to_matrix)
+            extract_symop_text,
+            parse_symmetry_operator_to_matrix,
+        )
 
         log.info(f"🔄 Expanding symmetry for {map_path}")
 

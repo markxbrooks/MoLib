@@ -9,9 +9,9 @@ Materials and Lighting Configuration (OO Refactor)
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Dict, Iterable, Tuple
-
 
 # =============================================================================
 # CORE TYPES
@@ -412,6 +412,7 @@ materials = {
 # MATERIAL
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class Material:
     name: str
@@ -440,6 +441,7 @@ class Material:
 # =============================================================================
 # MATERIAL LIBRARY
 # =============================================================================
+
 
 class MaterialLibrary:
     def __init__(self, materials: Dict[int, Material]):
@@ -477,10 +479,10 @@ class MaterialLibrary:
             print(f"{i:2d}: {m.name:12s} {m.hex}")
 
 
-
 # =============================================================================
 # LIGHTING
 # =============================================================================
+
 
 @dataclass
 class Light:
@@ -518,6 +520,7 @@ class LightingSystem:
     def is_light_on(self, idx: int) -> bool:
         return self.lights.get(idx, Light((0, 0, 0), 0, False)).on
 
+
 lighting = LightingSystem(
     lights={
         0: Light(direction=(-0.2, 0.2, 1.0), intensity=1.0, on=True),
@@ -529,6 +532,7 @@ lighting = LightingSystem(
     fog_mode=0,
     fog_depth=0.0,
 )
+
 
 def _build_legacy_lighting_settings() -> dict:
     return {
@@ -543,10 +547,10 @@ def _build_legacy_lighting_settings() -> dict:
 lighting_settings = _build_legacy_lighting_settings()
 
 
-
 # =============================================================================
 # RAW DATA (UNCHANGED VALUES)
 # =============================================================================
+
 
 def _m(x):
     # Case 1: already Material → pass through
@@ -565,10 +569,7 @@ def _m(x):
     )
 
 
-MATERIALS = MaterialLibrary({
-    i: _m(m)
-    for i, m in materials.items()
-})
+MATERIALS = MaterialLibrary({i: _m(m) for i, m in materials.items()})
 
 
 def _material_to_legacy_dict(mat: Material) -> dict:
@@ -583,10 +584,8 @@ def _material_to_legacy_dict(mat: Material) -> dict:
     }
 
 
-materials = {
-    i: _material_to_legacy_dict(m)
-    for i, m in MATERIALS
-}
+materials = {i: _material_to_legacy_dict(m) for i, m in MATERIALS}
+
 
 class _LightsProxy(dict):
     def __getitem__(self, key):
@@ -604,12 +603,14 @@ lights = _LightsProxy()
 # UTILITY FUNCTIONS
 # =============================================================================
 
+
 def _material_to_legacy_dict(mat: Material) -> dict:
     return {
         "name": mat.name,
         "hex": mat.hex,
         "rgb": list(mat.combined_rgb),
     }
+
 
 def get_material_properties(material_index):
     """Get complete material properties for a given index (0-40)."""

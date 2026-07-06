@@ -22,7 +22,14 @@ def _normalize_element_symbol(series: pd.Series) -> pd.Series:
 
 def _prepare_chain_atoms(frame: pd.DataFrame, exclude_hydrogen: bool) -> pd.DataFrame:
     df = frame.copy()
-    required = {"x_coord", "y_coord", "z_coord", "chain_id", "residue_number", "insertion"}
+    required = {
+        "x_coord",
+        "y_coord",
+        "z_coord",
+        "chain_id",
+        "residue_number",
+        "insertion",
+    }
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"atom_df is missing required columns: {sorted(missing)}")
@@ -118,9 +125,13 @@ def contacting_residue_pairs(
 
     present = set(cid.unique())
     if ca not in present:
-        raise ValueError(f"chain_id {ca!r} not found in atom_df (have {sorted(present)})")
+        raise ValueError(
+            f"chain_id {ca!r} not found in atom_df (have {sorted(present)})"
+        )
     if cb not in present:
-        raise ValueError(f"chain_id {cb!r} not found in atom_df (have {sorted(present)})")
+        raise ValueError(
+            f"chain_id {cb!r} not found in atom_df (have {sorted(present)})"
+        )
 
     dfa = work[cid == ca]
     dfb = work[cid == cb]

@@ -47,9 +47,7 @@ def extract_isosurface(volume: np.ndarray, level: float = 1.0):
             log.warning("⚠️ Volume has no variation - cannot extract isosurface")
             return None
         try:
-            vertices, faces, normals, _ = measure.marching_cubes(
-                volume, level=adj
-            )
+            vertices, faces, normals, _ = measure.marching_cubes(volume, level=adj)
         except ValueError as ex:
             if "within volume data range" in str(ex).lower():
                 # Fallback: isosurface near median density (common for odd grids)
@@ -71,8 +69,7 @@ def extract_isosurface(volume: np.ndarray, level: float = 1.0):
                 raise
 
         # Compute better normals using PicoGL's method for improved lighting
-        from picogl.gpu.buffers.vertex.normals import \
-            compute_vertex_normals
+        from picogl.gpu.buffers.vertex.normals import compute_vertex_normals
 
         normals = compute_vertex_normals(vertices, faces)
 
@@ -113,8 +110,7 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
         vertices, faces, normals, _ = measure.marching_cubes(volume, level=level)
 
         # Compute better normals using PicoGL's method for improved lighting
-        from picogl.gpu.buffers.vertex.normals import \
-            compute_vertex_normals
+        from picogl.gpu.buffers.vertex.normals import compute_vertex_normals
 
         normals = compute_vertex_normals(vertices, faces)
 
@@ -243,9 +239,7 @@ def create_2fofc_color_map(
     """
     try:
         bc = base_color if base_color is not None else (0.0, 0.0, 1.0)
-        return generate_colors_from_positions(
-            vertex_densities, bc[0], bc[1], bc[2]
-        )
+        return generate_colors_from_positions(vertex_densities, bc[0], bc[1], bc[2])
 
     except Exception as ex:
         log.error(f"Error creating 2Fo-Fc colour map: {ex}")
@@ -303,8 +297,7 @@ def extract_isosurface_elmo(volume: np.ndarray, level: float = 1.0):
         faces = np.array(faces, dtype=np.int32)
 
         # Compute normals using PicoGL's method for improved lighting
-        from picogl.gpu.buffers.vertex.normals import \
-            compute_vertex_normals
+        from picogl.gpu.buffers.vertex.normals import compute_vertex_normals
 
         normals = compute_vertex_normals(vertices, faces)
 

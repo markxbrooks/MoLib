@@ -1,9 +1,11 @@
 import re
 
 import numpy as np
-from molib.xtal.ccp4.map.globals import (CCP4_HEADER_SIZE,
-                                         CCP4_SYMOP_CHUNK_SIZE,
-                                         CCP4_SYMOP_REGEX_MATCH)
+from molib.xtal.ccp4.map.globals import (
+    CCP4_HEADER_SIZE,
+    CCP4_SYMOP_CHUNK_SIZE,
+    CCP4_SYMOP_REGEX_MATCH,
+)
 
 
 def vectorized_apply_symmetry(

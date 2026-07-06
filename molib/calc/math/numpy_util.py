@@ -13,8 +13,9 @@ def get_np_array(p1: ndarray) -> np.ndarray:
     return np.asarray(p1, dtype=np.float32)
 
 
-def generate_colors_from_positions(positions: np.ndarray,
-                                   r: float, g: float, b: float) -> np.ndarray:
+def generate_colors_from_positions(
+    positions: np.ndarray, r: float, g: float, b: float
+) -> np.ndarray:
     """generate colors from positions"""
     return np.tile([r, g, b], (len(positions), 1)).astype(np.float32)
 

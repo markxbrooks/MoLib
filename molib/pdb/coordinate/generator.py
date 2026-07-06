@@ -84,7 +84,9 @@ def generate_coordinate_data(
     elif chain_from == "atom":
         source_df = atom_df
     elif chain_from == "ca":
-        source_df = atom_df[atom_df["atom_name"] == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME]
+        source_df = atom_df[
+            atom_df["atom_name"] == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME
+        ]
     elif chain_from == "water":
         source_df = water_df
     elif chain_from == "hetatm_no_water":

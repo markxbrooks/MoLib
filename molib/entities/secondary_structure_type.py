@@ -41,6 +41,7 @@ class SecondaryStructureType(StrEnum):
         """Convert enum to string representation."""
         return self.value
 
+
 HELIX_TYPES = {
     SecondaryStructureType.ALPHA_HELIX,
     SecondaryStructureType.ALPHA_HELIX2,
@@ -71,6 +72,7 @@ def normalize_ss(ss: str | SecondaryStructureType) -> SecondaryStructureType:
 
 class SecondaryStructureWidth:
     """Secondary Structure Width"""
+
     HELIX = 0.6
     SHEET = 0.8
     COIL = 0.5
@@ -83,7 +85,3 @@ def _width_for(ss: SecondaryStructureType) -> float:
         return SecondaryStructureWidth.SHEET
     else:
         return SecondaryStructureWidth.COIL
-
-
-
-

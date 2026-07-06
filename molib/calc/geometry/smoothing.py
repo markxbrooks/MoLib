@@ -1,7 +1,9 @@
 import numpy as np
-from molib.calc.geometry.angle import (dihedral_angle,
-                                       rotate_vector_around_axis,
-                                       smooth_torsion_angles)
+from molib.calc.geometry.angle import (
+    dihedral_angle,
+    rotate_vector_around_axis,
+    smooth_torsion_angles,
+)
 from scipy import ndimage
 from scipy.signal import savgol_filter
 
@@ -9,10 +11,14 @@ from scipy.signal import savgol_filter
 def _as_vec3_f64(v):
     """Coerce ndarray, sequence, or x/y/z point-like to shape (3,) float64."""
     if isinstance(v, np.ndarray):
-        return np.asarray(v, dtype=np.float64).reshape(3,)
+        return np.asarray(v, dtype=np.float64).reshape(
+            3,
+        )
     if hasattr(v, "x") and hasattr(v, "y") and hasattr(v, "z"):
         return np.array([float(v.x), float(v.y), float(v.z)], dtype=np.float64)
-    return np.asarray(v, dtype=np.float64).reshape(3,)
+    return np.asarray(v, dtype=np.float64).reshape(
+        3,
+    )
 
 
 def apply_torsion_smoothing(backbone_points, normal_vectors, window=5):

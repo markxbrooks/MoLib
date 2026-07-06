@@ -10,7 +10,6 @@ import numpy as np
 from molib.entities.secondary_structure_type import SecondaryStructureType
 
 
-
 class CoordMixin:
     __slots__ = ("x", "y", "z")
 
@@ -20,7 +19,7 @@ class CoordMixin:
         self.z = z
 
 
-class Structure3D: # (CoordMixin):
+class Structure3D:  # (CoordMixin):
     # class Structure3D:
     """Base class for 3D structural elements - Pure Python class for performance."""
 

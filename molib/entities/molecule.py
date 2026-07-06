@@ -332,7 +332,6 @@ class Molecule3D:
         if callable(hook):
             hook(selection, r, g, b)
 
-
     def get_atom_count(self) -> int:
         """
         get_atom_count
@@ -430,7 +429,9 @@ class Molecule3D:
     def get_ca_residues(self) -> list:
         """Return a list of residues that have CA atoms (backbone)."""
         if not hasattr(self, "_cached_ca_residues"):
-            self._cached_ca_residues = [res for res in self.get_all_residues() if res.has_ca()]
+            self._cached_ca_residues = [
+                res for res in self.get_all_residues() if res.has_ca()
+            ]
         return self._cached_ca_residues
 
     def get_ca_residues_protein_only(self) -> list:
@@ -531,7 +532,9 @@ class Molecule3D:
                     nucleotide_chains.append(chain.chain_id)
         return nucleotide_chains if nucleotide_chains else None
 
-    def get_peptide_chains(self, atom_name: str = MoLibConstant.PEPTIDE_CHAIN_ATOMNAME) -> list[str] | None:
+    def get_peptide_chains(
+        self, atom_name: str = MoLibConstant.PEPTIDE_CHAIN_ATOMNAME
+    ) -> list[str] | None:
         """
         Identify chains that likely contain polypeptides by checking for a specific atom.
 

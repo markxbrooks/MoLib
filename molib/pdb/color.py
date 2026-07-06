@@ -46,7 +46,9 @@ def palette_rgb_at(chain_index: int) -> tuple[float, float, float]:
     return (float(row[0]), float(row[1]), float(row[2]))
 
 
-def rgb_for_chain_id_among(chain_id: str, chain_ids: list[str]) -> tuple[float, float, float]:
+def rgb_for_chain_id_among(
+    chain_id: str, chain_ids: list[str]
+) -> tuple[float, float, float]:
     """
     Chain color for *chain_id* using **sorted unique** *chain_ids* ordering.
 

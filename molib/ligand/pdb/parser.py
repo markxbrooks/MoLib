@@ -14,7 +14,8 @@ from typing import Dict, List, Optional
 from molib.ligand.pdb.info import PDBLigandInfo
 from molib.ligand.pdb.layouts.hetatm import HETATMLayout
 from molib.ligand.pdb.spec import PDBLineSpec
-from molib.ligand.rdkit.helpers import create_pdb_ligand_info
+from molib.ligand.rdkit.smiles.component import create_pdb_ligand_info
+
 
 try:
     from rdkit import Chem

@@ -6,6 +6,7 @@ import pandas as pd
 from Bio.PDB import DSSP, PDBParser
 from molib.core.constants import MoLibConstant
 from molib.entities.molecule import Molecule3D
+from molib.entities.residue import Res3D
 
 
 def assign_secondary_structure(pdb_path: str) -> dict:
@@ -46,7 +47,9 @@ def convert_pdb_df_to_mol3d_with_ss_prediction(
 
     # Performance optimization: Use vectorized operations instead of iterrows
     # Filter for CA atoms first
-    ca_atoms = atom_df[atom_df["atom_name"].str.strip() == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME]
+    ca_atoms = atom_df[
+        atom_df["atom_name"].str.strip() == MoLibConstant.PEPTIDE_CHAIN_ATOMNAME
+    ]
 
     for i, row in ca_atoms.iterrows():
         res_id = (row["chain_id"].strip(), int(row["residue_number"]))

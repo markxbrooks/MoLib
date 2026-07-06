@@ -89,7 +89,9 @@ class Res3D(Structure3D):
         """
         if MoLibConstant.PEPTIDE_CHAIN_ATOMNAME not in self.atoms:
             return False
-        return not np.allclose(self.atoms[MoLibConstant.PEPTIDE_CHAIN_ATOMNAME].pos, 0.0)
+        return not np.allclose(
+            self.atoms[MoLibConstant.PEPTIDE_CHAIN_ATOMNAME].pos, 0.0
+        )
 
     def ribbon_backbone_position(self) -> "np.ndarray":
         """
