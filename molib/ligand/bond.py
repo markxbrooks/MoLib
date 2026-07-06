@@ -1,28 +1,29 @@
-"""
-Defines utilities for handling chemical elements, bond detection, and molecule
-manipulations using RDKit. Includes classes and functions for element
-properties, bond specifications, and various chemical computations.
-"""
+"""Distance-based bond detection for coordinate-built RDKit molecules."""
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List
 
 from decologr import Decologr as log
-from molib.ligand.element import Element
-from molib.ligand.pdb.info import PDBLigandInfo
+from molib.ligand.element import (
+    ELEMENTS,
+    Element,
+    calculate_distance,
+    get_covalent_radii,
+)
+
+COVALENT_RADII = {
+    symbol: element.covalent_radius for symbol, element in ELEMENTS.items()
+}
 
 try:
     from rdkit import Chem
-    from rdkit.Chem import AllChem, Descriptors, Mol, rdMolDescriptors
+    from rdkit.Chem import Mol
 
     RDKIT_AVAILABLE = True
 except ImportError:
     RDKIT_AVAILABLE = False
     Chem = None
-    Descriptors = None
-    rdMolDescriptors = None
-    AllChem = None
+    Mol = None  # type: ignore[misc, assignment]
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +115,7 @@ def detect_bonds(
             distance = calculate_distance(coordinates, i, j)
 
             elem1, elem2, radius1, radius2 = get_covalent_radii(
-                covalent_radii, element_symbols, i, j
+                COVALENT_RADII, element_symbols, i, j
             )
 
             element1 = ELEMENTS[element_symbols[i]]
