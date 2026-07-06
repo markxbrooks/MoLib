@@ -1,17 +1,16 @@
 """
-Defines utilities for handling chemical elements, bond detection, and molecule
-manipulations using RDKit. Includes classes and functions for element
-properties, bond specifications, and various chemical computations.
+RDKit-backed PDB ligand molecule construction and SMILES generation.
 """
 
-from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, List, Optional, Sequence
 
 from decologr import Decologr as log
-from molib.ligand.bond import add_bond, add_conformer, detect_bonds
-from molib.ligand.element import calculate_distance, get_covalent_radii
+from molib.ligand.bond import add_conformer, detect_bonds
 from molib.ligand.pdb.info import PDBLigandInfo
+from molib.ligand.rdkit.smiles.symbol import SmilesSymbol
+
+if TYPE_CHECKING:
+    from molib.ligand.pdb.parser import PDBLigandData
 
 try:
     from rdkit import Chem
@@ -60,6 +59,47 @@ def create_mol_with_conformer(coordinates, ligand_id, smiles):
         log.warning(
             f"⚠️ PDBLigandParser: Failed to create molecule from SMILES: {smiles}"
         )
+        return None
+
+
+def create_sulfate_from_coordinates(
+    coordinates: List[tuple], element_symbols: List[str], atom_names: List[str]
+) -> Optional["Chem.Mol"]:
+    """Create sulfate ion from coordinates with proper tetrahedral geometry."""
+    try:
+        log.info(f"🔄 PDBLigandParser: Creating sulfate from {len(coordinates)} atoms")
+
+        mol = Chem.MolFromSmiles("[O-]S(=O)(=O)[O-]")
+        if mol is None:
+            log.error("❌ PDBLigandParser: Failed to create sulfate from SMILES")
+            return None
+
+        sulfur_idx = None
+        for i, element in enumerate(element_symbols):
+            if element == "S":
+                sulfur_idx = i
+                break
+
+        if sulfur_idx is None:
+            log.error("❌ PDBLigandParser: No sulfur atom found in coordinates")
+            return None
+
+        conf = Chem.Conformer(mol.GetNumAtoms())
+        sulfur_coord = coordinates[sulfur_idx]
+        conf.SetAtomPosition(0, (sulfur_coord[0], sulfur_coord[1], sulfur_coord[2]))
+
+        oxygen_coords = [
+            coord for i, coord in enumerate(coordinates) if element_symbols[i] == "O"
+        ]
+        for i, oxy_coord in enumerate(oxygen_coords[:4]):
+            conf.SetAtomPosition(i + 1, (oxy_coord[0], oxy_coord[1], oxy_coord[2]))
+
+        mol.AddConformer(conf)
+        log.info(f"✅ PDBLigandParser: Created sulfate with {mol.GetNumAtoms()} atoms")
+        return mol
+
+    except Exception as e:
+        log.warning(f"❌ PDBLigandParser: Error creating sulfate from coordinates: {e}")
         return None
 
 
@@ -149,8 +189,19 @@ class SmilesComponent:
 
     @staticmethod
     def largest(components: Sequence[str]) -> str:
-        """find largest component"""
-        return max(components, key=len, default="")
+        """Return the component with the most heavy atoms."""
+        if not components:
+            return ""
+
+        def _heavy_atom_count(component: str) -> int:
+            if not RDKIT_AVAILABLE:
+                return len(component)
+            fragment = Chem.MolFromSmiles(component)
+            if fragment is None:
+                return len(component)
+            return fragment.GetNumHeavyAtoms()
+
+        return max(components, key=_heavy_atom_count)
 
     @staticmethod
     def largest_from_smiles(smiles: str) -> str:
