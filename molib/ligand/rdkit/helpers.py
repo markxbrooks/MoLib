@@ -31,6 +31,13 @@ class StrEnum(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class Element:
+    """
+    Represents a chemical element with its symbol and covalent radius.
+
+    This class provides a model for storing basic information about a chemical
+    element. It includes a symbol representing the element and its covalent
+    radius, which is a key property used in various chemical computations.
+    """
     symbol: str
     covalent_radius: float
 
