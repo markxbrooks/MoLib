@@ -1,7 +1,9 @@
+from enum import Enum
 from typing import Dict, List, Optional
 
 from decologr import Decologr as log
 from molib.ligand.pdb.info import PDBLigandInfo
+
 
 try:
     from rdkit import Chem
@@ -15,6 +17,15 @@ except ImportError:
     rdMolDescriptors = None
     AllChem = None
 
+class StrEnum(str, Enum):
+    """
+    Python 3.10 compatible StrEnum.
+
+    Behaves like Python 3.11 enum.StrEnum.
+    """
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 def get_covalent_radii(covalent_radii, element_symbols, i, j):
     """Get covalent radii"""
@@ -301,6 +312,15 @@ def create_common_ligand_molecule(
         return None
 
 
+class SmilesConstant(StrEnum):
+    """Smiles Character"""
+    COMPONENT_SEPARATOR = "."
+    BRANCH_START = "("
+    BRANCH_END = ")"
+    SINGLE_BOND = "-"
+    DOUBLE_BOND = "="
+    TRIPLE_BOND = "#"
+
 def generate_clean_smiles(mol: "Chem.Mol") -> str:
     """Generate a clean, chemically accurate SMILES string"""
     try:
@@ -311,20 +331,12 @@ def generate_clean_smiles(mol: "Chem.Mol") -> str:
         smiles = Chem.MolToSmiles(mol, canonical=True)
 
         # Check if SMILES contains disconnected components (dots)
-        if "." in smiles:
-            log.warning(
-                f"⚠️ PDBLigandParser: SMILES contains disconnected components: {smiles}"
-            )
-
+        if smiles_contains_multiple_molecules(smiles):
             # Try to get the largest connected component
             try:
                 # Split by dots and get the largest component
-                components = smiles.split(".")
-                largest_component = max(components, key=len)
-                log.info(
-                    f"🔄 PDBLigandParser: Using largest component: {largest_component}"
-                )
-                return largest_component
+                components = smiles_split_into_components(smiles)
+                return smiles_find_largest_component(components)
             except:
                 # If that fails, return the original
                 return smiles
@@ -349,6 +361,22 @@ def generate_clean_smiles(mol: "Chem.Mol") -> str:
         print(f"❌ PDBLigandParser: Error generating SMILES: {e}")
         log.warning(f"❌ PDBLigandParser: Error generating SMILES: {e}")
         return ""
+
+
+def smiles_find_largest_component(components: list[str]) -> str:
+    largest_component = max(components, key=len)
+    log.info(
+        f"🔄 PDBLigandParser: Using largest component: {largest_component}"
+    )
+    return largest_component
+
+
+def smiles_contains_multiple_molecules(smiles: str) -> bool:
+    return SmilesConstant.COMPONENT_SEPARATOR in smiles
+
+def smiles_split_into_components(smiles: str) -> list[str]:
+    components = smiles.split(SmilesConstant.COMPONENT_SEPARATOR)
+    return components
 
 
 def create_molecule_alternative(
