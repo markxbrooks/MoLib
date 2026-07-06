@@ -219,7 +219,7 @@ def create_mol_with_conformer(coordinates, ligand_id, smiles):
             for i, coord in enumerate(coordinates[: mol.GetNumAtoms()]):
                 conf.SetAtomPosition(i, (coord[0], coord[1], coord[2]))
             mol.AddConformer(conf)
-            log.info(f"✅ PDBLigandParser: Added conformer for {ligand_id}")
+            # log.info(f"✅ PDBLigandParser: Added conformer for {ligand_id}")
 
         return mol
     else:
@@ -237,7 +237,7 @@ def create_common_ligand_molecule(
 ) -> Optional["Chem.Mol"]:
     """Create molecules for common biological ligand using known structures"""
     try:
-        log.info(f"🔄 PDBLigandParser: Checking for common ligand: {ligand_id}")
+        # og.info(f"🔄 PDBLigandParser: Checking for common ligand: {ligand_id}")
 
         # --- Define common biological ligand and their correct SMILES
         common_ligands = {
@@ -333,12 +333,12 @@ def generate_clean_smiles(mol: "Chem.Mol") -> str:
         try:
             test_mol = Chem.MolFromSmiles(smiles)
             if test_mol is None:
-                log.warning(
-                    f"⚠️ PDBLigandParser: Generated SMILES is invalid: {smiles}"
-                )
+                # log.warning(
+                #     f"⚠️ PDBLigandParser: Generated SMILES is invalid: {smiles}"
+                # )
                 return ""
 
-            log.info(f"✅ PDBLigandParser: Valid SMILES generated: {smiles}")
+            # log.info(f"✅ PDBLigandParser: Valid SMILES generated: {smiles}")
             return smiles
 
         except Exception as e:
