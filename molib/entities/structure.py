@@ -20,7 +20,7 @@ class CoordMixin:
         self.z = z
 
 
-class Structure3D(CoordMixin):
+class Structure3D: # (CoordMixin):
     # class Structure3D:
     """Base class for 3D structural elements - Pure Python class for performance."""
 
@@ -38,7 +38,7 @@ class Structure3D(CoordMixin):
         next: Optional["Structure3D"] = None,
         prev: Optional["Structure3D"] = None,
     ):
-        super().__init__(*coords) # With Mixin
+        # super().__init__(*coords) # With Mixin
         self.name = name
         self.type = type
         self.parent = parent
