@@ -31,4 +31,3 @@ class Color(NamedTuple):
     def z(self) -> float:
         """Backward-compatible alias for blue."""
         return self.b
-
