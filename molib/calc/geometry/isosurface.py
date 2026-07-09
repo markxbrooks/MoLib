@@ -2,6 +2,7 @@
 
 import numpy as np
 from decologr import Decologr as log
+from picogl.gpu.buffers.vertex.normals.compute import compute_vertex_normals
 from molib.calc.math.numpy_util import generate_colors_from_positions
 from skimage import measure
 
@@ -297,7 +298,7 @@ def extract_isosurface_elmo(volume: np.ndarray, level: float = 1.0):
         faces = np.array(faces, dtype=np.int32)
 
         # Compute normals using PicoGL's method for improved lighting
-        from picogl.gpu.buffers.vertex.normals.compute import compute_vertex_normals
+        from picogl.gpu.buffers.vertex.compute import compute_vertex_normals
 
         normals = compute_vertex_normals(vertices, faces)
 
