@@ -13,6 +13,6 @@ class Color(NamedTuple):
     """Color"""
 
     spec: int
-    x: float
-    y: float
-    z: float
+    r: float
+    g: float
+    b: float
