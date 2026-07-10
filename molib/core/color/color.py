@@ -13,6 +13,21 @@ class Color(NamedTuple):
     """Color"""
 
     spec: int
-    x: float
-    y: float
-    z: float
+    r: float
+    g: float
+    b: float
+
+    @property
+    def x(self) -> float:
+        """Backward-compatible alias for red."""
+        return self.r
+
+    @property
+    def y(self) -> float:
+        """Backward-compatible alias for green."""
+        return self.g
+
+    @property
+    def z(self) -> float:
+        """Backward-compatible alias for blue."""
+        return self.b

@@ -1,7 +1,9 @@
 """
 Parser
 """
+
 import numpy as np
+
 # from molib.entities.atom import Atom3D
 from molib.ligand.pdb.spec import PDBLineSpec
 
@@ -42,7 +44,7 @@ class PDBLayout:
             cls.occupancy,
             cls.temp_factor,
             cls.element,
-            cls.coords
+            cls.coords,
         ]
 
 
@@ -84,6 +86,7 @@ def parse_pdb_atoms(file_path: str) -> list["Atom3D"]:
             y = PDBLayout.y.parse(line)
             z = PDBLayout.z.parse(line)
             from molib.entities.atom import Atom3D
+
             atom = Atom3D(
                 serial=PDBLayout.atom_serial.parse(line),
                 name=PDBLayout.atom_name.parse(line),

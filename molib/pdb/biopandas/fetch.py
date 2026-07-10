@@ -49,9 +49,7 @@ def _fetch_alphafold_ebi(uniprot_id: str) -> Optional[PandasPdb]:
     log.message(f"pdb_fetch_as_biopandas uniprot_id {uid}", silent=True)
     last_url = ""
     for version in (6, 4, 3):
-        last_url = (
-            f"https://alphafold.ebi.ac.uk/files/AF-{uid}-F1-model_v{version}.pdb"
-        )
+        last_url = f"https://alphafold.ebi.ac.uk/files/AF-{uid}-F1-model_v{version}.pdb"
         text = _http_get_text(last_url, quiet=True)
         if text:
             return _pdb_from_text(text, last_url)
@@ -169,9 +167,7 @@ def perform_cif_dict_validation(pandas_pdb: PandasPdb) -> dict | None:
     return validation_report
 
 
-def fetch_pdb_by_source_and_id(
-    identifier: str, source: str
-) -> Optional[PandasPdb]:
+def fetch_pdb_by_source_and_id(identifier: str, source: str) -> Optional[PandasPdb]:
     """
     fetch_pdb_by_source_and_id
 

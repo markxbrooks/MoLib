@@ -47,11 +47,11 @@ def example_custom_color_map():
 
     # Method 1: Using register_ss_color_map with a dictionary
     custom_map = {
-        "H": Color(spec=0, x=1.0, y=0.0, z=0.0),  # Red helix
-        "E": Color(spec=0, x=0.0, y=1.0, z=0.0),  # Green strand
-        "T": Color(spec=0, x=0.0, y=0.0, z=1.0),  # Blue turn
-        "C": Color(spec=0, x=1.0, y=1.0, z=0.0),  # Yellow coil
-        " ": Color(spec=0, x=0.5, y=0.5, z=0.5),  # Gray other
+        "H": Color(spec=0, r=1.0, g=0.0, b=0.0),  # Red helix
+        "E": Color(spec=0, r=0.0, g=1.0, b=0.0),  # Green strand
+        "T": Color(spec=0, r=0.0, g=0.0, b=1.0),  # Blue turn
+        "C": Color(spec=0, r=1.0, g=1.0, b=0.0),  # Yellow coil
+        " ": Color(spec=0, r=0.5, g=0.5, b=0.5),  # Gray other
     }
     ColorMap.register_ss_color_map("my_custom", custom_map)
 
@@ -71,21 +71,21 @@ def example_protein_color_schemes():
 
     # Create a "warm" color scheme
     warm_colors = {
-        "H": Color(spec=0, x=1.0, y=0.3, z=0.0),  # Orange helix
-        "E": Color(spec=0, x=1.0, y=0.6, z=0.0),  # Yellow-orange strand
-        "T": Color(spec=0, x=1.0, y=0.8, z=0.2),  # Light orange turn
-        "C": Color(spec=0, x=0.8, y=0.4, z=0.0),  # Dark orange coil
-        " ": Color(spec=0, x=0.6, y=0.3, z=0.0),  # Brown other
+        "H": Color(spec=0, r=1.0, g=0.3, b=0.0),  # Orange helix
+        "E": Color(spec=0, r=1.0, g=0.6, b=0.0),  # Yellow-orange strand
+        "T": Color(spec=0, r=1.0, g=0.8, b=0.2),  # Light orange turn
+        "C": Color(spec=0, r=0.8, g=0.4, b=0.0),  # Dark orange coil
+        " ": Color(spec=0, r=0.6, g=0.3, b=0.0),  # Brown other
     }
     ColorMap.register_ss_color_map("warm", warm_colors)
 
     # Create a "cool" color scheme
     cool_colors = {
-        "H": Color(spec=0, x=0.0, y=0.3, z=1.0),  # Blue helix
-        "E": Color(spec=0, x=0.0, y=0.6, z=1.0),  # Light blue strand
-        "T": Color(spec=0, x=0.2, y=0.8, z=1.0),  # Cyan turn
-        "C": Color(spec=0, x=0.0, y=0.0, z=0.8),  # Dark blue coil
-        " ": Color(spec=0, x=0.3, y=0.3, z=0.6),  # Gray-blue other
+        "H": Color(spec=0, r=0.0, g=0.3, b=1.0),  # Blue helix
+        "E": Color(spec=0, r=0.0, g=0.6, b=1.0),  # Light blue strand
+        "T": Color(spec=0, r=0.2, g=0.8, b=1.0),  # Cyan turn
+        "C": Color(spec=0, r=0.0, g=0.0, b=0.8),  # Dark blue coil
+        " ": Color(spec=0, r=0.3, g=0.3, b=0.6),  # Gray-blue other
     }
     ColorMap.register_ss_color_map("cool", cool_colors)
 
@@ -104,11 +104,11 @@ def example_accessibility_colors():
 
     # High contrast for colorblind users
     colorblind_friendly = {
-        "H": Color(spec=0, x=1.0, y=0.0, z=0.0),  # Red helix
-        "E": Color(spec=0, x=0.0, y=0.0, z=1.0),  # Blue strand
-        "T": Color(spec=0, x=0.0, y=0.8, z=0.0),  # Green turn
-        "C": Color(spec=0, x=0.8, y=0.0, z=0.8),  # Magenta coil
-        " ": Color(spec=0, x=0.2, y=0.2, z=0.2),  # Dark gray other
+        "H": Color(spec=0, r=1.0, g=0.0, b=0.0),  # Red helix
+        "E": Color(spec=0, r=0.0, g=0.0, b=1.0),  # Blue strand
+        "T": Color(spec=0, r=0.0, g=0.8, b=0.0),  # Green turn
+        "C": Color(spec=0, r=0.8, g=0.0, b=0.8),  # Magenta coil
+        " ": Color(spec=0, r=0.2, g=0.2, b=0.2),  # Dark gray other
     }
     ColorMap.register_ss_color_map("colorblind", colorblind_friendly)
 

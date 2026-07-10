@@ -18,19 +18,23 @@ from molib.core import ColorMap
 
 class ColorProvider(Protocol):
     """Color Provider"""
-    def get_color(self, index: int, chain_id: str) -> tuple[float, float, float]:
-        ...
+
+    def get_color(self, index: int, chain_id: str) -> tuple[float, float, float]: ...
+
 
 class PerCAColorProvider:
     """Per CA Color Provider"""
+
     def __init__(self, colors: np.ndarray):
         self.colors = colors
 
     def get_color(self, index: int, chain_id: str):
         return tuple(self.colors[index])
 
+
 class PerChainColorProvider:
     """Per chain color provider"""
+
     def __init__(self, chain_colors: dict[str, tuple[float, float, float]]):
         self.chain_colors = chain_colors
 
@@ -41,6 +45,7 @@ class PerChainColorProvider:
 
 class SecondaryStructureColorProvider:
     """Secondary Structure Provider"""
+
     def __init__(self, mol3d):
         """constructor"""
         self.residues = list(mol3d.get_ribbon_guide_residues())

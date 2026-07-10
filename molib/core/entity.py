@@ -26,12 +26,7 @@ class MolEntityType(str, Enum):
         CALPHAS,
         WATER,
     ]
-    NON_WATER = [
-        ATOM_HETATM,
-        ATOM,
-        HETATM,
-        CALPHAS
-    ]
+    NON_WATER = [ATOM_HETATM, ATOM, HETATM, CALPHAS]
 
     def __str__(self):
         return self.value

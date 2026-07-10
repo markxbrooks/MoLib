@@ -3,9 +3,14 @@ from typing import Any
 import numpy as np
 from molib.calc.math.matrix_util import cross, cross_normalize
 from molib.calc.math.normal import normalize
-from molib.calc.math.numpy_util import (generate_colors_from_positions,
-                                        get_np_array, np_array_32, to_up_vec3,
-                                        vec3_normals, vec3_zeroes)
+from molib.calc.math.numpy_util import (
+    generate_colors_from_positions,
+    get_np_array,
+    np_array_32,
+    to_up_vec3,
+    vec3_normals,
+    vec3_zeroes,
+)
 from molib.core.constants import MoLibConstant
 from molib.entities.ribbon.build_context import RibbonBuildContext
 from molib.pdb.structure.ribbons.arrows.config import ArrowConfig
@@ -13,14 +18,21 @@ from molib.pdb.structure.ribbons.calc import (
     calculate_normals_along_binormal,
     calculate_normals_along_binormal_and_direction,
     calculate_normals_along_direction,
-    use_ribbon_edges_to_determine_arrow_plane)
+    use_ribbon_edges_to_determine_arrow_plane,
+)
 from molib.pdb.structure.ribbons.ribbon_geometry import RibbonGeometryContext
 from picogl.gpu.buffers.helper import as_meshdata
 from picogl.renderer import MeshData
 
 
-def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1: Any, p2: Any,
-                                         ribbon_geom: RibbonGeometryContext, arrow_config: ArrowConfig) -> MeshData:
+def generate_arrow_geometry_from_context(
+    config,
+    context: RibbonBuildContext,
+    p1: Any,
+    p2: Any,
+    ribbon_geom: RibbonGeometryContext,
+    arrow_config: ArrowConfig,
+) -> MeshData:
     """generate arrow geometry"""
     color = tuple(context.colors[-1])
     ribbon_plane_normal = ribbon_geom.plane_normal
@@ -34,18 +46,20 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
     direction = p2 - p1
     length = np.linalg.norm(direction)
     if length < MoLibConstant.EPSILON:
-        return as_meshdata(positions=vec3_zeroes(),
-                           colors=vec3_zeroes(),
-                           normals=vec3_normals(),
-                           indices=vec3_zeroes(),
-                           )
+        return as_meshdata(
+            positions=vec3_zeroes(),
+            colors=vec3_zeroes(),
+            normals=vec3_normals(),
+            indices=vec3_zeroes(),
+        )
 
     direction = direction / length
 
     # If ribbon edges are provided, use them (Ribbons approach)
     if ribbon_left_edge is not None and ribbon_right_edge is not None:
-        base_width, binormal, head_width = use_ribbon_edges_to_determine_arrow_plane(arrow_config, direction,
-                                                                                     ribbon_geom)
+        base_width, binormal, head_width = use_ribbon_edges_to_determine_arrow_plane(
+            arrow_config, direction, ribbon_geom
+        )
 
     else:
         # Fallback: calculate plane from direction and provided vectors
@@ -65,8 +79,14 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
         else:
             cross_normalize(binormal, direction)
 
-        base_width = arrow_config.base_width if arrow_config.base_width is not None else config.width_scale
-        head_width = arrow_config.head_width if arrow_config.head_width is not None else 0.0
+        base_width = (
+            arrow_config.base_width
+            if arrow_config.base_width is not None
+            else config.width_scale
+        )
+        head_width = (
+            arrow_config.head_width if arrow_config.head_width is not None else 0.0
+        )
 
     # Generate arrow meshdata using Ribbons' approach
     # Create samples along arrow length, tapering from base_width to head_width
@@ -96,9 +116,13 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
         if i == 0:
             calculate_normals_along_binormal(binormal, vertex_normals)
         elif i == arrow_config.num_samples:
-            calculate_normals_along_direction(left, normalize, pos, right, vertex_normals)
+            calculate_normals_along_direction(
+                left, normalize, pos, right, vertex_normals
+            )
         else:
-            calculate_normals_along_binormal_and_direction(left, normalize, pos, right, vertex_normals)
+            calculate_normals_along_binormal_and_direction(
+                left, normalize, pos, right, vertex_normals
+            )
 
     # Add arrow tip (point)
     tip = p2
@@ -129,7 +153,6 @@ def generate_arrow_geometry_from_context(config, context: RibbonBuildContext, p1
         positions=vertices, r=color[0], g=color[1], b=color[2]
     )
 
-    return as_meshdata(positions=vertices, normals=vertex_normals, indices=indices, colors=colors)
-
-
-
+    return as_meshdata(
+        positions=vertices, normals=vertex_normals, indices=indices, colors=colors
+    )

@@ -57,8 +57,6 @@ class CoordinateData:
         return int(index)
 
 
-
-
 @dataclass
 class CoordinateData:
     """Structured data extracted from a PDB file."""
@@ -105,10 +103,10 @@ class CoordinateData:
         return int(index)
 
     def find_closest_atom_to_ray(
-            self,
-            origin: np.ndarray,
-            direction: np.ndarray,
-            threshold: float = 2.0,
+        self,
+        origin: np.ndarray,
+        direction: np.ndarray,
+        threshold: float = 2.0,
     ) -> int | None:
         """
         Find the closest atom to a ray.

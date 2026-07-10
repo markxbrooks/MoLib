@@ -11,6 +11,7 @@ Key differences from Catmull-Rom:
 - Uses Frenet frame (tangent, normal, binormal) for proper 3D orientation
 - Generates 3D tube meshdata with proper normals for lighting
 """
+
 from dataclasses import dataclass
 from typing import Any, Optional, Protocol, Tuple
 
@@ -38,6 +39,7 @@ class _ResgeomContext(Protocol):
 
 class RibbonStyle:
     """Ribbon Style"""
+
     FLAT = "flat"
     CIRCLE = "circle"
     SQUARE = "square"
@@ -133,11 +135,28 @@ def get_width(ss1: str, ss2: str) -> float:
         Width factor (average of wa and wb)
     """
     # Get width for current residue
-    if not ss1 or ss1 == SecondaryStructureType.COIL or ss1 == SecondaryStructureType.TURN or ss1 == SecondaryStructureType.COIL2 or ss1 == SecondaryStructureType.COIL2.lower():
+    if (
+        not ss1
+        or ss1 == SecondaryStructureType.COIL
+        or ss1 == SecondaryStructureType.TURN
+        or ss1 == SecondaryStructureType.COIL2
+        or ss1 == SecondaryStructureType.COIL2.lower()
+    ):
         wa = 0.5  # Coil/turn
-    elif ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10_2 or ss1 == SecondaryStructureType.HELIX_3_10_3 or ss1 == SecondaryStructureType.ALPHA_HELIX.lower():
+    elif (
+        ss1 == SecondaryStructureType.ALPHA_HELIX
+        or ss1 == SecondaryStructureType.HELIX_3_10_2
+        or ss1 == SecondaryStructureType.HELIX_3_10_3
+        or ss1 == SecondaryStructureType.ALPHA_HELIX.lower()
+    ):
         wa = 0.6  # Helix
-    elif ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BEND or ss1 == "A" or ss1 == "E" or ss1 == "B":
+    elif (
+        ss1 == SecondaryStructureType.BETA_STRAND
+        or ss1 == SecondaryStructureType.BEND
+        or ss1 == "A"
+        or ss1 == "E"
+        or ss1 == "B"
+    ):
         wa = 0.8  # Sheet
     else:
         wa = 0.5
@@ -166,7 +185,11 @@ def get_shift(ss: str) -> float:
     Returns:
         Shift amount in Angstroms
     """
-    if ss == SecondaryStructureType.ALPHA_HELIX or ss == SecondaryStructureType.HELIX_3_10 or ss == SecondaryStructureType.PI_HELIX:  # Helix types
+    if (
+        ss == SecondaryStructureType.ALPHA_HELIX
+        or ss == SecondaryStructureType.HELIX_3_10
+        or ss == SecondaryStructureType.PI_HELIX
+    ):  # Helix types
         return 0.3  # Shift towards helix center
     return 0.0
 
@@ -174,25 +197,35 @@ def get_shift(ss: str) -> float:
 def is_helix(ss1: str, ss2: str) -> bool:
     """Check if secondary structure is a helix."""
     return (
-            ss1 == SecondaryStructureType.ALPHA_HELIX or ss1 == SecondaryStructureType.HELIX_3_10 or ss1 == SecondaryStructureType.PI_HELIX) and (
-            ss2 == SecondaryStructureType.ALPHA_HELIX or ss2 == SecondaryStructureType.HELIX_3_10 or ss2 == SecondaryStructureType.PI_HELIX
+        ss1 == SecondaryStructureType.ALPHA_HELIX
+        or ss1 == SecondaryStructureType.HELIX_3_10
+        or ss1 == SecondaryStructureType.PI_HELIX
+    ) and (
+        ss2 == SecondaryStructureType.ALPHA_HELIX
+        or ss2 == SecondaryStructureType.HELIX_3_10
+        or ss2 == SecondaryStructureType.PI_HELIX
     )
 
 
 def is_sheet(ss1: str, ss2: str) -> bool:
     """Check if secondary structure is a sheet."""
     return (
-            ss1 == SecondaryStructureType.BEND or ss1 == SecondaryStructureType.BETA_STRAND or ss1 == SecondaryStructureType.BETA_BRIDGE) and (
-            ss2 == SecondaryStructureType.BEND or ss2 == SecondaryStructureType.BETA_STRAND or ss2 == SecondaryStructureType.BETA_BRIDGE
+        ss1 == SecondaryStructureType.BEND
+        or ss1 == SecondaryStructureType.BETA_STRAND
+        or ss1 == SecondaryStructureType.BETA_BRIDGE
+    ) and (
+        ss2 == SecondaryStructureType.BEND
+        or ss2 == SecondaryStructureType.BETA_STRAND
+        or ss2 == SecondaryStructureType.BETA_BRIDGE
     )
 
 
 def calculate_guide_points(
-        ca_coords: np.ndarray,
-        o_coords: Optional[np.ndarray] = None,
-        cb_coords: Optional[np.ndarray] = None,
-        ss_types: Optional[np.ndarray] = None,
-        width: float = 0.5,
+    ca_coords: np.ndarray,
+    o_coords: Optional[np.ndarray] = None,
+    cb_coords: Optional[np.ndarray] = None,
+    ss_types: Optional[np.ndarray] = None,
+    width: float = 0.5,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Calculate B-spline guide points from CA coordinates (Ribbons-style).
@@ -273,8 +306,8 @@ def calculate_guide_points(
         if ss_types is not None and k < len(ss_types) and k + 1 < len(ss_types):
             ribbon_width = get_width(ss_types[k], ss_types[k + 1]) * width
             if ss_types is not None and is_helix(
-                    ss_types[k],
-                    ss_types[k] if k + 1 >= len(ss_types) else ss_types[k + 1],
+                ss_types[k],
+                ss_types[k] if k + 1 >= len(ss_types) else ss_types[k + 1],
             ):
                 helix_scale = 5.2  # try 1.3–2.0
                 ribbon_width *= helix_scale
@@ -284,7 +317,7 @@ def calculate_guide_points(
         # Apply helix shift (Ribbons enhancement)
         if ss_types is not None and k < len(ss_types):
             if is_helix(
-                    ss_types[k], ss_types[k] if k + 1 >= len(ss_types) else ss_types[k + 1]
+                ss_types[k], ss_types[k] if k + 1 >= len(ss_types) else ss_types[k + 1]
             ):
                 shift = get_shift(ss_types[k])
                 p = p + c * shift  # Shift along plane normal
@@ -368,12 +401,12 @@ def calculate_guide_points(
 
 
 def evaluate_bspline_segment(
-        p0: np.ndarray,
-        p1: np.ndarray,
-        p2: np.ndarray,
-        p3: np.ndarray,
-        t: float,
-        matrix: Optional[np.ndarray] = None,
+    p0: np.ndarray,
+    p1: np.ndarray,
+    p2: np.ndarray,
+    p3: np.ndarray,
+    t: float,
+    matrix: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     Evaluate a cubic B-spline segment at parameter t.
@@ -395,14 +428,14 @@ def evaluate_bspline_segment(
     geom = np.array([p0, p1, p2, p3], dtype=np.float32)  # (4, 3)
 
     # B-spline evaluation: P(t) = [t^3 t^2 t 1] * matrix * geom
-    t_vec = np.array([t ** 3, t ** 2, t, 1.0], dtype=np.float32)
+    t_vec = np.array([t**3, t**2, t, 1.0], dtype=np.float32)
     result = t_vec @ matrix @ geom
 
     return result
 
 
 def evaluate_bspline_chain(
-        guide_points: np.ndarray, samples_per_segment: int = 8
+    guide_points: np.ndarray, samples_per_segment: int = 8
 ) -> np.ndarray:
     """
     Evaluate a B-spline chain through guide points.
@@ -493,7 +526,7 @@ def smooth(vectors, alpha=0.2):
 
 
 def calculate_frenet_frame_from_edges(
-        left_edge: np.ndarray, centerline: np.ndarray, right_edge: np.ndarray
+    left_edge: np.ndarray, centerline: np.ndarray, right_edge: np.ndarray
 ) -> Tuple[ndarray, ndarray, ndarray, ndarray]:
     """
     Calculate Frenet frame from ribbon edges (Ribbons' SetSpaceCurve approach).
@@ -556,10 +589,11 @@ def calculate_frenet_frame_from_edges(
             s = np.linalg.norm(v)
             if s > 1e-6:
                 c = np.dot(tangents[i - 1], t)
-                vx = np.array([[0, -v[2], v[1]],
-                               [v[2], 0, -v[0]],
-                               [-v[1], v[0], 0]], dtype=np.float32)
-                R = np.eye(3) + vx + vx @ vx * ((1 - c) / (s ** 2))
+                vx = np.array(
+                    [[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]],
+                    dtype=np.float32,
+                )
+                R = np.eye(3) + vx + vx @ vx * ((1 - c) / (s**2))
                 n = normalize(R @ normals[i - 1])
                 b = normalize(np.cross(t, n))
 
@@ -670,9 +704,9 @@ def calculate_parallel_transport_frames(centerline: np.ndarray):
         # Rodrigues' rotation formula
         def rotate(vec):
             return (
-                    vec * np.cos(angle)
-                    + np.cross(v, vec) * np.sin(angle)
-                    + v * np.dot(v, vec) * (1 - np.cos(angle))
+                vec * np.cos(angle)
+                + np.cross(v, vec) * np.sin(angle)
+                + v * np.dot(v, vec) * (1 - np.cos(angle))
             )
 
         normals[i] = rotate(normals[i - 1])
@@ -684,6 +718,7 @@ def calculate_parallel_transport_frames(centerline: np.ndarray):
 @dataclass
 class RibbonBuilderGeometryContext:
     """Ribbon Geometry"""
+
     centerline: np.ndarray
     p_spline: np.ndarray
     q_spline: np.ndarray
@@ -699,6 +734,7 @@ class RibbonBuilderGeometryContext:
 @dataclass
 class RibbonMeta:
     """Ribbon Meta"""
+
     edges: Any = None
     frenet: Any = None
 
@@ -706,6 +742,7 @@ class RibbonMeta:
 @dataclass
 class RibbonMetaExtractContext:
     """Inputs for ribbon edge / Frenet extraction (arrow placement)."""
+
     centerline: np.ndarray
     tangents: np.ndarray
     normals: np.ndarray
@@ -718,6 +755,7 @@ class RibbonMetaExtractContext:
 @dataclass
 class MeshResult:
     """Mesh Result"""
+
     vertices: np.ndarray
     normals: np.ndarray
     indices: np.ndarray
@@ -726,18 +764,30 @@ class MeshResult:
 
 
 def generate_ribbon_geometry_ribbons_style(
-        ca_coords: np.ndarray,
-        o_coords: Optional[np.ndarray] = None,
-        cb_coords: Optional[np.ndarray] = None,
-        ss_types: Optional[np.ndarray] = None,
-        width: float = 0.5,
-        samples_per_segment: int = 8,
-        style: str = RibbonStyle.SQUARE,  # "flat", "circle", "square", "ellipse" - default to square for 3D blocks
-        num_threads: int = 8,
-        helix_radius_scale: float = 1.0
-) -> tuple[
-         ndarray, ndarray, ndarray, ndarray, tuple[ndarray, ndarray] | None, tuple[ndarray, ndarray, ndarray] | None] | \
-     tuple[GeometryData, tuple[float | Any, float | Any] | None | tuple[Any, Any], tuple[Any, Any, Any] | None]:
+    ca_coords: np.ndarray,
+    o_coords: Optional[np.ndarray] = None,
+    cb_coords: Optional[np.ndarray] = None,
+    ss_types: Optional[np.ndarray] = None,
+    width: float = 0.5,
+    samples_per_segment: int = 8,
+    style: str = RibbonStyle.SQUARE,  # "flat", "circle", "square", "ellipse" - default to square for 3D blocks
+    num_threads: int = 8,
+    helix_radius_scale: float = 1.0,
+) -> (
+    tuple[
+        ndarray,
+        ndarray,
+        ndarray,
+        ndarray,
+        tuple[ndarray, ndarray] | None,
+        tuple[ndarray, ndarray, ndarray] | None,
+    ]
+    | tuple[
+        GeometryData,
+        tuple[float | Any, float | Any] | None | tuple[Any, Any],
+        tuple[Any, Any, Any] | None,
+    ]
+):
     """
     Generate ribbon meshdata using Ribbons' B-spline approach. RIBBON_PATH
 
@@ -827,7 +877,9 @@ def generate_ribbon_geometry_ribbons_style(
         RibbonStyle.FLAT: extract_flat_meta,
     }
     extractor = meta_extractors.get(style)
-    if extractor is not None and should_extract_ribbon_meta(style, vertices, centerline):
+    if extractor is not None and should_extract_ribbon_meta(
+        style, vertices, centerline
+    ):
         meta_ctx = RibbonMetaExtractContext(
             centerline=centerline,
             tangents=tangents,
@@ -839,12 +891,16 @@ def generate_ribbon_geometry_ribbons_style(
         )
         ribbon_edges, ribbon_frenet = extractor(meta_ctx)
 
-    mesh_data = MeshData(vertices=vertices, normals=vertex_normals, indices=indices, colors=colors)
+    mesh_data = MeshData(
+        vertices=vertices, normals=vertex_normals, indices=indices, colors=colors
+    )
 
     return mesh_data, ribbon_edges, ribbon_frenet
 
 
-def should_extract_ribbon_meta(style: str, vertices: np.ndarray, centerline: np.ndarray) -> bool:
+def should_extract_ribbon_meta(
+    style: str, vertices: np.ndarray, centerline: np.ndarray
+) -> bool:
     if style == RibbonStyle.SQUARE:
         return len(vertices) >= 4
     if style == RibbonStyle.FLAT:
@@ -855,9 +911,8 @@ def should_extract_ribbon_meta(style: str, vertices: np.ndarray, centerline: np.
 
 
 def has_mesh_cross_section(style, vertices):
-    return (
-            (style == RibbonStyle.SQUARE and len(vertices) >= 4) or
-            (style == RibbonStyle.FLAT and len(vertices) >= 2)
+    return (style == RibbonStyle.SQUARE and len(vertices) >= 4) or (
+        style == RibbonStyle.FLAT and len(vertices) >= 2
     )
 
 
@@ -865,7 +920,9 @@ def has_curve_data(centerline):
     return len(centerline) > 0
 
 
-def safe_width(ctx: RibbonBuilderGeometryContext | RibbonMetaExtractContext, i: int) -> Any:
+def safe_width(
+    ctx: RibbonBuilderGeometryContext | RibbonMetaExtractContext, i: int
+) -> Any:
     """Width at sample ``i``, falling back to ``ctx.width`` when out of range or missing ``widths``."""
     if ctx.widths is None:
         return ctx.width
@@ -885,11 +942,7 @@ def get_last_frenet(ctx: RibbonMetaExtractContext) -> tuple[Any, Any, Any] | Non
     if i < 0:
         return None
 
-    if (
-            i >= len(ctx.tangents)
-            or i >= len(ctx.normals)
-            or i >= len(ctx.binormals)
-    ):
+    if i >= len(ctx.tangents) or i >= len(ctx.normals) or i >= len(ctx.binormals):
         return None
 
     return (
@@ -926,7 +979,9 @@ def extract_circle_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any 
     return ribbon_edges, ribbon_frenet
 
 
-def extract_ellipse_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any | None]:
+def extract_ellipse_meta(
+    ctx: RibbonMetaExtractContext,
+) -> tuple[Any | None, Any | None]:
     ribbon_edges = None
     if ctx.widths is None:
         return ribbon_edges, None
@@ -957,6 +1012,7 @@ def extract_square_meta(ctx: RibbonMetaExtractContext) -> tuple[Any | None, Any 
     ribbon_frenet = get_last_frenet(ctx)
     return ribbon_edges, ribbon_frenet
 
+
 import numpy as np
 
 
@@ -984,11 +1040,15 @@ def rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
     s = np.sin(angle)
     C = 1.0 - c
 
-    return np.array([
-        [c + x*x*C,     x*y*C - z*s, x*z*C + y*s],
-        [y*x*C + z*s,   c + y*y*C,   y*z*C - x*s],
-        [z*x*C - y*s,   z*y*C + x*s, c + z*z*C],
-    ], dtype=np.float32)
+    return np.array(
+        [
+            [c + x * x * C, x * y * C - z * s, x * z * C + y * s],
+            [y * x * C + z * s, c + y * y * C, y * z * C - x * s],
+            [z * x * C - y * s, z * y * C + x * s, c + z * z * C],
+        ],
+        dtype=np.float32,
+    )
+
 
 def build_ellipse_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     # --- VECTORIZE ELLIPSE STYLE ---
@@ -1010,7 +1070,9 @@ def build_ellipse_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     rmin = 0.5 * depth  # scalar
 
     # --- Precompute circle angles ---
-    angles = np.linspace(0.0, 2.0 * np.pi, num_threads, endpoint=False, dtype=np.float32)
+    angles = np.linspace(
+        0.0, 2.0 * np.pi, num_threads, endpoint=False, dtype=np.float32
+    )
     cos_a = np.cos(angles)  # (t,)
     sin_a = np.sin(angles)  # (t,)
 
@@ -1022,8 +1084,8 @@ def build_ellipse_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     # --- Compute all vertices ---
     # (n, t, 3)
     offsets = (
-            cos_a[None, :, None] * a[:, None, :] +
-            sin_a[None, :, None] * b_scaled[:, None, :]
+        cos_a[None, :, None] * a[:, None, :]
+        + sin_a[None, :, None] * b_scaled[:, None, :]
     )
 
     vertices = (ctx.centerline[:, None, :] + offsets).reshape(-1, 3)
@@ -1044,8 +1106,8 @@ def build_ellipse_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     i = np.arange(n_segments)
     j = np.arange(t)
 
-    base1 = (i[:, None] * t)
-    base2 = ((i[:, None] + 1) * t)
+    base1 = i[:, None] * t
+    base2 = (i[:, None] + 1) * t
 
     j_next = (j + 1) % t
 
@@ -1054,20 +1116,14 @@ def build_ellipse_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     j_next = j_next[None, :]
 
     # Build triangles
-    tri1 = np.stack([
-        base1 + j,
-        base2 + j,
-        base1 + j_next
-    ], axis=-1)
+    tri1 = np.stack([base1 + j, base2 + j, base1 + j_next], axis=-1)
 
-    tri2 = np.stack([
-        base1 + j_next,
-        base2 + j,
-        base2 + j_next
-    ], axis=-1)
+    tri2 = np.stack([base1 + j_next, base2 + j, base2 + j_next], axis=-1)
 
     indices = np.concatenate([tri1, tri2], axis=-1).reshape(-1).astype(np.uint32)
-    return MeshResult(vertices=vertices, normals=vertex_normals, indices=indices, widths=widths)
+    return MeshResult(
+        vertices=vertices, normals=vertex_normals, indices=indices, widths=widths
+    )
 
 
 def build_square_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
@@ -1202,25 +1258,42 @@ def build_square_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     base1 = np.arange(n_segments) * 4
     base2 = (np.arange(n_segments) + 1) * 4
 
-    indices = np.stack([
-        base1 + 0, base2 + 0, base1 + 1,
-        base1 + 1, base2 + 0, base2 + 1,
-
-        base1 + 1, base2 + 1, base1 + 2,
-        base1 + 2, base2 + 1, base2 + 2,
-
-        base1 + 2, base2 + 2, base1 + 3,
-        base1 + 3, base2 + 2, base2 + 3,
-
-        base1 + 3, base2 + 3, base1 + 0,
-        base1 + 0, base2 + 3, base2 + 0,
-    ], axis=1).reshape(-1).astype(np.uint32)
+    indices = (
+        np.stack(
+            [
+                base1 + 0,
+                base2 + 0,
+                base1 + 1,
+                base1 + 1,
+                base2 + 0,
+                base2 + 1,
+                base1 + 1,
+                base2 + 1,
+                base1 + 2,
+                base1 + 2,
+                base2 + 1,
+                base2 + 2,
+                base1 + 2,
+                base2 + 2,
+                base1 + 3,
+                base1 + 3,
+                base2 + 2,
+                base2 + 3,
+                base1 + 3,
+                base2 + 3,
+                base1 + 0,
+                base1 + 0,
+                base2 + 3,
+                base2 + 0,
+            ],
+            axis=1,
+        )
+        .reshape(-1)
+        .astype(np.uint32)
+    )
 
     return MeshResult(
-        vertices=vertices,
-        normals=vertex_normals,
-        indices=indices,
-        widths=widths
+        vertices=vertices, normals=vertex_normals, indices=indices, widths=widths
     )
 
 
@@ -1252,9 +1325,9 @@ def build_square_ribbon_old(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     # --- Compute all 4 corners for all points ---
     # Result: (n, 4, 3)
     corners = (
-            ctx.centerline[:, None, :]
-            + sa4[None, :, None] * a[:, None, :]
-            + ca4[None, :, None] * b_scaled[:, None, :]
+        ctx.centerline[:, None, :]
+        + sa4[None, :, None] * a[:, None, :]
+        + ca4[None, :, None] * b_scaled[:, None, :]
     )
 
     # Flatten vertices
@@ -1286,26 +1359,44 @@ def build_square_ribbon_old(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     base2 = (np.arange(n_segments) + 1) * 4
 
     # Build all faces in one shot
-    indices = np.stack([
-        # Face 0
-        base1 + 0, base2 + 0, base1 + 1,
-        base1 + 1, base2 + 0, base2 + 1,
-
-        # Face 1
-        base1 + 1, base2 + 1, base1 + 2,
-        base1 + 2, base2 + 1, base2 + 2,
-
-        # Face 2
-        base1 + 2, base2 + 2, base1 + 3,
-        base1 + 3, base2 + 2, base2 + 3,
-
-        # Face 3
-        base1 + 3, base2 + 3, base1 + 0,
-        base1 + 0, base2 + 3, base2 + 0,
-    ], axis=1)
+    indices = np.stack(
+        [
+            # Face 0
+            base1 + 0,
+            base2 + 0,
+            base1 + 1,
+            base1 + 1,
+            base2 + 0,
+            base2 + 1,
+            # Face 1
+            base1 + 1,
+            base2 + 1,
+            base1 + 2,
+            base1 + 2,
+            base2 + 1,
+            base2 + 2,
+            # Face 2
+            base1 + 2,
+            base2 + 2,
+            base1 + 3,
+            base1 + 3,
+            base2 + 2,
+            base2 + 3,
+            # Face 3
+            base1 + 3,
+            base2 + 3,
+            base1 + 0,
+            base1 + 0,
+            base2 + 3,
+            base2 + 0,
+        ],
+        axis=1,
+    )
 
     indices = indices.reshape(-1).astype(np.uint32)
-    return MeshResult(vertices=vertices, normals=vertex_normals, indices=indices, widths=widths)
+    return MeshResult(
+        vertices=vertices, normals=vertex_normals, indices=indices, widths=widths
+    )
 
 
 def build_flat_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
@@ -1413,8 +1504,8 @@ def build_circle_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
 
 
 def generate_ribbon_geometry_ribbons_style_from_context(
-        config: "RibbonStyleConfig",
-        context: "RibbonBuildContext",
+    config: "RibbonStyleConfig",
+    context: "RibbonBuildContext",
 ) -> tuple[
     GeometryData,
     tuple[np.ndarray, np.ndarray] | None,
@@ -1441,14 +1532,14 @@ def generate_ribbon_geometry_ribbons_style_from_context(
 
 
 def generate_resgeom_flat(
-        p_guide_points: np.ndarray,
-        q_guide_points: np.ndarray,
-        num_threads: int = 2,
-        num_samples: int = 8,
-        arrow_base_width: Optional[float | np.floating[Any]] = None,
-        arrow_head_width: Optional[float] = None,
-        has_arrow: bool = False,
-        force_thru_ca: bool = False,
+    p_guide_points: np.ndarray,
+    q_guide_points: np.ndarray,
+    num_threads: int = 2,
+    num_samples: int = 8,
+    arrow_base_width: Optional[float | np.floating[Any]] = None,
+    arrow_head_width: Optional[float] = None,
+    has_arrow: bool = False,
+    force_thru_ca: bool = False,
 ) -> MeshData:
     """
     Generate flat ribbon meshdata using Ribbons' ResGeomFlat approach.
@@ -1486,7 +1577,9 @@ def generate_resgeom_flat(
 
     interpolate_guide_points(p_guide_points, q_guide_points, n_guides, num_threads)
 
-    max_samples, ns, xv = set_guide_lines(p_guide_points, q_guide_points, n_guides, num_samples, num_threads)
+    max_samples, ns, xv = set_guide_lines(
+        p_guide_points, q_guide_points, n_guides, num_samples, num_threads
+    )
 
     taper_arrowhead(arrow_base_width, arrow_head_width, has_arrow, ns, num_threads, xv)
 
@@ -1494,14 +1587,18 @@ def generate_resgeom_flat(
 
     xn_back, xv_back = create_backface(max_samples, ns, num_threads, xn, xv)
 
-    normals, vertices = build_output_arrays(max_samples, ns, num_threads, xn, xn_back, xv, xv_back)
+    normals, vertices = build_output_arrays(
+        max_samples, ns, num_threads, xn, xn_back, xv, xv_back
+    )
 
     indices = generate_triangle_indices(ns, num_threads)
 
     # Colors (default to white)
     colors = generate_colors_from_positions(vertices, 1.0, 1.0, 1.0)
 
-    return as_meshdata(positions=vertices, normals=normals, indices=indices, colors=colors)
+    return as_meshdata(
+        positions=vertices, normals=normals, indices=indices, colors=colors
+    )
 
 
 def generate_triangle_indices(ns: int, num_threads: int) -> ndarray[Any, Any]:
@@ -1525,9 +1622,17 @@ def generate_triangle_indices(ns: int, num_threads: int) -> ndarray[Any, Any]:
     return indices
 
 
-def build_output_arrays(max_samples: int, ns: int, num_threads: int, xn: ndarray[Any, Any], xn_back,
-                        xv: ndarray, xv_back) -> tuple[
-    ndarray[Any, dtype[floating[_32Bit]]], ndarray[Any, dtype[floating[_32Bit]]]]:
+def build_output_arrays(
+    max_samples: int,
+    ns: int,
+    num_threads: int,
+    xn: ndarray[Any, Any],
+    xn_back,
+    xv: ndarray,
+    xv_back,
+) -> tuple[
+    ndarray[Any, dtype[floating[_32Bit]]], ndarray[Any, dtype[floating[_32Bit]]]
+]:
     # Step 6: Build output arrays (matching ResGeomFlat structure)
     # Front face: all threads, all samples
     # Back face: all threads (reversed), all samples
@@ -1554,8 +1659,9 @@ def build_output_arrays(max_samples: int, ns: int, num_threads: int, xn: ndarray
     return normals, vertices
 
 
-def create_backface(max_samples: int, ns: int, num_threads: int, xn: ndarray[Any, Any], xv: ndarray) -> tuple[
-    Any, ndarray[Any, dtype[Any]]]:
+def create_backface(
+    max_samples: int, ns: int, num_threads: int, xn: ndarray[Any, Any], xv: ndarray
+) -> tuple[Any, ndarray[Any, dtype[Any]]]:
     # Step 5: FlipLineNormals - Create backface with thickness
     # This matches Ribbons' FlipLineNormals function (lines 1707-1714)
     FLAT_FUDGE = 0.12  # Thickness for backface
@@ -1572,7 +1678,9 @@ def create_backface(max_samples: int, ns: int, num_threads: int, xn: ndarray[Any
     return xn_back, xv_back
 
 
-def set_line_normals(max_samples: int, ns: int, num_threads: int, xv: ndarray) -> np.ndarray:
+def set_line_normals(
+    max_samples: int, ns: int, num_threads: int, xv: ndarray
+) -> np.ndarray:
     # Step 4: SetLineNormals - Calculate normals from cross products
     # This matches Ribbons' SetLineNormals function for RIB_FLAT (lines 1465-1501)
     # Set edge wrapping for flat style
@@ -1602,8 +1710,14 @@ def set_line_normals(max_samples: int, ns: int, num_threads: int, xv: ndarray) -
     return xn
 
 
-def taper_arrowhead(arrow_base_width: float | floating[Any] | None, arrow_head_width: float | None, has_arrow: bool,
-                    ns: int, num_threads: int, xv: ndarray):
+def taper_arrowhead(
+    arrow_base_width: float | floating[Any] | None,
+    arrow_head_width: float | None,
+    has_arrow: bool,
+    ns: int,
+    num_threads: int,
+    xv: ndarray,
+):
     # Step 3: ArrowLines - Taper ribbon width for arrowhead (if requested)
     # This matches Ribbons' ArrowLines function (lines 1524-1555)
     if has_arrow and num_threads >= 2:
@@ -1644,8 +1758,13 @@ def taper_arrowhead(arrow_base_width: float | floating[Any] | None, arrow_head_w
                     xv[k, j] = xv[1, j] + (k - 1) * s * (xv[num_threads, j] - xv[1, j])
 
 
-def set_guide_lines(p_guide_points: ndarray, q_guide_points: ndarray, n_guides: int, num_samples: int,
-                    num_threads: int) -> tuple[int, int, ndarray[Any, dtype[Any]]]:
+def set_guide_lines(
+    p_guide_points: ndarray,
+    q_guide_points: ndarray,
+    n_guides: int,
+    num_samples: int,
+    num_threads: int,
+) -> tuple[int, int, ndarray[Any, dtype[Any]]]:
     # Step 2: SetGuideLines - Evaluate B-spline curves for each thread
     # This matches Ribbons' SetGuideLines function (lines 1128-1190)
     # We need to evaluate B-splines for segments starting at each guide point
@@ -1670,13 +1789,13 @@ def set_guide_lines(p_guide_points: ndarray, q_guide_points: ndarray, n_guides: 
                 f = 1.0 / (num_threads - 1)
                 g0 = p_guide_points[i] + k * f * (q_guide_points[i] - p_guide_points[i])
                 g1 = p_guide_points[i + 1] + k * f * (
-                        q_guide_points[i + 1] - p_guide_points[i + 1]
+                    q_guide_points[i + 1] - p_guide_points[i + 1]
                 )
                 g2 = p_guide_points[i + 2] + k * f * (
-                        q_guide_points[i + 2] - p_guide_points[i + 2]
+                    q_guide_points[i + 2] - p_guide_points[i + 2]
                 )
                 g3 = p_guide_points[i + 3] + k * f * (
-                        q_guide_points[i + 3] - p_guide_points[i + 3]
+                    q_guide_points[i + 3] - p_guide_points[i + 3]
                 )
             else:
                 g0 = 0.5 * (p_guide_points[i] + q_guide_points[i])
@@ -1708,7 +1827,7 @@ def set_guide_lines(p_guide_points: ndarray, q_guide_points: ndarray, n_guides: 
             if num_threads > 1:
                 f = 1.0 / (num_threads - 1)
                 last_pt = p_guide_points[-2] + k * f * (
-                        q_guide_points[-2] - p_guide_points[-2]
+                    q_guide_points[-2] - p_guide_points[-2]
                 )
             else:
                 last_pt = 0.5 * (p_guide_points[-2] + q_guide_points[-2])
@@ -1720,7 +1839,9 @@ def set_guide_lines(p_guide_points: ndarray, q_guide_points: ndarray, n_guides: 
     return max_samples, ns, xv
 
 
-def interpolate_guide_points(p_guide_points: ndarray, q_guide_points: ndarray, n_guides: int, num_threads: int):
+def interpolate_guide_points(
+    p_guide_points: ndarray, q_guide_points: ndarray, n_guides: int, num_threads: int
+):
     # Step 1: SetGuidePoints - Interpolate guide points for multiple threads
     # This matches Ribbons' SetGuidePoints function (lines 1097-1121)
     # xg[thread][guide_point][xyz] stores interpolated guide points
@@ -1733,7 +1854,7 @@ def interpolate_guide_points(p_guide_points: ndarray, q_guide_points: ndarray, n
                 # Interpolate between p and q guide points
                 # xg[k][j] = p[j] + k*f * (q[j] - p[j])
                 xg[k, j] = p_guide_points[j] + k * f * (
-                        q_guide_points[j] - p_guide_points[j]
+                    q_guide_points[j] - p_guide_points[j]
                 )
     else:
         # Single thread: use average of p and q
@@ -1769,9 +1890,9 @@ def _generate_base(base: int, j: int, k: int, ns: int) -> tuple[int, int, int, i
 
 
 def create_resgeom_flat_from_context(
-        p_guide_points: np.ndarray,
-        q_guide_points: np.ndarray,
-        ctx: _ResgeomContext,
+    p_guide_points: np.ndarray,
+    q_guide_points: np.ndarray,
+    ctx: _ResgeomContext,
 ) -> MeshData:
     """create resgeom from context"""
     return generate_resgeom_flat(

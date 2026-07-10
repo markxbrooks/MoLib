@@ -14,11 +14,11 @@ def colour_unequal(c1: Color, c2: Color) -> bool:
 
     if c1.spec != c2.spec:
         return True
-    if fabs(c1.x - c2.x) >= 0.0005:
+    if fabs(c1.r - c2.r) >= 0.0005:
         return True
     if c1.spec != COLOUR_GREY:
-        if fabs(c1.y - c2.y) >= 0.0005:
+        if fabs(c1.g - c2.g) >= 0.0005:
             return True
-        if fabs(c1.z - c2.z) >= 0.0005:
+        if fabs(c1.b - c2.b) >= 0.0005:
             return True
     return False

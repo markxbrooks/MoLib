@@ -69,11 +69,11 @@ from molib.core.color.color import Color
 
 # Method 1: Using register_ss_color_map
 custom_map = {
-    "H": Color(spec=0, x=1.0, y=0.0, z=0.0),  # Red helix
-    "E": Color(spec=0, x=0.0, y=1.0, z=0.0),  # Green strand
-    "T": Color(spec=0, x=0.0, y=0.0, z=1.0),  # Blue turn
-    "C": Color(spec=0, x=1.0, y=1.0, z=0.0),  # Yellow coil
-    " ": Color(spec=0, x=0.5, y=0.5, z=0.5)  # Gray other
+    "H": Color(spec=0, r=1.0, g=0.0, b=0.0),  # Red helix
+    "E": Color(spec=0, r=0.0, g=1.0, b=0.0),  # Green strand
+    "T": Color(spec=0, r=0.0, g=0.0, b=1.0),  # Blue turn
+    "C": Color(spec=0, r=1.0, g=1.0, b=0.0),  # Yellow coil
+    " ": Color(spec=0, r=0.5, g=0.5, b=0.5)  # Gray other
 }
 ColorMap.register_ss_color_map("my_custom", custom_map)
 

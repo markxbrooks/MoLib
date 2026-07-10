@@ -34,95 +34,95 @@ class ColorMap:
 
         # Default map (current implementation)
         cls._ss_color_maps["default"] = {
-            "H": Color(spec=0, x=1.0, y=0.0, z=0.0),  # Red for helix
-            "E": Color(spec=0, x=1.0, y=1.0, z=0.0),  # Yellow for strand
-            "T": Color(spec=0, x=1.0, y=1.0, z=0.0),  # Yellow for turn
-            " ": Color(spec=0, x=0.7, y=0.7, z=0.7),  # Light gray for coil
-            "-": Color(spec=0, x=0.7, y=0.7, z=0.7),  # Light gray for coil
+            "H": Color(spec=0, r=1.0, g=0.0, b=0.0),  # Red for helix
+            "E": Color(spec=0, r=1.0, g=1.0, b=0.0),  # Yellow for strand
+            "T": Color(spec=0, r=1.0, g=1.0, b=0.0),  # Yellow for turn
+            " ": Color(spec=0, r=0.7, g=0.7, b=0.7),  # Light gray for coil
+            "-": Color(spec=0, r=0.7, g=0.7, b=0.7),  # Light gray for coil
         }
 
         # Rainbow map - distinct colors for each structure type
         cls._ss_color_maps["rainbow"] = {
-            "H": Color(spec=0, x=1.0, y=0.0, z=0.0),  # Red for helix
-            "G": Color(spec=0, x=1.0, y=0.5, z=0.0),  # Orange for 3-10 helix
-            "I": Color(spec=0, x=1.0, y=1.0, z=0.0),  # Yellow for pi helix
-            "E": Color(spec=0, x=0.0, y=1.0, z=0.0),  # Green for strand
-            "B": Color(spec=0, x=0.0, y=0.8, z=0.0),  # Dark green for beta bridge
-            "T": Color(spec=0, x=0.0, y=1.0, z=1.0),  # Cyan for turn
-            "S": Color(spec=0, x=0.0, y=0.5, z=1.0),  # Light blue for bend
-            "C": Color(spec=0, x=0.5, y=0.0, z=1.0),  # Purple for coil
-            " ": Color(spec=0, x=0.6, y=0.6, z=0.6),  # Gray for other
-            "-": Color(spec=0, x=0.6, y=0.6, z=0.6),  # Gray for other
+            "H": Color(spec=0, r=1.0, g=0.0, b=0.0),  # Red for helix
+            "G": Color(spec=0, r=1.0, g=0.5, b=0.0),  # Orange for 3-10 helix
+            "I": Color(spec=0, r=1.0, g=1.0, b=0.0),  # Yellow for pi helix
+            "E": Color(spec=0, r=0.0, g=1.0, b=0.0),  # Green for strand
+            "B": Color(spec=0, r=0.0, g=0.8, b=0.0),  # Dark green for beta bridge
+            "T": Color(spec=0, r=0.0, g=1.0, b=1.0),  # Cyan for turn
+            "S": Color(spec=0, r=0.0, g=0.5, b=1.0),  # Light blue for bend
+            "C": Color(spec=0, r=0.5, g=0.0, b=1.0),  # Purple for coil
+            " ": Color(spec=0, r=0.6, g=0.6, b=0.6),  # Gray for other
+            "-": Color(spec=0, r=0.6, g=0.6, b=0.6),  # Gray for other
         }
 
         # Monochrome map - grayscale based on structure type
         cls._ss_color_maps["monochrome"] = {
-            "H": Color(spec=0, x=0.9, y=0.9, z=0.9),  # Light gray for helix
-            "G": Color(spec=0, x=0.8, y=0.8, z=0.8),  # Medium light gray for 3-10 helix
-            "I": Color(spec=0, x=0.7, y=0.7, z=0.7),  # Medium gray for pi helix
-            "E": Color(spec=0, x=0.6, y=0.6, z=0.6),  # Dark gray for strand
-            "B": Color(spec=0, x=0.5, y=0.5, z=0.5),  # Darker gray for beta bridge
-            "T": Color(spec=0, x=0.4, y=0.4, z=0.4),  # Dark gray for turn
-            "S": Color(spec=0, x=0.3, y=0.3, z=0.3),  # Darker gray for bend
-            "C": Color(spec=0, x=0.2, y=0.2, z=0.2),  # Very dark gray for coil
-            " ": Color(spec=0, x=0.1, y=0.1, z=0.1),  # Black for other
-            "-": Color(spec=0, x=0.1, y=0.1, z=0.1),  # Black for other
+            "H": Color(spec=0, r=0.9, g=0.9, b=0.9),  # Light gray for helix
+            "G": Color(spec=0, r=0.8, g=0.8, b=0.8),  # Medium light gray for 3-10 helix
+            "I": Color(spec=0, r=0.7, g=0.7, b=0.7),  # Medium gray for pi helix
+            "E": Color(spec=0, r=0.6, g=0.6, b=0.6),  # Dark gray for strand
+            "B": Color(spec=0, r=0.5, g=0.5, b=0.5),  # Darker gray for beta bridge
+            "T": Color(spec=0, r=0.4, g=0.4, b=0.4),  # Dark gray for turn
+            "S": Color(spec=0, r=0.3, g=0.3, b=0.3),  # Darker gray for bend
+            "C": Color(spec=0, r=0.2, g=0.2, b=0.2),  # Very dark gray for coil
+            " ": Color(spec=0, r=0.1, g=0.1, b=0.1),  # Black for other
+            "-": Color(spec=0, r=0.1, g=0.1, b=0.1),  # Black for other
         }
 
         # Pastel map - soft, muted colors
         cls._ss_color_maps["pastel"] = {
-            "H": Color(spec=0, x=1.0, y=0.7, z=0.7),  # Light red for helix
-            "G": Color(spec=0, x=1.0, y=0.8, z=0.6),  # Light orange for 3-10 helix
-            "I": Color(spec=0, x=1.0, y=1.0, z=0.7),  # Light yellow for pi helix
-            "E": Color(spec=0, x=0.7, y=1.0, z=0.7),  # Light green for strand
-            "B": Color(spec=0, x=0.6, y=0.9, z=0.6),  # Light green for beta bridge
-            "T": Color(spec=0, x=0.7, y=1.0, z=1.0),  # Light cyan for turn
-            "S": Color(spec=0, x=0.6, y=0.8, z=1.0),  # Light blue for bend
-            "C": Color(spec=0, x=0.8, y=0.7, z=1.0),  # Light purple for coil
-            " ": Color(spec=0, x=0.8, y=0.8, z=0.8),  # Light gray for other
-            "-": Color(spec=0, x=0.8, y=0.8, z=0.8),  # Light gray for other
+            "H": Color(spec=0, r=1.0, g=0.7, b=0.7),  # Light red for helix
+            "G": Color(spec=0, r=1.0, g=0.8, b=0.6),  # Light orange for 3-10 helix
+            "I": Color(spec=0, r=1.0, g=1.0, b=0.7),  # Light yellow for pi helix
+            "E": Color(spec=0, r=0.7, g=1.0, b=0.7),  # Light green for strand
+            "B": Color(spec=0, r=0.6, g=0.9, b=0.6),  # Light green for beta bridge
+            "T": Color(spec=0, r=0.7, g=1.0, b=1.0),  # Light cyan for turn
+            "S": Color(spec=0, r=0.6, g=0.8, b=1.0),  # Light blue for bend
+            "C": Color(spec=0, r=0.8, g=0.7, b=1.0),  # Light purple for coil
+            " ": Color(spec=0, r=0.8, g=0.8, b=0.8),  # Light gray for other
+            "-": Color(spec=0, r=0.8, g=0.8, b=0.8),  # Light gray for other
         }
 
         # High contrast map - maximum visual distinction
         cls._ss_color_maps["high_contrast"] = {
-            "H": Color(spec=0, x=1.0, y=0.0, z=0.0),  # Bright red for helix
-            "G": Color(spec=0, x=1.0, y=0.5, z=0.0),  # Bright orange for 3-10 helix
-            "I": Color(spec=0, x=1.0, y=1.0, z=0.0),  # Bright yellow for pi helix
-            "E": Color(spec=0, x=0.0, y=1.0, z=0.0),  # Bright green for strand
-            "B": Color(spec=0, x=0.0, y=0.8, z=0.0),  # Dark green for beta bridge
-            "T": Color(spec=0, x=0.0, y=1.0, z=1.0),  # Bright cyan for turn
-            "S": Color(spec=0, x=0.0, y=0.0, z=1.0),  # Bright blue for bend
-            "C": Color(spec=0, x=0.5, y=0.0, z=1.0),  # Bright purple for coil
-            " ": Color(spec=0, x=1.0, y=1.0, z=1.0),  # White for other
-            "-": Color(spec=0, x=1.0, y=1.0, z=1.0),  # White for other
+            "H": Color(spec=0, r=1.0, g=0.0, b=0.0),  # Bright red for helix
+            "G": Color(spec=0, r=1.0, g=0.5, b=0.0),  # Bright orange for 3-10 helix
+            "I": Color(spec=0, r=1.0, g=1.0, b=0.0),  # Bright yellow for pi helix
+            "E": Color(spec=0, r=0.0, g=1.0, b=0.0),  # Bright green for strand
+            "B": Color(spec=0, r=0.0, g=0.8, b=0.0),  # Dark green for beta bridge
+            "T": Color(spec=0, r=0.0, g=1.0, b=1.0),  # Bright cyan for turn
+            "S": Color(spec=0, r=0.0, g=0.0, b=1.0),  # Bright blue for bend
+            "C": Color(spec=0, r=0.5, g=0.0, b=1.0),  # Bright purple for coil
+            " ": Color(spec=0, r=1.0, g=1.0, b=1.0),  # White for other
+            "-": Color(spec=0, r=1.0, g=1.0, b=1.0),  # White for other
         }
 
         # Nature-inspired map - colors found in nature
         cls._ss_color_maps["nature"] = {
-            "H": Color(spec=0, x=0.8, y=0.2, z=0.2),  # Deep red for helix
-            "G": Color(spec=0, x=0.9, y=0.5, z=0.1),  # Orange for 3-10 helix
-            "I": Color(spec=0, x=0.9, y=0.8, z=0.1),  # Gold for pi helix
-            "E": Color(spec=0, x=0.2, y=0.6, z=0.2),  # Forest green for strand
-            "B": Color(spec=0, x=0.1, y=0.5, z=0.1),  # Dark green for beta bridge
-            "T": Color(spec=0, x=0.1, y=0.7, z=0.8),  # Ocean blue for turn
-            "S": Color(spec=0, x=0.2, y=0.4, z=0.8),  # Sky blue for bend
-            "C": Color(spec=0, x=0.4, y=0.2, z=0.6),  # Purple for coil
-            " ": Color(spec=0, x=0.5, y=0.5, z=0.5),  # Stone gray for other
-            "-": Color(spec=0, x=0.5, y=0.5, z=0.5),  # Stone gray for other
+            "H": Color(spec=0, r=0.8, g=0.2, b=0.2),  # Deep red for helix
+            "G": Color(spec=0, r=0.9, g=0.5, b=0.1),  # Orange for 3-10 helix
+            "I": Color(spec=0, r=0.9, g=0.8, b=0.1),  # Gold for pi helix
+            "E": Color(spec=0, r=0.2, g=0.6, b=0.2),  # Forest green for strand
+            "B": Color(spec=0, r=0.1, g=0.5, b=0.1),  # Dark green for beta bridge
+            "T": Color(spec=0, r=0.1, g=0.7, b=0.8),  # Ocean blue for turn
+            "S": Color(spec=0, r=0.2, g=0.4, b=0.8),  # Sky blue for bend
+            "C": Color(spec=0, r=0.4, g=0.2, b=0.6),  # Purple for coil
+            " ": Color(spec=0, r=0.5, g=0.5, b=0.5),  # Stone gray for other
+            "-": Color(spec=0, r=0.5, g=0.5, b=0.5),  # Stone gray for other
         }
 
         # Sekulski map - element-based colors
         cls._ss_color_maps["sekulski"] = {
-            "H": Color(spec=0, x=1.0, y=0.63, z=0.0),  # Selenium orange for helix
-            "G": Color(spec=0, x=1.0, y=0.63, z=0.0),  # Selenium orange for 3-10 helix
-            "I": Color(spec=0, x=1.0, y=0.63, z=0.0),  # Selenium orange for pi helix
-            "E": Color(spec=0, x=0.3, y=0.76, z=1.0),  # Hafnium blue for strand
-            "B": Color(spec=0, x=0.3, y=0.76, z=1.0),  # Hafnium blue for beta bridge
-            "T": Color(spec=0, x=0.78, y=0.5, z=0.2),  # Copper brown for turn
-            "S": Color(spec=0, x=0.78, y=0.5, z=0.2),  # Copper brown for bend
-            "C": Color(spec=0, x=0.78, y=0.5, z=0.2),  # Copper brown for coil
-            " ": Color(spec=0, x=0.7, y=0.7, z=0.7),  # Light gray for other
-            "-": Color(spec=0, x=0.7, y=0.7, z=0.7),  # Light gray for other
+            "H": Color(spec=0, r=1.0, g=0.63, b=0.0),  # Selenium orange for helix
+            "G": Color(spec=0, r=1.0, g=0.63, b=0.0),  # Selenium orange for 3-10 helix
+            "I": Color(spec=0, r=1.0, g=0.63, b=0.0),  # Selenium orange for pi helix
+            "E": Color(spec=0, r=0.3, g=0.76, b=1.0),  # Hafnium blue for strand
+            "B": Color(spec=0, r=0.3, g=0.76, b=1.0),  # Hafnium blue for beta bridge
+            "T": Color(spec=0, r=0.78, g=0.5, b=0.2),  # Copper brown for turn
+            "S": Color(spec=0, r=0.78, g=0.5, b=0.2),  # Copper brown for bend
+            "C": Color(spec=0, r=0.78, g=0.5, b=0.2),  # Copper brown for coil
+            " ": Color(spec=0, r=0.7, g=0.7, b=0.7),  # Light gray for other
+            "-": Color(spec=0, r=0.7, g=0.7, b=0.7),  # Light gray for other
         }
 
     ELEMENT_COLORS = {
@@ -386,7 +386,7 @@ class ColorMap:
             Color object for the secondary structure code
         """
         colors = cls.get_ss_colors()
-        return colors.get(ss_code, colors.get(" ", Color(spec=0, x=0.7, y=0.7, z=0.7)))
+        return colors.get(ss_code, colors.get(" ", Color(spec=0, r=0.7, g=0.7, b=0.7)))
 
     @classmethod
     def create_custom_ss_color_map(cls, name: str, **kwargs) -> None:
@@ -401,7 +401,7 @@ class ColorMap:
         color_map = {}
         for ss_code, rgb in kwargs.items():
             if isinstance(rgb, (tuple, list)) and len(rgb) == 3:
-                color_map[ss_code] = Color(spec=0, x=rgb[0], y=rgb[1], z=rgb[2])
+                color_map[ss_code] = Color(spec=0, r=rgb[0], g=rgb[1], b=rgb[2])
             elif isinstance(rgb, Color):
                 color_map[ss_code] = rgb
 
@@ -410,7 +410,7 @@ class ColorMap:
 
 def reg_named_color(name: str, r, g, b):
     """Register a new color map."""
-    color_map = {name: Color(spec=0, x=r, y=g, z=b)}
+    color_map = {name: Color(spec=0, r=r, g=g, b=b)}
     ColorMap.register_ss_color_map(name, color_map)
 
 
@@ -567,9 +567,9 @@ try:
 except Exception:
     # Minimal fallback to avoid import-time failures
     ColorMap.SS_COLORS = {
-        "H": Color(spec=0, x=1.0, y=0.0, z=0.0),
-        "E": Color(spec=0, x=1.0, y=1.0, z=0.0),
-        "T": Color(spec=0, x=1.0, y=1.0, z=0.0),
-        " ": Color(spec=0, x=0.7, y=0.7, z=0.7),
-        "-": Color(spec=0, x=0.7, y=0.7, z=0.7),
+        "H": Color(spec=0, r=1.0, g=0.0, b=0.0),
+        "E": Color(spec=0, r=1.0, g=1.0, b=0.0),
+        "T": Color(spec=0, r=1.0, g=1.0, b=0.0),
+        " ": Color(spec=0, r=0.7, g=0.7, b=0.7),
+        "-": Color(spec=0, r=0.7, g=0.7, b=0.7),
     }
