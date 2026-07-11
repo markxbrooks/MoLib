@@ -5,6 +5,8 @@ import numpy as np
 from gemmi import UnitCell
 from numpy import dtype, ndarray
 
+from picogl.backend.gl.api.viewport import prepare
+
 
 def load_mtz_density_array(
     mtz_path: str, column_labels=("FWT", "PHWT"), resolution=1.0
@@ -44,7 +46,7 @@ def mtz_to_density_map(
 
     # Create reciprocal lattice
     f_transform = gemmi.FourierTransform()
-    f_transform.prepare_viewport(sf)
+    prepare.prepare_viewport(sf)
 
     # Set grid resolution and compute the map
     grid = f_transform.fft_grid(clip=1.0)  # Full unit cell
