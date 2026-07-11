@@ -108,7 +108,7 @@ def _cache_connolly_surface(
             del _connolly_surface_cache[oldest_key]
     except Exception as e:
         log.warning(f"⚠️ Failed to cache Connolly surface result: {e}")
-        # Don't let caching errors break the main functionality
+        # Don't let caching error break the main functionality
 
 
 def clear_connolly_surface_cache():

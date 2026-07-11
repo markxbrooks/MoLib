@@ -1875,7 +1875,7 @@ def carve_density_around_protein(
         grid_shape = density_map.shape
 
         # Defensive programming: ensure all values are proper Python floats
-        # This prevents SIGBUS errors from numpy scalar type issues
+        # This prevents SIGBUS error from numpy scalar type issues
         try:
             log.info("DEBUG: Starting coordinate generation...")
             log.info(f"DEBUG: grid_shape = {grid_shape}")

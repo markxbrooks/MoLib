@@ -106,7 +106,7 @@ def v3_difference(v1: Vector3, v2: Vector3) -> Vector3:
 def v3_angle(v1: Vector3, v2: Vector3) -> float:
     """
     Angle between v1 and v2 in radians.
-    Clamps to [-1, 1] to guard against numerical errors.
+    Clamps to [-1, 1] to guard against numerical error.
     """
     if v1 is None or v2 is None:
         raise ValueError("Arguments must be non-None Vector3.")
