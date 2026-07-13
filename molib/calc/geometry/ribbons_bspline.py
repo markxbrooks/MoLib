@@ -1472,21 +1472,12 @@ def build_circle_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
         n = normals[i]
         b = binormals[i]
 
-        # Generate circle of points around the centerline
-        for j in range(num_threads):
-            angle = 2.0 * np.pi * j / num_threads
-            # Rotate normal and binormal around tangent
-            offset = n * np.cos(angle) + b * np.sin(angle)
-            vertex = center + offset * tube_radius
-            vertex_normal = normalize(offset)
-
-            vertices.append(vertex)
-            vertex_normals.append(vertex_normal)
+        generate_circle_around_centerline(b, center, n, num_threads, tube_radius, vertex_normals, vertices)
 
     # Generate triangle indices (connect adjacent circles)
     for i in range(n_points - 1):
         base1 = i * num_threads
-        base2 = (i + 1) * num_threads
+        base2 = (i + 1) * num_threads 
 
         for j in range(num_threads):
             j_next = (j + 1) % num_threads
@@ -1501,6 +1492,20 @@ def build_circle_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
         indices=np.asarray(indices, dtype=np.uint32),
         widths=ctx.widths,
     )
+
+
+def generate_circle_around_centerline(b, center, n, num_threads: int, tube_radius: float, vertex_normals: list[Any],
+                                      vertices: list[Any]):
+    # Generate circle of points around the centerline
+    for j in range(num_threads):
+        angle = 2.0 * np.pi * j / num_threads
+        # Rotate normal and binormal around tangent
+        offset = n * np.cos(angle) + b * np.sin(angle)
+        vertex = center + offset * tube_radius
+        vertex_normal = normalize(offset)
+
+        vertices.append(vertex)
+        vertex_normals.append(vertex_normal)
 
 
 def generate_ribbon_geometry_ribbons_style_from_context(
