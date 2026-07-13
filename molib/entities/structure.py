@@ -8,15 +8,19 @@ from typing import Iterator, Optional, Tuple
 
 import numpy as np
 from molib.entities.secondary_structure_type import SecondaryStructureType
+from picogl.core.mixin.vec3 import Vec3Mixin
 
 
-class CoordMixin:
+class CoordMixin(Vec3Mixin):
     __slots__ = ("x", "y", "z")
 
     def __init__(self, x=0.0, y=0.0, z=0.0):
         self.x = x
         self.y = y
         self.z = z
+
+    def to_tuple(self) -> Tuple[float, float, float]:
+        return self.x, self.y, self.z
 
 
 class Structure3D:  # (CoordMixin):
