@@ -1456,7 +1456,7 @@ def build_flat_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
 
 
 def build_circle_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
-    # Circular tube (like Ribbons' RIB_CIRCLE)
+    """Circular tube (like Ribbons' RIB_CIRCLE)"""
     indices: list[Any] = []
     vertices: list[Any] = []
     vertex_normals: list[Any] = []
@@ -1474,17 +1474,7 @@ def build_circle_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
 
         generate_circle_around_centerline(b, center, n, num_threads, tube_radius, vertex_normals, vertices)
 
-    # Generate triangle indices (connect adjacent circles)
-    for i in range(n_points - 1):
-        base1 = i * num_threads
-        base2 = (i + 1) * num_threads 
-
-        for j in range(num_threads):
-            j_next = (j + 1) % num_threads
-
-            # Two triangles per quad
-            indices.extend([base1 + j, base2 + j, base1 + j_next])
-            indices.extend([base1 + j_next, base2 + j, base2 + j_next])
+    generate_tube_indices(indices, n_points, num_threads)
 
     return MeshResult(
         vertices=np.asarray(vertices, dtype=np.float32),
@@ -1494,9 +1484,44 @@ def build_circle_ribbon(ctx: RibbonBuilderGeometryContext) -> MeshResult:
     )
 
 
+def generate_tube_indices(indices: list[Any], n_points: int, num_threads: int):
+    """Generate triangle indices (connect adjacent circles)"""
+    for i in range(n_points - 1):
+        base1 = i * num_threads
+        base2 = (i + 1) * num_threads
+
+        for j in range(num_threads):
+            j_next = (j + 1) % num_threads
+
+            # Two triangles per quad
+            indices.extend([base1 + j, base2 + j, base1 + j_next])
+            indices.extend([base1 + j_next, base2 + j, base2 + j_next])
+
+
+def generate_ribbon_face_indices(ns: int, num_threads: int) -> ndarray[Any, Any]:
+    """Generate triangle indices (QUAD_STRIP converted to triangles)
+    # Front face: quads between adjacent threads
+    # This matches DrawRibnFlat's QUAD_STRIP logic"""
+    indices = []
+    front_base = 0
+    back_base = num_threads * (ns + 1)
+
+    for k in range(num_threads - 1):
+        for j in range(ns):
+            # Front face quad
+            generate_front_base(front_base, indices, j, k, ns)
+
+            # Back face quad (reversed winding)
+            generate_front_base(back_base, indices, j, k, ns)
+            generate_back_base(back_base, indices, j, k, ns)
+
+    indices = np.array(indices, dtype=np.uint32)
+    return indices
+
+
 def generate_circle_around_centerline(b, center, n, num_threads: int, tube_radius: float, vertex_normals: list[Any],
                                       vertices: list[Any]):
-    # Generate circle of points around the centerline
+    """Generate circle of points around the centerline"""
     for j in range(num_threads):
         angle = 2.0 * np.pi * j / num_threads
         # Rotate normal and binormal around tangent
@@ -1596,7 +1621,7 @@ def generate_resgeom_flat(
         max_samples, ns, num_threads, xn, xn_back, xv, xv_back
     )
 
-    indices = generate_triangle_indices(ns, num_threads)
+    indices = generate_ribbon_face_indices(ns, num_threads)
 
     # Colors (default to white)
     colors = generate_colors_from_positions(vertices, 1.0, 1.0, 1.0)
@@ -1606,25 +1631,6 @@ def generate_resgeom_flat(
     )
 
 
-def generate_triangle_indices(ns: int, num_threads: int) -> ndarray[Any, Any]:
-    # Generate triangle indices (QUAD_STRIP converted to triangles)
-    # Front face: quads between adjacent threads
-    # This matches DrawRibnFlat's QUAD_STRIP logic
-    indices = []
-    front_base = 0
-    back_base = num_threads * (ns + 1)
-
-    for k in range(num_threads - 1):
-        for j in range(ns):
-            # Front face quad
-            generate_front_base(front_base, indices, j, k, ns)
-
-            # Back face quad (reversed winding)
-            generate_front_base(back_base, indices, j, k, ns)
-            generate_back_base(back_base, indices, j, k, ns)
-
-    indices = np.array(indices, dtype=np.uint32)
-    return indices
 
 
 def build_output_arrays(
