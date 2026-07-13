@@ -415,6 +415,7 @@ materials = {
 
 @dataclass(frozen=True)
 class Material:
+    """Material"""
     name: str
     ambient: Vec3
     diffuse: Vec3
