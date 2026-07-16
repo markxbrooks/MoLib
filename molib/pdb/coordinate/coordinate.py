@@ -1,7 +1,9 @@
 import math
 
+from picogl.core.mixin.vec3 import Vec3Mixin
 
-class Coordinates:
+
+class Coordinates(Vec3Mixin):
     """3D coordinate container with explicit initialization and validation."""
 
     __slots__ = ("x", "y", "z")
