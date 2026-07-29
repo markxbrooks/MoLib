@@ -8,7 +8,7 @@ import numpy as np
 from decologr import Decologr as log
 from molib.core.color.strategy import ColorScheme
 
-from elmo.gl.buffers.secondary_structure.sheet.strand.helpers import empty_vec3_array
+from elmo.gl.buffers.secondary_structure.sheet.strand.helpers import vec3_empty_array
 
 
 class Chain3D:
@@ -52,7 +52,7 @@ class Chain3D:
         """Get coordinates and colors for calphas in a chain"""
         data = [(res.ca, res.color) for res in self.residues if res.has_ca()]
         if not data:
-            empty = empty_vec3_array()
+            empty = vec3_empty_array()
             return empty, empty.copy()
         coords, colors = zip(*data)
         return np.array(coords, dtype=np.float32), np.array(colors, dtype=np.float32)
@@ -61,7 +61,7 @@ class Chain3D:
         """Get coordinates and colors for atoms in a chain."""
         data = [(atom.coords, atom.color) for res in self.residues for atom in res]
         if not data:
-            empty = empty_vec3_array()
+            empty = vec3_empty_array()
             return empty, empty.copy()
         coords, colors = zip(*data)
         return np.array(coords, dtype=np.float32), np.array(colors, dtype=np.float32)
