@@ -83,7 +83,7 @@ class Structure3D:  # (CoordMixin):
     def __reversed__(self) -> Iterator["Structure3D"]:
         return reversed(list(self))
 
-    def set_color(self, r: float, g: float, b: float) -> None:
+    def set_color_rgb_floats(self, r: float, g: float, b: float) -> None:
         """Set colour in-place."""
         self.color[:] = (r, g, b)
 

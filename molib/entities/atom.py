@@ -311,7 +311,7 @@ class Atom3D(Structure3D):
             ColorMap.atom_colors.get(self.element, (0.9, 0.9, 0.9)), dtype=np.float32
         )
 
-    def set_color(self, r: float, g: float, b: float) -> None:
+    def set_color_rgb_floats(self, r: float, g: float, b: float) -> None:
         """Manually override atom colour (ignores element)."""
         self.color = np.array([r, g, b], dtype=np.float32)
 

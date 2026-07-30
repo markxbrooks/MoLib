@@ -108,4 +108,4 @@ class Chain3D:
     def set_color(self, r, g, b):
         """set color"""
         for residue in self.residues:
-            residue.set_color(r, g, b)
+            residue.set_color_rgb_floats(r, g, b)

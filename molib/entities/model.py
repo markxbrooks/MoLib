@@ -62,7 +62,7 @@ class Model3D:
             raise ValueError(f"Chain '{chain_id}' not found in model {self.model_id}.")
 
         for res in chain.residues:
-            res.set_color(r, g, b)
+            res.set_color_rgb_floats(r, g, b)
 
     def set_all_chains_color(self, r: float, g: float, b: float) -> None:
         """
@@ -73,7 +73,7 @@ class Model3D:
         """
         for chain in self.chains:
             for res in chain.residues:
-                res.set_color(r, g, b)
+                res.set_color_rgb_floats(r, g, b)
 
     def apply_chain_coloring(self, chain_colors: dict) -> None:
         """

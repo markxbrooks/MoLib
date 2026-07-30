@@ -115,7 +115,7 @@ class Res3D(Structure3D):
         """Return all atom positions as a NumPy array."""
         return np.array([atom.pos for atom in self.atoms.values()], dtype=np.float32)
 
-    def set_color(self, r: float, g: float, b: float) -> None:
+    def set_color_rgb_floats(self, r: float, g: float, b: float) -> None:
         """
         Set colour for the residue and all its atoms.
         Updates the colour in-place to avoid breaking references.

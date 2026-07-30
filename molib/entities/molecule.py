@@ -299,7 +299,7 @@ class Molecule3D:
             selection.start_residue,
             selection.end_residue,
         ):
-            residue.set_color(r, g, b)
+            residue.set_color_rgb_floats(r, g, b)
 
         hook = getattr(self, "_elmo_ss_selection_color_hook", None)
         if callable(hook):
