@@ -48,7 +48,7 @@ class Chain3D:
             [res.color for res in self.residues if res.has_ca()], dtype=np.float32
         )
 
-    def get_ca_data(self):
+    def get_ca_data(self) -> tuple[np.ndarray, np.ndarray]:
         """Get coordinates and colors for calphas in a chain"""
         data = [(res.ca, res.color) for res in self.residues if res.has_ca()]
         if not data:
