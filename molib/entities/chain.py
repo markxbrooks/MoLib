@@ -105,7 +105,7 @@ class Chain3D:
         except Exception as ex:
             log.error(f"Error {ex} occurred applying atom coloring")
 
-    def set_color(self, r, g, b):
+    def set_color_rgb_floats(self, r: float, g: float, b: float):
         """set color"""
         for residue in self.residues:
             residue.set_color_rgb_floats(r, g, b)
