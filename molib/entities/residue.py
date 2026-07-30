@@ -30,7 +30,7 @@ class Res3D(Structure3D):
         visible: bool = True,
         secstruc: Optional[SecondaryStructureType] = None,
         chain_id: str = "A",
-        coords: tuple = (0.0, 0.0, 0.0),
+        coords: tuple[float, float, float] = (0.0, 0.0, 0.0),
         next: Optional["Structure3D"] = None,
         **kwargs,
     ):
