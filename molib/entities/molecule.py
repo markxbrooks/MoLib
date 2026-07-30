@@ -6,6 +6,7 @@ from typing import Generator, Iterator, Optional
 
 import numpy as np
 from decologr import Decologr as log
+from molib.core.amino_acids import STANDARD_POLYPEPTIDE_RESIDUES
 from molib.core.color.manager import ChainColorManager
 from molib.core.color.strategy import ColorScheme
 from molib.core.constants import MoLibConstant
@@ -15,35 +16,7 @@ from molib.entities.residue import Res3D
 from molib.entities.selection import CoordinateSelection
 from molib.pdb.coordinate.data import CoordinateData
 
-# Standard polypeptide residue names (PDB 3-letter). Used to exclude ligands/HETATM
-# from ribbon backbone so ribbons follow only the protein chain.
-STANDARD_POLYPEPTIDE_RESIDUES = frozenset(
-    {
-        "ALA",
-        "ARG",
-        "ASN",
-        "ASP",
-        "CYS",
-        "GLN",
-        "GLU",
-        "GLY",
-        "HIS",
-        "ILE",
-        "LEU",
-        "LYS",
-        "MET",
-        "PHE",
-        "PRO",
-        "SER",
-        "THR",
-        "TRP",
-        "TYR",
-        "VAL",
-        "SEC",
-        "PYL",
-        "MSE",  # Selenocysteine, Pyrrolysine, Selenomethionine
-    }
-)
+# STANDARD_POLYPEPTIDE_RESIDUES is re-exported for callers that import it from here.
 
 # HETATM/solvent that can carry phosphate but are not nucleotide polymer ribbons.
 _RIBBON_EXCLUDE_RESIDUE_NAMES = frozenset(

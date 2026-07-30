@@ -35,7 +35,7 @@ class Structure3D:  # (CoordMixin):
         color: Optional["np.ndarray"] = None,
         selected: bool = False,
         visible: bool = True,
-        secstruc: SecondaryStructureType = SecondaryStructureType.COIL,
+        secstruc: Optional[SecondaryStructureType] = SecondaryStructureType.COIL,
         chain_id: str = "A",
         coords: Tuple[float, float, float] = (0.0, 0.0, 0.0),
         next: Optional["Structure3D"] = None,
