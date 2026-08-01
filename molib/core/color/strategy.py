@@ -1,4 +1,11 @@
-"""Color Scheme Enum for Molecule coloring"""
+"""
+An enumeration defining various color schemes for Molecule coloring.
+
+This module provides a ColorScheme Enum to represent different methods of
+coloring molecules. Each value in the Enum corresponds to a specific
+coloring method, and it can be used for visualization or representation
+purposes in molecular modeling.
+"""
 
 from enum import Enum, auto
 
