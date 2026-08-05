@@ -1,4 +1,11 @@
-"""Color Scheme Enum for Molecule coloring"""
+"""
+An enumeration defining various color schemes for Molecule coloring.
+
+This module provides a ColorScheme Enum to represent different methods of
+coloring molecules. Each value in the Enum corresponds to a specific
+coloring method, and it can be used for visualization or representation
+purposes in molecular modeling.
+"""
 
 from enum import Enum, auto
 
@@ -13,7 +20,7 @@ class ColorScheme(Enum):
     B_FACTOR = auto()
     VALIDATION = auto()
     CONTACT_DISTANCE = auto()
-    #: UniProt domain colours (PDBe mapping); ElMo applies per-residue RGB on top of chain fallbacks.
+    #: UniProt domain colors (PDBe mapping); ElMo applies per-residue RGB on top of chain fallbacks.
     DOMAIN = auto()
 
     def __str__(self) -> str:
