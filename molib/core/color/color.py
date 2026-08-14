@@ -8,8 +8,6 @@ is defined by a specification index and x, y, z coordinates.
 
 from typing import NamedTuple
 
-from PySide6.QtGui import QColor
-
 
 class Color(NamedTuple):
     """Color"""
@@ -26,8 +24,9 @@ class Color(NamedTuple):
         b = int(self.b * 255)
         return r, g, b
 
-    def to_qcolor(self) -> QColor:
+    def to_qcolor(self) -> "QColor":
         """to Qt qcolor"""
+        from PySide6.QtGui import QColor
         return QColor(
             *self.to_css_tuple()
         )
