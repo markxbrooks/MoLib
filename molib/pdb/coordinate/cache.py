@@ -67,6 +67,23 @@ def get_coordinate_data_cached(
     return coord
 
 
+def invalidate_coordinate_cache_for_path(path: str) -> int:
+    """Drop cache entries whose resolved path matches ``path``.
+
+    Returns the number of entries removed. Used after in-memory coordinate
+    edits so a later cache hit cannot restore pre-edit XYZ.
+    """
+    if not path or not str(path).strip():
+        return 0
+    resolved = os.path.realpath(os.path.abspath(str(path).strip()))
+    drop = [key for key in _COORD_CACHE if key[0] == resolved]
+    for key in drop:
+        _COORD_CACHE.pop(key, None)
+        while key in _CACHE_ORDER:
+            _CACHE_ORDER.remove(key)
+    return len(drop)
+
+
 def clear_coordinate_cache() -> None:
     """Clear the CoordinateData cache (e.g. when closing all structures)."""
     _COORD_CACHE.clear()
