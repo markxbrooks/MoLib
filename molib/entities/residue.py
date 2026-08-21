@@ -32,6 +32,7 @@ class Res3D(Structure3D):
         chain_id: str = "A",
         coords: tuple[float, float, float] = (0.0, 0.0, 0.0),
         next: Optional["Structure3D"] = None,
+        insertion_code: str = "",
         **kwargs,
     ):
         # Initialize Structure3D first
@@ -49,6 +50,7 @@ class Res3D(Structure3D):
 
         # Residue-specific attributes
         self.residue_number = residue_number
+        self.insertion_code = str(insertion_code or "").strip()
         self.atoms = atoms or {}
         self.parent = parent
         self.residue_validated = residue_validated

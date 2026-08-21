@@ -256,6 +256,35 @@ class PDBPandaColumns(StrEnum):
     B_FACTOR = "b_factor"
     SEGMENT_ID = "segment_id"
     ELEMENT_SYMBOL = "element_symbol"
+    INSERTION = "insertion"
+    INSERTION_CODE = "insertion_code"
+    ICODE = "icode"
+
+
+_INSERTION_COLUMNS = (
+    PDBPandaColumns.INSERTION,
+    PDBPandaColumns.INSERTION_CODE,
+    PDBPandaColumns.ICODE,
+)
+
+
+def _insertion_values(df: pd.DataFrame, n_rows: int) -> list[str]:
+    """Per-row insertion codes from pandas ``insertion`` / aliases."""
+    for name in _INSERTION_COLUMNS:
+        if name in df.columns:
+            raw = df[name].to_numpy()
+            out: list[str] = []
+            for value in raw:
+                if value is None:
+                    out.append("")
+                    continue
+                text = str(value).strip()
+                if text.lower() == "nan":
+                    out.append("")
+                else:
+                    out.append(text)
+            return out
+    return [""] * n_rows
 
 
 def parse_pdb_atoms_to_mol3d(
@@ -289,15 +318,18 @@ def parse_pdb_atoms_to_mol3d(
     b_factors = df[PDBPandaColumns.B_FACTOR].to_numpy()
     alt_locs = df[PDBPandaColumns.ALT_LOC].to_numpy()
     segment_ids = df[PDBPandaColumns.SEGMENT_ID].to_numpy()
+    insertions = _insertion_values(df, len(df))
 
     current_chain_id = None
     current_res_num = None
+    current_icode = None
     residue = None
 
     for i in range(len(df)):
 
         chain_id = chain_ids[i].strip()
         res_num = int(res_nums[i])
+        icode = insertions[i]
 
         # ✅ New chain
         if chain_id != current_chain_id:
@@ -311,10 +343,12 @@ def parse_pdb_atoms_to_mol3d(
                 chain = chain_map[chain_id]
 
             current_res_num = None  # force residue reset
+            current_icode = None
 
-        # ✅ New residue
-        if res_num != current_res_num:
+        # ✅ New residue (number and/or insertion code)
+        if res_num != current_res_num or icode != current_icode:
             current_res_num = res_num
+            current_icode = icode
 
             res_name = res_names[i].strip()
             coords = (xs[i], ys[i], zs[i])
@@ -324,6 +358,7 @@ def parse_pdb_atoms_to_mol3d(
             residue = Res3D(
                 name=str(res_name),
                 residue_number=res_num,
+                insertion_code=icode,
                 chain_id=chain_id,
                 type=str(res_name),
                 coords=coords,
