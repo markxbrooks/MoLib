@@ -1,4 +1,5 @@
 import math
+from typing import Sequence
 
 from picogl.core.mixin.vec3 import Vec3Mixin
 
@@ -34,6 +35,11 @@ class Coordinates(Vec3Mixin):
     @staticmethod
     def origin():
         return Coordinates(0.0, 0.0, 0.0)
+
+    @classmethod
+    def from_array(cls, value: Sequence[float]) -> "Coordinates":
+        """Build coordinates from a three-component array-like value."""
+        return cls(float(value[0]), float(value[1]), float(value[2]))
 
     def as_tuple(self) -> tuple[float, float, float]:
         """Return coordinates as a tuple."""
