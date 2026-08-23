@@ -24,3 +24,6 @@ class Point3D:
 
     def to_vector(p: "Point3D") -> Vector3:
         return Vector3(p.x, p.y, p.z)
+        
+    def midpoint(self, other):
+       return 
