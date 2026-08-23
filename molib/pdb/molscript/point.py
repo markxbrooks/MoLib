@@ -25,5 +25,10 @@ class Point3D:
     def to_vector(p: "Point3D") -> Vector3:
         return Vector3(p.x, p.y, p.z)
         
-    def midpoint(self, other):
-       return 
+    def midpoint(self, other: "Point3D") -> "Point3D":
+        """Calculate the midpoint between this point and another point."""
+        return Point3D(
+            (self.x + other.x) / 2,
+            (self.y + other.y) / 2,
+            (self.z + other.z) / 2
+        ) 
