@@ -50,34 +50,6 @@ def mol_calculate_atoms_only_centroid(
     return centroid
 
 
-def mol_calculate_atoms_only_centroid_old(
-    pdb_pandas: PandasPdb,
-) -> Optional[np.ndarray]:
-    """
-    Calculate centroid of all ATOM records in the PDB.
-
-    :param pdb_pandas: PandasPdb instance
-    :return: centroid (x, y, z) as np.ndarray or None
-    """
-    if not pdb_pandas:
-        # log.error("❌ No PDB data provided for centroid calculation.")
-        return None
-
-    df = pdb_pandas.df.get(MolEntityType.ATOM.value)
-    if df is None or df.empty:
-        log.warning("⚠️ ATOM dataframe is missing or empty.")
-        return None
-
-    coords = df[["x_coord", "y_coord", "z_coord"]].to_numpy()
-    if coords.shape[0] == 0:
-        log.warning("⚠️ No atomic coordinate_data_main found.")
-        return None
-
-    centroid = coords.mean(axis=0)
-    log.info(f"✅ Calculated centroid: {centroid}")
-    return centroid
-
-
 def mol_calculate_centroid(pdb_pandas: PandasPdb) -> Optional[np.ndarray]:
     """
     Calculate the centroid of all atomic coordinate_data_main (ATOM + HETATM) in a PDB file.

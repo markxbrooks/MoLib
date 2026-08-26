@@ -87,33 +87,3 @@ def catmull_rom_chain_optimized(
     # Add final point for continuity
     result[idx, :] = points[-2]
     return result
-
-
-def catmull_rom_chain_old(
-    points: np.ndarray, samples_per_segment: int = 8
-) -> np.ndarray:
-    """
-    Generate interpolated points using Catmull-Rom spline.
-
-    :param samples_per_segment: int
-    :param points: np.ndarray shape (N, 3)
-    :return: np.ndarray of interpolated points, shape (M, 3)
-    """
-
-    def interpolate(p0, p1, p2, p3, t):
-        return 0.5 * (
-            2 * p1
-            + (-p0 + p2) * t
-            + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t**2
-            + (-p0 + 3 * p1 - 3 * p2 + p3) * t**3
-        )
-
-    result = []
-    n = len(points)
-    for i in range(1, n - 2):
-        for j in range(samples_per_segment):
-            t = j / samples_per_segment
-            pt = interpolate(points[i - 1], points[i], points[i + 1], points[i + 2], t)
-            result.append(pt)
-    result.append(points[-2])  # Add last known point
-    return np.array(result)
