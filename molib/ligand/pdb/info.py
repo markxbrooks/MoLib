@@ -6,51 +6,69 @@ molecule found in Protein Data Bank (PDB) files. It encompasses structural,
 chemical, and molecular details essential for computational and structural analyses.
 """
 
-from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
-from rdkit.Chem import Mol, Descriptors, Lipinski, rdMolDescriptors, MolToSmiles, MolToInchi, InchiToInchiKey
+from typing import Any, Dict, List, Optional, Tuple
+
+from rdkit.Chem import (
+    Descriptors,
+    InchiToInchiKey,
+    Lipinski,
+    Mol,
+    MolToInchi,
+    MolToSmiles,
+    rdMolDescriptors,
+)
 
 
-@dataclass
 class PDBLigandInfo:
     """Information about a PDB ligand molecule.
 
-    Fully backward-compatible with older attribute-assignment pipelines,
-    while utilizing RDKit as a dynamic backend when available.
+    Uses explicit Python descriptors to intercept legacy kwargs seamlessly.
+    When ``mol`` is set, chemical properties are derived from RDKit on demand.
     """
-    # Required Identification Fields
-    ligand_id: str
-    ligand_name: str
-    chain_id: str
-    res_seq: int
-    insertion_code: str
 
-    # Core engine link (Optional for legacy compatibility)
-    mol: Optional[Mol] = None
+    def __init__(
+        self,
+        ligand_id: str,
+        ligand_name: str,
+        chain_id: str,
+        res_seq: int,
+        insertion_code: str = "",
+        mol: Optional[Mol] = None,
+        murcko_scaffold_id: Optional[str] = None,
+        cluster_id: Optional[int] = None,
+        docking_score: Optional[float] = None,
+        **kwargs,  # Gracefully absorbs any historical fields passed by tests
+    ):
+        self.ligand_id = ligand_id
+        self.ligand_name = ligand_name
+        self.chain_id = chain_id
+        self.res_seq = res_seq
+        self.insertion_code = insertion_code
+        self.mol = mol
+        self.murcko_scaffold_id = murcko_scaffold_id
+        self.cluster_id = cluster_id
+        self.docking_score = docking_score
 
-    # Clustering metadata fields
-    murcko_scaffold_id: Optional[str] = None
-    cluster_id: Optional[int] = None
+        # Route legacy parameters directly into backing slots
+        self._atom_count = kwargs.get("atom_count")
+        self._coordinates = kwargs.get("coordinates")
+        self._atom_names = kwargs.get("atom_names")
+        self._element_symbols = kwargs.get("element_symbols")
+        self._smiles = kwargs.get("smiles")
+        self._molecular_weight = kwargs.get("molecular_weight") or kwargs.get("mw")
+        self._formula = kwargs.get("formula")
+        self._logp = kwargs.get("logp")
+        self._tpsa = kwargs.get("tpsa")
+        self._hbd = kwargs.get("hbd")
+        self._hba = kwargs.get("hba")
+        self._rotatable_bonds = kwargs.get("rotatable_bonds")
+        self._aromatic_rings = kwargs.get("aromatic_rings")
+        self._heavy_atoms = kwargs.get("heavy_atoms")
+        self._inchikey = kwargs.get("inchikey")
+        self._canonical_smiles = kwargs.get("canonical_smiles")
+        self._fraction_sp3 = kwargs.get("fraction_sp3")
 
-    # Legacy private backing stores for backward-compatible setters
-    _atom_count: Optional[int] = None
-    _coordinates: Optional[List[Tuple[float, float, float]]] = None
-    _atom_names: Optional[List[str]] = None
-    _element_symbols: Optional[List[str]] = None
-    _smiles: Optional[str] = None
-    _molecular_weight: Optional[float] = None
-    _formula: Optional[str] = None
-    _logp: Optional[float] = None
-    _hbd: Optional[int] = None
-    _hba: Optional[int] = None
-    _rotatable_bonds: Optional[int] = None
-    _aromatic_rings: Optional[int] = None
-    _heavy_atoms: Optional[int] = None
-    _inchikey: Optional[str] = None
-    _canonical_smiles: Optional[str] = None
-    _fraction_sp3: Optional[float] = None
-
-    # --- Structural Properties (RDKit Backend with Manual Fallbacks) ---
+    # --- Structural Properties ---
 
     @property
     def atom_count(self) -> int:
@@ -63,7 +81,10 @@ class PDBLigandInfo:
     @property
     def coordinates(self) -> List[Tuple[float, float, float]]:
         if self.mol and self.mol.GetNumConformers() > 0:
-            return [tuple(self.mol.GetConformer().GetAtomPosition(i)) for i in range(self.atom_count)]
+            return [
+                tuple(self.mol.GetConformer().GetAtomPosition(i))
+                for i in range(self.atom_count)
+            ]
         return self._coordinates or []
 
     @coordinates.setter
@@ -73,8 +94,12 @@ class PDBLigandInfo:
     @property
     def atom_names(self) -> List[str]:
         if self.mol:
-            return [a.GetMonomerInfo().GetName().strip() if a.GetMonomerInfo() else a.GetSymbol() for a in
-                    self.mol.GetAtoms()]
+            return [
+                a.GetMonomerInfo().GetName().strip()
+                if a.GetMonomerInfo()
+                else a.GetSymbol()
+                for a in self.mol.GetAtoms()
+            ]
         return self._atom_names or []
 
     @atom_names.setter
@@ -83,7 +108,11 @@ class PDBLigandInfo:
 
     @property
     def element_symbols(self) -> List[str]:
-        return [a.GetSymbol() for a in self.mol.GetAtoms()] if self.mol else (self._element_symbols or [])
+        return (
+            [a.GetSymbol() for a in self.mol.GetAtoms()]
+            if self.mol
+            else (self._element_symbols or [])
+        )
 
     @element_symbols.setter
     def element_symbols(self, value: List[str]):
@@ -101,7 +130,11 @@ class PDBLigandInfo:
 
     @property
     def canonical_smiles(self) -> str:
-        return MolToSmiles(self.mol, canonical=True) if self.mol else (self._canonical_smiles or "")
+        return (
+            MolToSmiles(self.mol, canonical=True)
+            if self.mol
+            else (self._canonical_smiles or "")
+        )
 
     @canonical_smiles.setter
     def canonical_smiles(self, value: str):
@@ -119,6 +152,10 @@ class PDBLigandInfo:
     def mw(self) -> float:
         """Alias matching MolecularProperties framework."""
         return self.molecular_weight
+
+    @mw.setter
+    def mw(self, value: float):
+        self.molecular_weight = value
 
     @property
     def formula(self) -> str:
@@ -154,7 +191,11 @@ class PDBLigandInfo:
 
     @property
     def tpsa(self) -> float:
-        return Descriptors.TPSA(self.mol) if self.mol else (self._logp or 0.0)  # mapping safety
+        return Descriptors.TPSA(self.mol) if self.mol else (self._tpsa or 0.0)
+
+    @tpsa.setter
+    def tpsa(self, value: float):
+        self._tpsa = value
 
     @property
     def rotatable_bonds(self) -> int:
@@ -185,7 +226,7 @@ class PDBLigandInfo:
         if self.mol:
             try:
                 return InchiToInchiKey(MolToInchi(self.mol))
-            except:
+            except Exception:
                 return None
         return self._inchikey
 
@@ -200,3 +241,21 @@ class PDBLigandInfo:
     @fraction_sp3.setter
     def fraction_sp3(self, value: float):
         self._fraction_sp3 = value
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Flatten identity and key descriptors for CSV / DataFrame export."""
+        return {
+            "ligand_id": self.ligand_id,
+            "ligand_name": self.ligand_name,
+            "chain_id": self.chain_id,
+            "res_seq": self.res_seq,
+            "smiles": self.smiles,
+            "mw": self.molecular_weight,
+            "logp": self.logp,
+            "tpsa": self.tpsa,
+            "rotatable_bonds": self.rotatable_bonds,
+            "aromatic_rings": self.aromatic_rings,
+            "heavy_atoms": self.heavy_atoms,
+            "atom_count": self.atom_count,
+            "docking_score": self.docking_score,
+        }
