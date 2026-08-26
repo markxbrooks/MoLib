@@ -6,7 +6,7 @@ import numpy as np
 from molib.core.constants import MoLibConstant
 from molib.xtal.uglymol.cubicles import Cubicles
 from molib.xtal.uglymol.molecule.atom import Atom
-from molib.xtal.uglymol.unit_cell import UnitCell
+from molib.xtal.uglymol.unit_cell import UnitCellGeometry
 
 
 class Model:
@@ -50,7 +50,9 @@ class Model:
                 alpha = float(line[33:40])
                 beta = float(line[40:47])
                 gamma = float(line[47:54])
-                self.unit_cell = UnitCell(a, b, c, alpha, beta, gamma)
+                self.unit_cell = UnitCellGeometry.from_parameters(
+                    a, b, c, alpha, beta, gamma
+                )
             elif rec_type[:3] == "TER":
                 last_chain = None
             elif rec_type == "ENDMDL":

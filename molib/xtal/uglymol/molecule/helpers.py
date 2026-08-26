@@ -2,7 +2,7 @@
 
 from molib.xtal.uglymol.molecule.atom import Atom
 from molib.xtal.uglymol.molecule.model import Model
-from molib.xtal.uglymol.unit_cell import UnitCell
+from molib.xtal.uglymol.unit_cell import UnitCellGeometry
 
 
 def models_from_pdb(pdb_string: str):
@@ -25,8 +25,8 @@ def models_from_gemmi(gemmi, buffer, name: str):
     for i_model in range(st.length):
         model = st.at(i_model)
         m = Model()
-        m.unit_cell = UnitCell(
-            cell.a, cell.b, cell.segment_color, cell.alpha, cell.beta, cell.gamma
+        m.unit_cell = UnitCellGeometry.from_parameters(
+            cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma
         )
         atom_i_seq = 0
         for i_chain in range(model.length):

@@ -83,7 +83,7 @@ from molib.xtal.uglymol.map.helpers import (
     parse_symmetry_operator_to_matrix,
 )
 from molib.xtal.uglymol.math.helpers import calculate_stddev
-from molib.xtal.uglymol.unit_cell import UnitCell
+from molib.xtal.uglymol.unit_cell import UnitCellGeometry
 from typing_extensions import Buffer
 
 
@@ -258,7 +258,7 @@ class ElMap:
 
         :param parameters: CCP4MapParameters
         """
-        self.unit_cell = UnitCell(
+        self.unit_cell = UnitCellGeometry.from_parameters(
             parameters.floats[Ccp4MapHeaderLocation.X_LENGTH],
             parameters.floats[Ccp4MapHeaderLocation.Y_LENGTH],
             parameters.floats[Ccp4MapHeaderLocation.Z_LENGTH],
@@ -419,7 +419,7 @@ class ElMap:
         n_real = [header_ints[3], header_ints[4], header_ints[5]]
         n_grid = [header_ints[6], header_ints[7], header_ints[8]]
         cell_mult = 1.0 / header_ints[17]
-        self.unit_cell = UnitCell(
+        self.unit_cell = UnitCellGeometry.from_parameters(
             cell_mult * header_ints[9],
             cell_mult * header_ints[10],
             cell_mult * header_ints[11],
