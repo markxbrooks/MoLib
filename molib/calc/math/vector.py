@@ -4,6 +4,7 @@ import numpy as np
 
 
 class Vector3:
+    """Vector3"""
     def __init__(self, x: float = 0.0, y: float = 0.0, z: float = 0.0):
         self.is_vector3 = True
         self.x = float(x)
