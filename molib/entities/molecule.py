@@ -72,6 +72,7 @@ class Molecule3D:
         self.chain_colors = chain_colors or {}
         self.coordinate_data = coordinate_data
         self._color_scheme = _color_scheme
+        self.ss_profile = None
 
         # Post initialization
         self._post_init()
