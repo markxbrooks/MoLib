@@ -1,8 +1,9 @@
 """extract isosurface"""
 
 import numpy as np
+
+from picogl.core.rgbcolor import RGBColor
 from decologr import Decologr as log
-from picogl.gpu.buffers.vertex.normals.compute import compute_vertex_normals
 from molib.calc.math.numpy_util import generate_colors_from_positions
 from skimage import measure
 
@@ -146,9 +147,9 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
 
 def create_fofc_color_map(
     vertex_densities: np.ndarray,
-    positive_color: tuple = (0.0, 1.0, 0.0),  # Green
-    negative_color: tuple = (1.0, 0.0, 0.0),  # Red
-    zero_color: tuple = (0.5, 0.5, 0.5),
+    positive_color: RGBColor = RGBColor(0.0, 1.0, 0.0),  # Green
+    negative_color: RGBColor = RGBColor(1.0, 0.0, 0.0),  # Red
+    zero_color: RGBColor = RGBColor(0.5, 0.5, 0.5),
 ):  # Gray
     """
     Create a colour map for fo-fc difference maps.
@@ -176,9 +177,9 @@ def create_fofc_color_map(
             # All values are zero, use zero colour
             return generate_colors_from_positions(
                 vertex_densities,
-                zero_color[0],
-                zero_color[1],
-                zero_color[2],
+                zero_color.r,
+                zero_color.g,
+                zero_color.b,
             )
 
         # Normalize densities to [-1, 1] range
@@ -214,15 +215,15 @@ def create_fofc_color_map(
         # Return default colors on error
         return generate_colors_from_positions(
             vertex_densities,
-            positive_color[0],
-            positive_color[1],
-            positive_color[2],
+            positive_color.r,
+            positive_color.g,
+            positive_color.b,
         )
 
 
 def create_2fofc_color_map(
     vertex_densities: np.ndarray,
-    base_color: tuple = None,  # Will use default blue if None,
+    base_color: RGBColor = None,  # Will use default blue if None,
 ):
     """
     Create a colour map for 2Fo-Fc electron density maps.
@@ -239,18 +240,18 @@ def create_2fofc_color_map(
         np.ndarray - RGB colors for each vertex, shape (n_vertices, 3)
     """
     try:
-        bc = base_color if base_color is not None else (0.0, 0.0, 1.0)
-        return generate_colors_from_positions(vertex_densities, bc[0], bc[1], bc[2])
+        bc = base_color if base_color is not None else RGBColor(0.0, 0.0, 1.0)
+        return generate_colors_from_positions(vertex_densities, bc.r, bc.g, bc.b)
 
     except Exception as ex:
         log.error(f"Error creating 2Fo-Fc colour map: {ex}")
         # Return default colors on error
-        default_color = (0.0, 0.5, 1.0) if base_color is None else base_color
+        default_color = RGBColor(0.0, 0.5, 1.0) if base_color is None else base_color
         return generate_colors_from_positions(
             vertex_densities,
-            default_color[0],
-            default_color[1],
-            default_color[2],
+            default_color.r,
+            default_color.g,
+            default_color.b,
         )
 
 
