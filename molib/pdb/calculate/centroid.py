@@ -2,12 +2,15 @@
 Calculate centroid of PDB file
 """
 
-from typing import Optional
+from typing import Optional, Any
 
 import numpy as np
 import pandas as pd
 from biopandas.pdb import PandasPdb
+from numpy import dtype, ndarray
+
 from decologr import Decologr as log
+from elmo.ui.widgets.gl.mol.base import format_tuple
 from molib.core.entity import MolEntityType
 
 
@@ -46,34 +49,7 @@ def mol_calculate_atoms_only_centroid(
         return None
 
     centroid = np.nanmean(coords, axis=0)
-    log.info(f"✅ Calculated centroid: {centroid}")
-    return centroid
-
-
-def mol_calculate_atoms_only_centroid_old(
-    pdb_pandas: PandasPdb,
-) -> Optional[np.ndarray]:
-    """
-    Calculate centroid of all ATOM records in the PDB.
-
-    :param pdb_pandas: PandasPdb instance
-    :return: centroid (x, y, z) as np.ndarray or None
-    """
-    if not pdb_pandas:
-        # log.error("❌ No PDB data provided for centroid calculation.")
-        return None
-
-    df = pdb_pandas.df.get(MolEntityType.ATOM.value)
-    if df is None or df.empty:
-        log.warning("⚠️ ATOM dataframe is missing or empty.")
-        return None
-
-    coords = df[["x_coord", "y_coord", "z_coord"]].to_numpy()
-    if coords.shape[0] == 0:
-        log.warning("⚠️ No atomic coordinate_data_main found.")
-        return None
-
-    centroid = coords.mean(axis=0)
+    centroid = reformat_numpy(centroid, precision=1)
     log.info(f"✅ Calculated centroid: {centroid}")
     return centroid
 
@@ -111,5 +87,16 @@ def mol_calculate_centroid(pdb_pandas: PandasPdb) -> Optional[np.ndarray]:
         return None
 
     centroid = coords.mean(axis=0)
+    centroid = reformat_numpy(centroid)
     log.info(f"✅ Calculated centroid from {len(coords)} atoms: {centroid}")
+    return centroid
+
+def reformat_numpy(centroid: ndarray, precision: int = 1) -> ndarray[Any, dtype[Any]]:
+    x, y, z = format_tuple((centroid[0], centroid[1], centroid[2]), precision=precision)
+    centroid = np.asarray([x, y, z])
+    return centroid
+
+def reformat_tuple(centroid: tuple[float, float, float], precision: int = 1) -> tuple[Any, Any, Any]:
+    x, y, z = format_tuple((centroid[0], centroid[1], centroid[2]), precision=precision)
+    centroid = (x, y, z)
     return centroid

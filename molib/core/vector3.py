@@ -1,27 +1,10 @@
+"""Re-export canonical :class:`~molib.calc.math.vector.Vector3` and tuple helper."""
+
 from __future__ import annotations
 
-
-class Vector3:
-    """Non Dataclass3D point or direction with scalar components (e.g. molib ``Point3D``)."""
-
-    def __init__(self, x: float, y: float, z: float):
-        self.x = x
-        self.y = y
-        self.z = z
-
-    def __getitem__(self, index: int) -> float:
-        return [self.x, self.y, self.z][index]
-
-    def __setitem__(self, index: int, value: float):
-        if index == 0:
-            self.x = value
-        elif index == 1:
-            self.y = value
-        elif index == 2:
-            self.z = value
-        else:
-            raise IndexError(index)
+from molib.calc.math.vector import Vector3
 
 
 def _tuple_to_vec(t):
+    """Build a Vector3 from a length-3 sequence or x/y/z-like object."""
     return Vector3(*t)

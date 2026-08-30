@@ -76,35 +76,3 @@ def validate_hetatm_atoms(
         raise ValueError("CIF block does not contain _chem_comp_atom.atom_name")
     except Exception as ex:
         log.error(ex)
-
-
-def validate_hetatm_atom_names_old(
-    hetatm_df: pd.DataFrame, cif_blocks: dict[str, gemmi.cif.Block]
-) -> pd.DataFrame:
-    """
-    Validate atom names in hetatm_df against the
-    corresponding residue CIF definitions.
-
-    Adds a new column `atom_valid` indicating whether
-    each atom_name is valid for its residue.
-
-    :param hetatm_df: DataFrame with 'residue_name' and 'atom_name' columns.
-    :param cif_blocks: Dictionary of residue_name -> gemmi.CifBlock.
-    :return: DataFrame with an additional 'atom_valid' column.
-    """
-
-    def is_valid(row):
-        resname = row["residue_name"]
-        atom_name = row["atom_name"].strip()
-
-        block = cif_blocks.get(resname)
-        if block is None:
-            return False
-
-        atom_ids = set(block.find_values("_chem_comp_atom.atom_id"))
-        return atom_name in atom_ids
-
-    hetatm_df = hetatm_df.copy()
-    hetatm_df["atom_valid"] = hetatm_df.apply(is_valid, axis=1)
-
-    return hetatm_df

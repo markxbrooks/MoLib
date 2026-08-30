@@ -4,6 +4,7 @@ import numpy as np
 
 
 class Vector3:
+    """Vector3"""
     def __init__(self, x: float = 0.0, y: float = 0.0, z: float = 0.0):
         self.is_vector3 = True
         self.x = float(x)
@@ -17,6 +18,25 @@ class Vector3:
         if not isinstance(other, Vector3):
             return False
         return self.x == other.x and self.y == other.y and self.z == other.z
+
+    def __getitem__(self, index: int) -> float:
+        if index == 0:
+            return self.x
+        if index == 1:
+            return self.y
+        if index == 2:
+            return self.z
+        raise IndexError(index)
+
+    def __setitem__(self, index: int, value: float) -> None:
+        if index == 0:
+            self.x = float(value)
+        elif index == 1:
+            self.y = float(value)
+        elif index == 2:
+            self.z = float(value)
+        else:
+            raise IndexError(index)
 
     def set(self, x, y=None, z=None):
         """set"""
