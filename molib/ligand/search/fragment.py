@@ -12,6 +12,7 @@ import requests
 from decologr import Decologr as log
 from decologr import setup_logging
 from molib.ligand import PDBLigandInfo, PDBLigandParser
+from molib.ligand.rdkit.smiles.chemcomp import smiles_from_chemcomp
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
@@ -118,30 +119,6 @@ def get_ligand_info(ligand_id):
         "formula": data["chem_comp"]["formula"],
         "type": data["chem_comp"]["type"],
     }
-
-
-@lru_cache(maxsize=10_000)
-def smiles_from_chemcomp(ligand_id: str) -> str | None:
-    ligand_id = ligand_id.upper()
-
-    url = f"https://data.rcsb.org/rest/v1/core/chemcomp/{ligand_id}"
-    try:
-        r = requests.get(url, timeout=15)
-        if r.status_code != 200:
-            return None
-
-        data = r.json().get("chem_comp", {})
-        desc = data.get("rcsb_chem_comp_descriptor", {})
-
-        # Preferred order
-        return (
-            desc.get("canonical_smiles")
-            or desc.get("smiles")
-            or desc.get("inchi")  # last resort
-        )
-
-    except Exception:
-        return None
 
 
 def smiles_from_ccd(res_name: str) -> str | None:

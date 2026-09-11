@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from molib.ligand.element import normalize_element_symbol
 from molib.ligand.pdb.info import PDBLigandInfo
 from molib.ligand.pdb.layouts.hetatm import HETATMLayout
 from molib.ligand.pdb.spec import PDBLineSpec
@@ -263,7 +264,7 @@ class PDBLigandParser:
                 ),
                 "occupancy": parsed["occupancy"],
                 "temp_factor": parsed["temp_factor"],
-                "element": parsed["element"],
+                "element": normalize_element_symbol(parsed["element"]),
             }
 
         except Exception as exc:
