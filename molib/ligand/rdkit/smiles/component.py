@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING, List, Optional, Sequence
 from decologr import Decologr as log
 from molib.ligand.bond import add_conformer, detect_bonds
 from molib.ligand.pdb.info import PDBLigandInfo
+from molib.ligand.rdkit.smiles.residue import (
+    COMMON_LIGAND_SMILES,
+    smiles_from_residue_name,
+)
 from molib.ligand.rdkit.smiles.symbol import SmilesSymbol
 
 if TYPE_CHECKING:
@@ -113,32 +117,8 @@ def create_common_ligand_molecule(
     try:
         # og.info(f"🔄 PDBLigandParser: Checking for common ligand: {ligand_id}")
 
-        # --- Define common biological ligand and their correct SMILES
-        common_ligands = {
-            "HOH": "O",  # Water
-            "SO4": "[O-]S(=O)(=O)[O-]",  # Sulfate ion
-            "PO4": "[O-]P(=O)([O-])[O-]",  # Phosphate ion
-            "CL": "Cl",  # Chloride ion
-            "NA": "Na",  # Sodium ion
-            "MG": "Mg",  # Magnesium ion
-            "CA": "Ca",  # Calcium ion
-            "ZN": "Zn",  # Zinc ion
-            "FE": "Fe",  # Iron ion
-            "MN": "Mn",  # Manganese ion
-            "CU": "Cu",  # Copper ion
-            "NI": "Ni",  # Nickel ion
-            "CO": "Co",  # Cobalt ion
-            "EDO": "CCO",  # Ethylene glycol
-            "GOL": "C(CO)O",  # Glycerol
-            "ACT": "CC(=O)O",  # Acetate
-            "ZN2": "Zn",  # Zinc ion (alternative name)
-            "CA2": "Ca",  # Calcium ion (alternative name)
-            "MG2": "Mg",  # Magnesium ion (alternative name)
-        }
-
-        # --- Check if this is a known common ligand
-        if ligand_id in common_ligands:
-            smiles = common_ligands[ligand_id]
+        if ligand_id in COMMON_LIGAND_SMILES:
+            smiles = COMMON_LIGAND_SMILES[ligand_id]
             log.info(f"✅ PDBLigandParser: Found common ligand {ligand_id} -> {smiles}")
 
             return create_mol_with_conformer(coordinates, ligand_id, smiles)
@@ -437,8 +417,53 @@ def create_molecule_from_coordinates(
         return None
 
 
+def _descriptors_from_mol(mol: "Chem.Mol") -> dict[str, float | int | str]:
+    """Compute RDKit descriptors, skipping any that need a sanitized graph."""
+    properties: dict[str, float | int | str] = {}
+    try:
+        Chem.SanitizeMol(mol)
+    except Exception as exc:
+        log.warning(f"⚠️ PDBLigandParser: Molecule sanitization failed: {exc}")
+
+    try:
+        properties["molecular_weight"] = Descriptors.MolWt(mol)
+        properties["formula"] = rdMolDescriptors.CalcMolFormula(mol)
+        properties["logp"] = Descriptors.MolLogP(mol)
+        properties["hbd"] = Descriptors.NumHDonors(mol)
+        properties["hba"] = Descriptors.NumHAcceptors(mol)
+        properties["tpsa"] = Descriptors.TPSA(mol)
+        properties["rotatable_bonds"] = Descriptors.NumRotatableBonds(mol)
+        properties["aromatic_rings"] = Descriptors.NumAromaticRings(mol)
+    except Exception as exc:
+        log.warning(f"⚠️ PDBLigandParser: Descriptor calculation failed: {exc}")
+    return properties
+
+
+def _mol_from_residue_smiles(ligand_id: str) -> tuple[str, Optional["Chem.Mol"]]:
+    """Build an RDKit molecule from CCD / residue-name SMILES."""
+    residue_smiles = smiles_from_residue_name(ligand_id) or ""
+    if not residue_smiles or not RDKIT_AVAILABLE:
+        return residue_smiles, None
+
+    mol = Chem.MolFromSmiles(residue_smiles)
+    if mol is None:
+        log.warning(
+            f"⚠️ PDBLigandParser: Residue SMILES for {ligand_id} did not parse: "
+            f"{residue_smiles}"
+        )
+        return residue_smiles, None
+    canonical = Chem.MolToSmiles(mol, canonical=True)
+    log.info(f"✅ PDBLigandParser: Residue SMILES for {ligand_id}: {canonical}")
+    return canonical, mol
+
+
 def create_pdb_ligand_info(ligand_data: "PDBLigandData") -> Optional["PDBLigandInfo"]:
-    """Create PDBLigandInfo from grouped ligand data"""
+    """Create PDBLigandInfo from grouped ligand data.
+
+    Prefers Chemical Component / residue-name SMILES over distance-based
+    bond detection. Coordinate guessing mis-assigns bond orders on
+    nucleotides such as GDP (pentavalent carbons, failed sanitization).
+    """
     try:
         res_name = ligand_data.res_name
         chain_id = ligand_data.chain_id
@@ -453,8 +478,8 @@ def create_pdb_ligand_info(ligand_data: "PDBLigandData") -> Optional["PDBLigandI
         element_symbols = [atom["element"] for atom in atoms]
 
         # --- Create ligand identifier
-        ligand_id = res_name
-        ligand_name = f"{res_name} (Chain {chain_id}, Res {res_seq})"
+        ligand_id = res_name.strip()
+        ligand_name = f"{res_name.strip()} (Chain {chain_id}, Res {res_seq})"
 
         # --- Calculate basic properties
         atom_count = len(atoms)
@@ -470,6 +495,7 @@ def create_pdb_ligand_info(ligand_data: "PDBLigandData") -> Optional["PDBLigandI
         tpsa = 0.0
         rotatable_bonds = 0
         aromatic_rings = 0
+        mol = None
 
         # --- Normalize coordinates to floats (defensive)
         try:
@@ -486,32 +512,33 @@ def create_pdb_ligand_info(ligand_data: "PDBLigandData") -> Optional["PDBLigandI
 
         if RDKIT_AVAILABLE:
             try:
-                # --- Check if this is a common biological ligand that needs special handling
-                mol = create_common_ligand_molecule(
-                    ligand_id, coordinates, element_symbols, atom_names
-                )
+                smiles, mol = _mol_from_residue_smiles(ligand_id)
 
                 if mol is None:
-                    # --- Fall back to coordinate-based molecule creation
+                    mol = create_common_ligand_molecule(
+                        ligand_id, coordinates, element_symbols, atom_names
+                    )
+
+                if mol is None:
                     mol = create_molecule_from_coordinates(
                         coordinates, element_symbols, atom_names
                     )
+                    if mol is not None:
+                        smiles = generate_clean_smiles(mol)
 
-                if not mol:
-                    return None
-
-                # --- Calculate molecular properties
-                smiles = generate_clean_smiles(mol)
-                molecular_weight = Descriptors.MolWt(mol)
-                formula = rdMolDescriptors.CalcMolFormula(mol)
-                logp = Descriptors.MolLogP(mol)
-                hbd = Descriptors.NumHDonors(mol)
-                hba = Descriptors.NumHAcceptors(mol)
-                tpsa = Descriptors.TPSA(mol)
-                rotatable_bonds = Descriptors.NumRotatableBonds(mol)
-                aromatic_rings = Descriptors.NumAromaticRings(mol)
-
-                log.info(f"✅ PDBLigandParser: Generated SMILES: {smiles}")
+                if mol is not None:
+                    properties = _descriptors_from_mol(mol)
+                    molecular_weight = properties.get("molecular_weight", 0.0)
+                    formula = properties.get("formula", "")
+                    logp = properties.get("logp", 0.0)
+                    hbd = properties.get("hbd", 0)
+                    hba = properties.get("hba", 0)
+                    tpsa = properties.get("tpsa", 0.0)
+                    rotatable_bonds = properties.get("rotatable_bonds", 0)
+                    aromatic_rings = properties.get("aromatic_rings", 0)
+                    if not smiles:
+                        smiles = generate_clean_smiles(mol)
+                    log.info(f"✅ PDBLigandParser: Generated SMILES: {smiles}")
 
             except Exception as e:
                 log.warning(
