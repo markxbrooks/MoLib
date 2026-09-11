@@ -2,6 +2,9 @@
 
 import numpy as np
 
+# from elmo.gl.geometry.secondary_structure.builder import Vec3View
+from molib.core.vectorlike import Vector3Like
+
 
 class Vector3:
     """Vector3"""
@@ -37,6 +40,14 @@ class Vector3:
             self.z = float(value)
         else:
             raise IndexError(index)
+
+    @classmethod
+    def from_tuple(cls, vec3_tuple: list[float]) -> "Vector3":
+        return cls(vec3_tuple[0], vec3_tuple[1], vec3_tuple[2])
+
+    @classmethod
+    def from_vec3_like(cls, vec3_like: "Vector3Like | Vec3View") -> "Vector3":
+        return cls(vec3_like.x, vec3_like.y, vec3_like.z)
 
     def set(self, x, y=None, z=None):
         """set"""
