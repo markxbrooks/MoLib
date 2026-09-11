@@ -29,6 +29,29 @@ ELEMENTS: dict[str, Element] = {
 }
 
 
+def normalize_element_symbol(raw: str) -> str:
+    """Normalize a PDB element column to an RDKit-style symbol.
+
+    PDB stores magnesium as ``MG``; RDKit expects ``Mg``.
+
+    Parameters
+    ----------
+    raw
+        Element field from a PDB ATOM/HETATM record.
+
+    Returns
+    -------
+    str
+        Title-cased element symbol, or an empty string if ``raw`` is blank.
+    """
+    symbol = (raw or "").strip()
+    if not symbol:
+        return ""
+    if len(symbol) == 1:
+        return symbol.upper()
+    return symbol[0].upper() + symbol[1:].lower()
+
+
 def get_covalent_radii(covalent_radii, element_symbols, i, j):
     """Get covalent radii for a pair of atoms."""
     elem1 = element_symbols[i]
