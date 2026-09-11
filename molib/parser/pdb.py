@@ -1,10 +1,8 @@
 """
-Parser
+PDBLayout
 """
 
-import numpy as np
 
-# from molib.entities.atom import Atom3D
 from molib.ligand.pdb.spec import PDBLineSpec
 
 
@@ -47,58 +45,3 @@ class PDBLayout:
             cls.coords,
         ]
 
-
-class PDBSecStruct:
-    """PDB Sec Struct"""
-
-    ATOM = "ATOM"
-
-
-def parse_pdb_coordinates_from_file(file_path: str):
-    """
-    parse_pdb_coordinates_from_file
-
-    :param file_path: str
-    :return:
-    """
-    coords = []
-
-    with open(file_path, "r", encoding="utf-8") as file:
-        for line in file:
-            if line.startswith(PDBSecStruct.ATOM):
-                x = PDBLayout.x.parse(line)
-                y = PDBLayout.y.parse(line)
-                z = PDBLayout.z.parse(line)
-                coords.append((x, y, z))
-
-    return coords
-
-
-def parse_pdb_atoms(file_path: str) -> list["Atom3D"]:
-    atoms: list["Atom3D"] = []
-
-    with open(file_path, "r", encoding="utf-8") as file:
-        for line in file:
-            if not line.startswith(PDBSecStruct.ATOM):
-                continue
-
-            x = PDBLayout.x.parse(line)
-            y = PDBLayout.y.parse(line)
-            z = PDBLayout.z.parse(line)
-            from molib.entities.atom import Atom3D
-
-            atom = Atom3D(
-                serial=PDBLayout.atom_serial.parse(line),
-                name=PDBLayout.atom_name.parse(line),
-                chain_id=PDBLayout.chain_id.parse(line),
-                element=PDBLayout.element.parse(line),
-                res_name=PDBLayout.res_name.parse(line),
-                res_seq=PDBLayout.res_seq.parse(line),
-                coords=np.array([x, y, z], dtype=np.float32),
-                occupancy=PDBLayout.occupancy.parse(line) or 1.0,
-                b_factor=PDBLayout.temp_factor.parse(line) or 0.0,
-            )
-
-            atoms.append(atom)
-
-    return atoms
