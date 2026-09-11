@@ -41,9 +41,9 @@ def palette_rgb_at(chain_index: int) -> tuple[float, float, float]:
     """
     palette = ColorMap.colors
     if not palette:
-        return (1.0, 1.0, 1.0)
+        return 1.0, 1.0, 1.0
     row = palette[chain_index % len(palette)]
-    return (float(row[0]), float(row[1]), float(row[2]))
+    return float(row[0]), float(row[1]), float(row[2])
 
 
 def rgb_for_chain_id_among(

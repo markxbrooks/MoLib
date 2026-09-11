@@ -169,7 +169,7 @@ class ColorMap:
         " ": (0.9, 0.9, 0.9),
     }
 
-    secondary_structure_color_map: dict = {
+    secondary_structure_color_map: dict[str, tuple[float, float, float]] = {
         # Helices (H=alpha, G=3-10, I=pi)
         "H": (1.0, 0.0, 0.0),  # red
         "G": (1.0, 0.0, 0.0),  # red
