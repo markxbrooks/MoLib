@@ -100,47 +100,72 @@ class BondCylindersMesh(MolecularMesh):
             dtype=np.float32,
         ).reshape(-1, 3)
 
+    def _empty_cylinder_mesh(self) -> MeshData:
+        """Return an empty cylinder mesh with empty pair metadata."""
+        return self._with_pair_metadata(
+            self._empty_mesh_data(
+                elements_per_item=self.geometry.elements_per_item,
+                vertices_per_item=self.geometry.vertices_per_item,
+            ),
+            np.zeros((0, 2), dtype=np.uint32),
+        )
+
+    def _with_pair_metadata(
+        self, mesh_data: MeshData, kept: np.ndarray
+    ) -> MeshData:
+        """Stamp surviving pair identity and color gather indices on *mesh_data*."""
+        kept_a = np.asarray(kept, dtype=np.uint32).reshape(-1, 2)
+        mesh_data.item_keys = kept_a
+        mesh_data.color_source_indices = np.repeat(
+            kept_a[:, 0],
+            self.geometry.vertices_per_item,
+        ).astype(np.uint32)
+        return mesh_data
+
     def build_mesh_data(self) -> MeshData:
         """Build oriented cylinder shafts for all finite bond pairs.
 
         Geometry is generated in one :meth:`BondGeometry.build_many` call.
         Colors are repeated only for shafts that survive the zero-length filter.
+        Surviving pair indices are stored on :attr:`MeshData.item_keys`;
+        :attr:`MeshData.color_source_indices` gathers from atom A of each
+        kept pair.
 
         Returns
         -------
         MeshData
-            Indexed triangle cylinders with per-shaft colors.
+            Indexed triangle cylinders with per-shaft colors and pair metadata.
         """
         if not self.atoms or self.indices.size == 0:
-            return self._empty_mesh_data(
-                elements_per_item=self.geometry.elements_per_item,
-                vertices_per_item=self.geometry.vertices_per_item,
-            )
+            return self._empty_cylinder_mesh()
 
         pairs = self.indices.reshape(-1, 2)
-        starts = np.asarray(
-            [atom_xyz(self.atoms[int(a)]) for a, _b in pairs],
+        positions = np.asarray(
+            [atom_xyz(atom) for atom in self.atoms],
             dtype=np.float64,
-        )
-        ends = np.asarray(
-            [atom_xyz(self.atoms[int(b)]) for _a, b in pairs],
-            dtype=np.float64,
-        )
+        ).reshape(-1, 3)
+        n_atoms = int(positions.shape[0])
+        in_range = (pairs[:, 0] < n_atoms) & (pairs[:, 1] < n_atoms)
+        pairs = pairs[in_range]
+        if pairs.size == 0:
+            return self._empty_cylinder_mesh()
+
+        starts = positions[pairs[:, 0]]
+        ends = positions[pairs[:, 1]]
         geometry, valid = self.geometry.build_many(starts, ends)
+        kept = pairs[valid]
         if geometry.positions.shape[0] == 0:
-            return self._empty_mesh_data(
-                elements_per_item=self.geometry.elements_per_item,
-                vertices_per_item=self.geometry.vertices_per_item,
-            )
+            return self._empty_cylinder_mesh()
 
         colors = np.repeat(
             self._pair_colors(pairs)[valid],
             self.geometry.vertices_per_item,
             axis=0,
         )
-        return geometry.with_colors(colors).as_meshdata(
+        mesh_data = geometry.with_colors(colors).as_meshdata(
             mode=GLDrawMode.TRIANGLES,
             indexed=True,
             elements_per_item=self.geometry.elements_per_item,
             vertices_per_item=self.geometry.vertices_per_item,
         )
+        return self._with_pair_metadata(mesh_data, kept)
