@@ -7,7 +7,7 @@ from typing import Sequence, Callable, Any
 
 import numpy as np
 
-from backend.gl.enums import GLDrawMode
+from picogl.backend.gl.enums import GLDrawMode
 from molib.calc.math.vector import Vector3
 from molib.entities.atom import Atom3D
 from molib.gl.mesh.molecule import MolecularMesh
@@ -15,7 +15,7 @@ from molib.pdb.color import palette_rgb_at
 from picogl.renderer.draw_spec import MeshDrawInfo
 from picogl.renderer.mesh_arrays import MeshArrays
 from picogl.renderer.meshdata import MeshData
-from picogl.renderer.molecular import AtomGeometry
+from molib.gl.mesh.atom.sphere_geometry import AtomSphereGeometry
 
 
 def make_chain_color_fn(
@@ -80,12 +80,12 @@ class AtomSpheresMesh(MolecularMesh):
         radius: float = 0.2,
         slices: int = 16,
         stacks: int = 16,
-        geometry: AtomGeometry | None = None,
+        geometry: AtomSphereGeometry | None = None,
     ) -> None:
         super().__init__()
         self.atoms = atoms
         self.color_fn = color_fn
-        self.geometry = geometry or AtomGeometry(
+        self.geometry = geometry or AtomSphereGeometry(
             radius=radius, slices=slices, stacks=stacks
         )
 

@@ -11,11 +11,11 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from backend.gl.enums import GLDrawMode
-from renderer.draw_spec import MeshDrawInfo
-from renderer.glmesh import GLMesh
-from renderer.legacy_glmesh import LegacyGLMesh
-from renderer.meshdata import MeshData
+from picogl.backend.gl.enums import GLDrawMode
+from picogl.renderer.draw_spec import MeshDrawInfo
+from picogl.renderer.glmesh import GLMesh
+from picogl.renderer.legacy_glmesh import LegacyGLMesh
+from picogl.renderer.meshdata import MeshData
 
 
 class MolecularMesh(ABC):
