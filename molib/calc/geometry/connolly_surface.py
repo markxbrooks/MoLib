@@ -271,23 +271,33 @@ class ConnollySurfaceResource:
 
 def extract_connolly_atom_data(molecule) -> tuple[np.ndarray, np.ndarray]:
     """Extract atom positions and van der Waals radii for Connolly generation."""
+    from molib.ligand.element import vdw_radius_for_element
+
     atom_positions = []
-    elements = []
+    atom_radii = []
 
     for model in getattr(molecule, "models", []):
         for chain in getattr(model, "chains", {}).values():
             for residue in getattr(chain, "residues", []):
                 for atom in getattr(residue, "atoms", {}).values():
                     atom_positions.append(atom.pos)
-                    elements.append(atom.element)
+                    radius = getattr(atom, "radius", None)
+                    try:
+                        radius_f = float(radius)
+                    except (TypeError, ValueError):
+                        radius_f = 0.0
+                    if radius_f != radius_f or radius_f <= 0.0:
+                        radius_f = vdw_radius_for_element(
+                            getattr(atom, "element", None),
+                            getattr(atom, "name", "") or "",
+                        )
+                    atom_radii.append(radius_f)
 
     if not atom_positions:
         return np.empty((0, 3), dtype=np.float32), np.empty((0,), dtype=np.float32)
 
     positions = np.ascontiguousarray(atom_positions, dtype=np.float32).reshape(-1, 3)
-    radii = np.ascontiguousarray(
-        get_atom_radii_from_elements(elements), dtype=np.float32
-    )
+    radii = np.ascontiguousarray(atom_radii, dtype=np.float32)
     return positions, radii
 
 
@@ -624,30 +634,12 @@ def calculate_connolly_surface_from_molecule(
 
 def get_atom_radii_from_elements(elements):
     """Get van der Waals radii for elements."""
-    # Van der Waals radii in Angstroms
-    vdw_radii = {
-        "H": 1.20,
-        "C": 1.70,
-        "N": 1.55,
-        "O": 1.52,
-        "F": 1.47,
-        "P": 1.80,
-        "S": 1.80,
-        "Cl": 1.75,
-        "Br": 1.85,
-        "I": 1.98,
-        "Na": 2.27,
-        "Mg": 1.73,
-        "Ca": 2.31,
-        "Zn": 1.39,
-        "Fe": 2.00,
-    }
+    from molib.ligand.element import vdw_radius_for_element
 
-    radii = []
-    for element in elements:
-        radii.append(vdw_radii.get(element, 1.5))  # Default radius for unknown elements
-
-    return np.array(radii)
+    return np.array(
+        [vdw_radius_for_element(element) for element in elements],
+        dtype=np.float32,
+    )
 
 
 # Global cache for spatial indices to avoid rebuilding

@@ -70,3 +70,90 @@ def calculate_distance(coordinates, i, j):
         + (coord1[1] - coord2[1]) ** 2
         + (coord1[2] - coord2[2]) ** 2
     ) ** 0.5
+
+
+# Bondi van der Waals radii (Å). Keys are uppercase element symbols.
+DEFAULT_VDW_RADIUS = 1.50
+VDW_RADII: dict[str, float] = {
+    "H": 1.20,
+    "D": 1.20,
+    "C": 1.70,
+    "N": 1.55,
+    "O": 1.52,
+    "F": 1.47,
+    "P": 1.80,
+    "S": 1.80,
+    "CL": 1.75,
+    "BR": 1.85,
+    "I": 1.98,
+    "NA": 2.27,
+    "MG": 1.73,
+    "K": 2.75,
+    "CA": 2.31,
+    "MN": 1.61,
+    "FE": 2.00,
+    "CU": 1.40,
+    "ZN": 1.39,
+    "SE": 1.90,
+    "NI": 1.63,
+}
+
+
+def infer_element_symbol(element: str | None, atom_name: str = "") -> str:
+    """Return a normalized element symbol from *element* or *atom_name*.
+
+    :param element: PDB/mmCIF element column (may be blank)
+    :param atom_name: Atom name used when *element* is missing (first letter)
+    :return: Title-cased symbol, or ``""``
+    """
+    symbol = normalize_element_symbol(element or "")
+    if symbol:
+        return symbol
+    for char in atom_name or "":
+        if char.isalpha():
+            return char.upper()
+    return ""
+
+
+def coerce_positive_radius(value: object) -> float | None:
+    """Return *value* as a positive finite radius, otherwise ``None``.
+
+    :param value: Explicit radius (PQR column, constructor argument, …)
+    :return: Radius in Å, or ``None`` if unusable
+    """
+    try:
+        radius = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if radius != radius or radius <= 0.0:
+        return None
+    return radius
+
+
+def vdw_radius_for_element(element: str | None, atom_name: str = "") -> float:
+    """Return the Bondi van der Waals radius for *element* (Å).
+
+    :param element: Element symbol; inferred from *atom_name* when blank
+    :param atom_name: Fallback atom name (e.g. ``CA`` → carbon)
+    :return: Radius in Å; :data:`DEFAULT_VDW_RADIUS` for unknown elements
+    """
+    symbol = infer_element_symbol(element, atom_name).upper()
+    return float(VDW_RADII.get(symbol, DEFAULT_VDW_RADIUS))
+
+
+def resolve_atomic_radius(
+    radius: object | None,
+    element: str | None = None,
+    atom_name: str = "",
+) -> float:
+    """Return an explicit radius when valid, otherwise the element VDW radius.
+
+    :param radius: PQR / caller-supplied radius in Å
+    :param element: Element symbol for the VDW fallback
+    :param atom_name: Atom name used to infer element when it is missing
+    :return: Positive radius in Å
+    """
+    explicit = coerce_positive_radius(radius)
+    if explicit is not None:
+        return explicit
+    return vdw_radius_for_element(element, atom_name)

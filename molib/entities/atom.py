@@ -13,11 +13,56 @@ from molib.core.color.map import ColorMap
 from molib.core.color.strategy import ColorScheme
 from molib.entities.secondary_structure_type import SecondaryStructureType
 from molib.entities.structure import Structure3D
+from molib.ligand.element import resolve_atomic_radius
 from molib.parser.pdb import PDBLayout
 from molib.xtal.uglymol.molecule.definition import NOT_LIGANDS
 
 # Performance optimization: Cache color scheme mappings
 _COLOR_SCHEME_CACHE = {}
+
+_PQR_RADIUS_MIN = 0.4
+_PQR_RADIUS_MAX = 3.5
+
+
+def _layout_float(spec, pdb_line: str, default: float) -> float:
+    """Parse a PDB float field, returning *default* when the slice is not a float."""
+    try:
+        value = spec.parse(pdb_line)
+    except (TypeError, ValueError):
+        return default
+    if value in (None, ""):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _pqr_radius_from_pdb_line(pdb_line: str) -> float | None:
+    """Return a PQR radius from *pdb_line* when the record looks like PQR.
+
+    Free-format PQR stores charge and radius as the last two fields and usually
+    omits the PDB element columns. Standard occupancy/B-factor pairs are ignored
+    so a B-factor of 20 Å² is not treated as a radius.
+
+    :param pdb_line: ATOM/HETATM line
+    :return: Radius in Å, or ``None``
+    """
+    element = ""
+    if len(pdb_line) >= 78:
+        element = (PDBLayout.element.parse(pdb_line) or "").strip()
+    if element:
+        return None
+    parts = pdb_line.split()
+    if len(parts) < 10:
+        return None
+    try:
+        radius = float(parts[-1])
+    except (TypeError, ValueError):
+        return None
+    if radius != radius or radius < _PQR_RADIUS_MIN or radius > _PQR_RADIUS_MAX:
+        return None
+    return radius
 
 
 class Atom3D(Structure3D):
@@ -103,7 +148,6 @@ class Atom3D(Structure3D):
         self.atom_contact_distance = atom_contact_distance
         self.element = element
         self.pqr_charge = pqr_charge
-        self.radius = radius
         self.b_factor = b_factor
         self.occupancy = occupancy
         self.coords = coords
@@ -123,36 +167,55 @@ class Atom3D(Structure3D):
         self.i_seq = -1
         self.is_ligand = None
         self.bonds = []
+        self.radius = resolve_atomic_radius(radius, self.element, self.name)
 
-    def from_pdb_line(self, pdb_line):
-        """from_pdb_line"""
+    def from_pdb_line(self, pdb_line: str) -> "Atom3D":
+        """Populate this atom from an ATOM/HETATM (or PQR) record.
+
+        :param pdb_line: One PDB or PQR coordinate line
+        :return: ``self``
+        """
         if len(pdb_line) < 66:
             raise ValueError(f"ATOM or HETATM record is too short: {pdb_line}")
         rec_type = pdb_line[0:6]
         if rec_type not in ["HETATM", "ATOM  "]:
             raise ValueError(f"Wrong record type: {rec_type}")
 
-        x = PDBLayout.x.parse(line)
-        y = PDBLayout.y.parse(line)
-        z = PDBLayout.z.parse(line)
+        x = PDBLayout.x.parse(pdb_line)
+        y = PDBLayout.y.parse(pdb_line)
+        z = PDBLayout.z.parse(pdb_line)
 
-        serial = PDBLayout.atom_serial.parse(line)
-        name = PDBLayout.atom_name.parse(line)
-        alt_loc = PDBLayout.alt_loc.parse(line)
-        chain_id = PDBLayout.chain_id.parse(line)
-        element = PDBLayout.element.parse(line)
-        res_name = PDBLayout.res_name.parse(line)
-        res_seq = PDBLayout.res_seq.parse(line)
-        coords = np.array([x, y, z], dtype=np.float32)
-        occupancy = PDBLayout.occupancy.parse(line) or 1.0
-        b_factor = PDBLayout.temp_factor.parse(line) or 0.0
+        serial = PDBLayout.atom_serial.parse(pdb_line)
+        name = PDBLayout.atom_name.parse(pdb_line)
+        alt_loc = PDBLayout.alt_loc.parse(pdb_line)
+        chain_id = PDBLayout.chain_id.parse(pdb_line)
+        element = PDBLayout.element.parse(pdb_line)
+        res_name = PDBLayout.res_name.parse(pdb_line)
+        res_seq = PDBLayout.res_seq.parse(pdb_line)
+        occupancy = _layout_float(PDBLayout.occupancy, pdb_line, 1.0)
+        b_factor = _layout_float(PDBLayout.temp_factor, pdb_line, 0.0)
 
         self.name = name
+        self.serial = serial
         self.alt_loc = alt_loc
+        self.res_name = res_name
         self.res_seq = res_seq
-        self.chain = chain_id
+        self.chain_id = chain_id or self.chain_id
+        self.element = (element or "").strip() or None
+        self.occupancy = occupancy
+        self.b_factor = b_factor
         self.coords = (x, y, z)
-        self.is_ligand = self.resname not in NOT_LIGANDS
+        self.is_ligand = (self.res_name or "") not in NOT_LIGANDS
+        pqr_radius = _pqr_radius_from_pdb_line(pdb_line)
+        if pqr_radius is not None:
+            parts = pdb_line.split()
+            try:
+                self.pqr_charge = float(parts[-2])
+            except (TypeError, ValueError, IndexError):
+                self.pqr_charge = _layout_float(PDBLayout.occupancy, pdb_line, 0.0)
+        self.radius = resolve_atomic_radius(pqr_radius, self.element, self.name)
+        self.set_element_color()
+        return self
 
     # ------------------------------------------------------------------
     # PyMOL-like convenience accessors
