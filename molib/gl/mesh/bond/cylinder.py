@@ -7,8 +7,9 @@ from typing import Any
 
 import numpy as np
 
-from molib.gl.mesh.atom.sphere import atom_xyz, make_chain_color_fn
+from molib.entities.coords import atom_xyz
 from molib.gl.mesh.molecule import MolecularMesh
+from molib.pdb.color import make_chain_color_fn
 from picogl.backend.gl.enums import GLDrawMode
 from picogl.renderer.meshdata import MeshData
 from picogl.renderer.molecular import BondGeometry

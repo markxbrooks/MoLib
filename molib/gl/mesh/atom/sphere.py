@@ -8,54 +8,15 @@ from typing import Sequence, Callable, Any
 import numpy as np
 
 from picogl.backend.gl.enums import GLDrawMode
-from molib.calc.math.vector import Vector3
-from molib.entities.atom import Atom3D
+from molib.entities.coords import atom_xyz
 from molib.gl.mesh.molecule import MolecularMesh
-from molib.pdb.color import palette_rgb_at
+from molib.pdb.color import make_chain_color_fn
 from picogl.renderer.draw_spec import MeshDrawInfo
 from picogl.renderer.mesh_arrays import MeshArrays
 from picogl.renderer.meshdata import MeshData
 from molib.gl.mesh.atom.sphere_geometry import AtomSphereGeometry
 
-
-def make_chain_color_fn(
-    chain_ids: Sequence[str],
-) -> Callable[[Any], tuple[float, float, float]]:
-    """
-    Create a per-atom color function that assigns colors by chain ID.
-
-    Chain IDs are sorted and deduplicated so that the resulting colors are
-    deterministic and match :func:`generate_chain_colors` when ``chain_ids``
-    contains every chain in the structure.
-    """
-    unique_sorted = sorted(set(chain_ids))
-
-    # Precompute the mapping once rather than sorting/indexing for every atom.
-    color_map = {
-        chain_id: palette_rgb_at(index)
-        for index, chain_id in enumerate(unique_sorted)
-    }
-
-    def color_fn(atom: Any) -> tuple[float, float, float]:
-        """Return the palette color corresponding to ``atom.chain_id``."""
-        chain_id = atom.chain_id
-
-        if chain_id not in color_map:
-            # Preserve the behavior of the original function for an
-            # unexpected/missing chain ID.
-            color_map[chain_id] = palette_rgb_at(len(color_map))
-
-        return color_map[chain_id]
-
-    return color_fn
-
-
-def atom_xyz(atom: Atom3D | Vector3 | np.ndarray) -> tuple[float, float, float]:
-    """Return ``(x, y, z)`` from ``atom.x/y/z`` (e.g. Vector3 object) or ``atom.coords`` (e.g. Atom3D)."""
-    coords = getattr(atom, "coords", None)
-    if coords is not None:
-        return float(coords[0]), float(coords[1]), float(coords[2])
-    return float(atom.x), float(atom.y), float(atom.z)
+__all__ = ["AtomSpheresMesh", "atom_xyz", "make_chain_color_fn"]
 
 
 class AtomSpheresMesh(MolecularMesh):
