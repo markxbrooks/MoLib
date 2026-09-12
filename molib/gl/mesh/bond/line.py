@@ -10,7 +10,6 @@ import numpy as np
 from molib.gl.mesh.atom.sphere import atom_xyz, make_chain_color_fn
 from molib.gl.mesh.molecule import MolecularMesh
 from picogl.backend.gl.enums import GLDrawMode
-from picogl.renderer.draw_spec import MeshDrawInfo
 from picogl.renderer.mesh_arrays import MeshArrays
 from picogl.renderer.meshdata import MeshData
 
@@ -38,7 +37,11 @@ class BondLinesMesh(MolecularMesh):
     ) -> None:
         super().__init__()
         self.atoms = atoms
-        self.indices = indices
+        self.indices = (
+            np.zeros((0,), dtype=np.uint32)
+            if indices is None
+            else np.asarray(indices, dtype=np.uint32).ravel()
+        )
         self.color_fn = color_fn
         self.bond_color = bond_color
         self.color_bonds = color_bonds
@@ -97,21 +100,14 @@ class BondLinesMesh(MolecularMesh):
             dtype=np.float32,
         ).reshape(-1, 3)
         colors = self._build_colors(int(positions.shape[0]))
-        if self.indices is None:
-            indices = np.zeros((0,), dtype=np.uint32)
-        else:
-            indices = np.asarray(self.indices, dtype=np.uint32).ravel()
-
         arrays = MeshArrays(
             positions=positions,
             normals=np.zeros_like(positions),
             colors=colors,
-            indices=indices,
+            indices=self.indices,
         )
-        mesh_data = arrays.as_meshdata(mode=GLDrawMode.LINES)
-        mesh_data.draw_info = MeshDrawInfo(
+        return arrays.as_meshdata(
             mode=GLDrawMode.LINES,
             indexed=True,
             elements_per_item=2,
         )
-        return mesh_data
