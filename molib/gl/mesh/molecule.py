@@ -39,23 +39,31 @@ class MolecularMesh(ABC):
         *,
         elements_per_item: int,
         vertices_per_item: int,
+        indexed: bool = True,
     ) -> MeshData:
-        """Return an empty indexed mesh with per-item draw strides.
+        """Return an empty mesh with per-item draw strides.
 
         Parameters
         ----------
         elements_per_item
-            Triangle indices per logical item (atom, bond, …).
+            Indices (or vertices, when unindexed) per logical item.
         vertices_per_item
             Vertices per logical item.
+        indexed
+            When ``True``, include an empty element buffer.
         """
-        data = MeshData.from_raw(
-            vertices=np.zeros((0, 3), dtype=np.float32),
-            indices=np.zeros((0,), dtype=np.uint32),
-        )
+        if indexed:
+            data = MeshData.from_raw(
+                vertices=np.zeros((0, 3), dtype=np.float32),
+                indices=np.zeros((0,), dtype=np.uint32),
+            )
+        else:
+            data = MeshData.from_raw(
+                vertices=np.zeros((0, 3), dtype=np.float32),
+            )
         data.draw_info = MeshDrawInfo(
             mode=self.draw_mode,
-            indexed=True,
+            indexed=indexed,
             elements_per_item=elements_per_item,
             vertices_per_item=vertices_per_item,
         )
