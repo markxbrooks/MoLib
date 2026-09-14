@@ -4,6 +4,9 @@ Module for accessing colors from color_array maps
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+from typing import Any
+
 from decologr import Decologr as log
 from molib.core.color import ColorMap
 
@@ -61,6 +64,31 @@ def rgb_for_chain_id_among(
     unique_sorted = sorted(set(chain_ids) | {chain_id})
     idx = unique_sorted.index(chain_id)
     return palette_rgb_at(idx)
+
+
+def make_chain_color_fn(
+    chain_ids: Sequence[str],
+) -> Callable[[Any], tuple[float, float, float]]:
+    """Create a per-atom color function that assigns colors by chain ID.
+
+    Chain IDs are sorted and deduplicated so that the resulting colors are
+    deterministic and match :func:`generate_chain_colors` when ``chain_ids``
+    contains every chain in the structure.
+    """
+    unique_sorted = sorted(set(chain_ids))
+    color_map = {
+        chain_id: palette_rgb_at(index)
+        for index, chain_id in enumerate(unique_sorted)
+    }
+
+    def color_fn(atom: Any) -> tuple[float, float, float]:
+        """Return the palette color corresponding to ``atom.chain_id``."""
+        chain_id = atom.chain_id
+        if chain_id not in color_map:
+            color_map[chain_id] = palette_rgb_at(len(color_map))
+        return color_map[chain_id]
+
+    return color_fn
 
 
 def generate_chain_colors(chain_ids: list) -> dict:

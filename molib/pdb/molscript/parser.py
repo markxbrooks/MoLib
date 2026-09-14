@@ -259,6 +259,8 @@ class PDBPandaColumns(StrEnum):
     INSERTION = "insertion"
     INSERTION_CODE = "insertion_code"
     ICODE = "icode"
+    RADIUS = "radius"
+    CHARGE = "charge"
 
 
 _INSERTION_COLUMNS = (
@@ -319,6 +321,16 @@ def parse_pdb_atoms_to_mol3d(
     alt_locs = df[PDBPandaColumns.ALT_LOC].to_numpy()
     segment_ids = df[PDBPandaColumns.SEGMENT_ID].to_numpy()
     insertions = _insertion_values(df, len(df))
+    radii = (
+        df[PDBPandaColumns.RADIUS].to_numpy()
+        if PDBPandaColumns.RADIUS in df.columns
+        else None
+    )
+    charges = (
+        df[PDBPandaColumns.CHARGE].to_numpy()
+        if PDBPandaColumns.CHARGE in df.columns
+        else None
+    )
 
     current_chain_id = None
     current_res_num = None
@@ -383,6 +395,8 @@ def parse_pdb_atoms_to_mol3d(
             element=element.strip(),
             coords=(xs[i], ys[i], zs[i]),  # ✅ NO np.array
             parent=residue,
+            radius=None if radii is None else radii[i],
+            pqr_charge=None if charges is None else charges[i],
         )
 
         _apply_atom_validation(

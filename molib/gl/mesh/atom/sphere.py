@@ -8,54 +8,15 @@ from typing import Sequence, Callable, Any
 import numpy as np
 
 from picogl.backend.gl.enums import GLDrawMode
-from molib.calc.math.vector import Vector3
-from molib.entities.atom import Atom3D
+from molib.entities.coords import atom_xyz
 from molib.gl.mesh.molecule import MolecularMesh
-from molib.pdb.color import palette_rgb_at
+from molib.pdb.color import make_chain_color_fn
 from picogl.renderer.draw_spec import MeshDrawInfo
 from picogl.renderer.mesh_arrays import MeshArrays
 from picogl.renderer.meshdata import MeshData
 from molib.gl.mesh.atom.sphere_geometry import AtomSphereGeometry
 
-
-def make_chain_color_fn(
-    chain_ids: Sequence[str],
-) -> Callable[[Any], tuple[float, float, float]]:
-    """
-    Create a per-atom color function that assigns colors by chain ID.
-
-    Chain IDs are sorted and deduplicated so that the resulting colors are
-    deterministic and match :func:`generate_chain_colors` when ``chain_ids``
-    contains every chain in the structure.
-    """
-    unique_sorted = sorted(set(chain_ids))
-
-    # Precompute the mapping once rather than sorting/indexing for every atom.
-    color_map = {
-        chain_id: palette_rgb_at(index)
-        for index, chain_id in enumerate(unique_sorted)
-    }
-
-    def color_fn(atom: Any) -> tuple[float, float, float]:
-        """Return the palette color corresponding to ``atom.chain_id``."""
-        chain_id = atom.chain_id
-
-        if chain_id not in color_map:
-            # Preserve the behavior of the original function for an
-            # unexpected/missing chain ID.
-            color_map[chain_id] = palette_rgb_at(len(color_map))
-
-        return color_map[chain_id]
-
-    return color_fn
-
-
-def atom_xyz(atom: Atom3D | Vector3 | np.ndarray) -> tuple[float, float, float]:
-    """Return ``(x, y, z)`` from ``atom.x/y/z`` (e.g. Vector3 object) or ``atom.coords`` (e.g. Atom3D)."""
-    coords = getattr(atom, "coords", None)
-    if coords is not None:
-        return float(coords[0]), float(coords[1]), float(coords[2])
-    return float(atom.x), float(atom.y), float(atom.z)
+__all__ = ["AtomSpheresMesh", "atom_xyz", "make_chain_color_fn"]
 
 
 class AtomSpheresMesh(MolecularMesh):
@@ -67,7 +28,8 @@ class AtomSpheresMesh(MolecularMesh):
     pass a custom ``color_fn(atom)`` for other schemes.
 
     ``radius``, ``slices``, and ``stacks`` construct an :class:`AtomGeometry`
-    when ``geometry`` is omitted.
+    when ``geometry`` is omitted. Optional *radii* scales each instance so
+    ``Atom3D.radius`` can override the uniform template radius.
     """
 
     draw_mode = GLDrawMode.TRIANGLES
@@ -81,6 +43,7 @@ class AtomSpheresMesh(MolecularMesh):
         slices: int = 16,
         stacks: int = 16,
         geometry: AtomSphereGeometry | None = None,
+        radii: Sequence[float] | np.ndarray | None = None,
     ) -> None:
         super().__init__()
         self.atoms = atoms
@@ -88,6 +51,7 @@ class AtomSpheresMesh(MolecularMesh):
         self.geometry = geometry or AtomSphereGeometry(
             radius=radius, slices=slices, stacks=stacks
         )
+        self.radii = None if radii is None else np.asarray(radii, dtype=np.float32)
 
     @property
     def radius(self) -> float:
@@ -143,7 +107,15 @@ class AtomSpheresMesh(MolecularMesh):
         n_vertices = int(vertices.shape[0])
         offsets = np.arange(n_atoms, dtype=np.uint32) * np.uint32(n_vertices)
 
-        out_vertices = (vertices[None, :, :] + positions[:, None, :]).reshape(-1, 3)
+        instanced = vertices[None, :, :]
+        if self.radii is not None:
+            radii = np.asarray(self.radii, dtype=np.float32).reshape(-1)
+            if radii.shape[0] != n_atoms:
+                raise ValueError("radii must have one value per atom")
+            template_r = float(self.geometry.radius) or 1.0
+            scales = (radii / np.float32(template_r)).reshape(-1, 1, 1)
+            instanced = instanced * scales
+        out_vertices = (instanced + positions[:, None, :]).reshape(-1, 3)
         out_normals = np.tile(normals, (n_atoms, 1))
         out_colors = np.repeat(colors, n_vertices, axis=0)
         out_indices = (indices[None, :] + offsets[:, None]).reshape(-1)

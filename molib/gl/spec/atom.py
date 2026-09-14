@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Callable, Any, Optional
 
@@ -14,9 +15,10 @@ class AtomsSphereSpec:
 
     :param atoms: Atoms to instance (``Atom3D`` or PicoGL-compatible)
     :param color_fn: Per-atom RGB; chain palette when omitted
-    :param radius: World-space sphere radius in Å
+    :param radius: Uniform world-space sphere radius in Å
     :param slices: Longitudinal sphere tessellation
     :param stacks: Latitudinal sphere tessellation
+    :param radii: Optional per-atom radii in Å; overrides *radius* per atom
     """
 
     atoms: list
@@ -24,3 +26,4 @@ class AtomsSphereSpec:
     radius: float = 0.2
     slices: int = 8
     stacks: int = 8
+    radii: Optional[Sequence[float]] = None
