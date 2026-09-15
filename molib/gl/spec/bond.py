@@ -1,3 +1,15 @@
+"""
+Defines a specification for bonds mesh, including cylinder parameters
+and visualization preferences.
+
+This specification encapsulates details required for rendering bonds as
+cylinders in molecular visualization. It includes atom references,
+bond definitions, coloring options, and geometric parameters.
+
+Classes:
+    BondsMeshSpec: A data class for specifying bond mesh parameters.
+"""
+
 from dataclasses import dataclass
 from typing import Optional
 
