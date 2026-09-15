@@ -10,8 +10,8 @@ from molib.gl.spec.atom import AtomColorFn
 
 
 @dataclass(frozen=True, slots=True)
-class BondMeshSpec:
-    """Shared parameters for bond line-stick geometry.
+class BondSpec:
+    """Shared parameters for line-stick and cylinder bond geometry.
 
     :param atoms: Atoms (``Atom3D`` or compatible) whose coordinates define endpoints
     :param indices: Flat or ``(N, 2)`` atom-index bond pairs
@@ -28,8 +28,8 @@ class BondMeshSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class BondCylinderSpec(BondMeshSpec):
-    """Cylinder-shaft parameters on top of :class:`BondMeshSpec`.
+class BondCylinderSpec(BondSpec):
+    """Cylinder-shaft parameters on top of :class:`BondSpec`.
 
     :param radius: Cylinder radius in Å
     :param segments: Radial tessellation of each shaft
