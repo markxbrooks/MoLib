@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from picogl.core.geometry.sphere import unit_sphere_mesh
+from picogl.core.geometry.sphere import sphere_mesh
 from picogl.renderer.mesh_arrays import MeshArrays
 
 
@@ -28,7 +28,7 @@ class AtomSphereGeometry:
         MeshArrays
             Positions, normals, and indices with no per-atom colors.
         """
-        return unit_sphere_mesh(
+        return sphere_mesh(
             radius=self.radius,
             slices=self.slices,
             stacks=self.stacks,
