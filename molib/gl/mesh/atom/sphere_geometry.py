@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
-
 from picogl.core.geometry.sphere import unit_sphere_mesh
 from picogl.renderer.mesh_arrays import MeshArrays
 
@@ -30,11 +28,10 @@ class AtomSphereGeometry:
         MeshArrays
             Positions, normals, and indices with no per-atom colors.
         """
-        vertices, normals, indices = self._sphere()
-        return MeshArrays(
-            positions=vertices,
-            normals=normals,
-            indices=np.asarray(indices, dtype=np.uint32).ravel(),
+        return unit_sphere_mesh(
+            radius=self.radius,
+            slices=self.slices,
+            stacks=self.stacks,
         )
 
     @property
@@ -46,11 +43,3 @@ class AtomSphereGeometry:
     def elements_per_item(self) -> int:
         """Number of triangle indices in one sphere instance."""
         return 6 * self.stacks * self.slices
-
-    def _sphere(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Return ``(vertices, normals, indices)`` for this tessellation."""
-        return unit_sphere_mesh(
-            radius=self.radius,
-            slices=self.slices,
-            stacks=self.stacks,
-        )
