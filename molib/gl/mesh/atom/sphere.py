@@ -12,9 +12,8 @@ from picogl.core.geometry.sphere import SphereGeometrySpec, SphereMesh
 from molib.entities.coords import atom_xyz
 from molib.gl.mesh.molecule import MolecularMesh
 from molib.pdb.color import make_chain_color_fn
-from picogl.renderer.draw_spec import MeshDrawInfo
-from picogl.renderer.mesh_arrays import MeshArrays
 from picogl.renderer.meshdata import MeshData
+from picogl.renderer.molecular.pnc_buffer import PNCBuffer
 
 __all__ = ["AtomSpheresMesh", "atom_xyz", "make_chain_color_fn"]
 
@@ -80,9 +79,10 @@ class AtomSpheresMesh(MolecularMesh):
         """Instance sphere geometry at each atom and assign per-atom colors.
 
         Expands one :class:`~picogl.core.geometry.sphere.SphereMesh` template
-        with NumPy broadcasting. The result is a fully expanded
-        :class:`~picogl.renderer.meshdata.MeshData` (one sphere per atom) so
-        existing VAO / ``first_item`` draw paths stay unchanged.
+        through :class:`~picogl.renderer.molecular.pnc_buffer.PNCBuffer`. The
+        result is a fully expanded :class:`~picogl.renderer.meshdata.MeshData`
+        (one sphere per atom) so existing VAO / ``first_item`` draw paths stay
+        unchanged.
         """
         if not self.atoms:
             return self._empty_mesh_data(
@@ -91,10 +91,6 @@ class AtomSpheresMesh(MolecularMesh):
             )
 
         template = self._sphere.build()
-        vertices = template.positions
-        normals = template.normals
-        indices = np.asarray(template.indices, dtype=np.uint32).ravel()
-
         positions = np.asarray(
             [atom_xyz(atom) for atom in self.atoms],
             dtype=np.float32,
@@ -105,34 +101,19 @@ class AtomSpheresMesh(MolecularMesh):
             dtype=np.float32,
         ).reshape(-1, 3)
 
-        n_atoms = int(positions.shape[0])
-        n_vertices = int(vertices.shape[0])
-        offsets = np.arange(n_atoms, dtype=np.uint32) * np.uint32(n_vertices)
-
-        instanced = vertices[None, :, :]
+        scales = None
         if self.radii is not None:
             radii = np.asarray(self.radii, dtype=np.float32).reshape(-1)
-            if radii.shape[0] != n_atoms:
+            if radii.shape[0] != positions.shape[0]:
                 raise ValueError("radii must have one value per atom")
             template_r = float(self.geometry.radius) or 1.0
-            scales = (radii / np.float32(template_r)).reshape(-1, 1, 1)
-            instanced = instanced * scales
-        out_vertices = (instanced + positions[:, None, :]).reshape(-1, 3)
-        out_normals = np.tile(normals, (n_atoms, 1))
-        out_colors = np.repeat(colors, n_vertices, axis=0)
-        out_indices = (indices[None, :] + offsets[:, None]).reshape(-1)
+            scales = radii / np.float32(template_r)
 
-        expanded = MeshArrays(
-            positions=out_vertices,
-            normals=out_normals,
-            colors=out_colors,
-            indices=out_indices,
-        )
-        mesh_data = expanded.as_meshdata()
-        mesh_data.draw_info = MeshDrawInfo(
+        buf = PNCBuffer()
+        buf.add_instances(template, positions, colors, scales=scales)
+        return buf.to_mesh_arrays().as_meshdata(
             mode=GLDrawMode.TRIANGLES,
             indexed=True,
             elements_per_item=self._sphere.elements_per_item,
             vertices_per_item=self._sphere.vertices_per_item,
         )
-        return mesh_data
