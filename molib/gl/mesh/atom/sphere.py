@@ -8,13 +8,13 @@ from typing import Sequence, Callable, Any
 import numpy as np
 
 from picogl.backend.gl.enums import GLDrawMode
+from picogl.core.geometry.sphere import SphereGeometrySpec, SphereMesh
 from molib.entities.coords import atom_xyz
 from molib.gl.mesh.molecule import MolecularMesh
 from molib.pdb.color import make_chain_color_fn
 from picogl.renderer.draw_spec import MeshDrawInfo
 from picogl.renderer.mesh_arrays import MeshArrays
 from picogl.renderer.meshdata import MeshData
-from molib.gl.mesh.atom.sphere_geometry import AtomSphereGeometry
 
 __all__ = ["AtomSpheresMesh", "atom_xyz", "make_chain_color_fn"]
 
@@ -27,8 +27,9 @@ class AtomSpheresMesh(MolecularMesh):
     (as in MoLib ``Atom3D``). The default color function colors by ``chain_id``;
     pass a custom ``color_fn(atom)`` for other schemes.
 
-    ``radius``, ``slices``, and ``stacks`` construct an :class:`AtomGeometry`
-    when ``geometry`` is omitted. Optional *radii* scales each instance so
+    ``radius``, ``slices``, and ``stacks`` construct a
+    :class:`~picogl.core.geometry.sphere.SphereGeometrySpec` when
+    ``geometry`` is omitted. Optional *radii* scales each instance so
     ``Atom3D.radius`` can override the uniform template radius.
     """
 
@@ -42,15 +43,16 @@ class AtomSpheresMesh(MolecularMesh):
         radius: float = 0.2,
         slices: int = 16,
         stacks: int = 16,
-        geometry: AtomSphereGeometry | None = None,
+        geometry: SphereGeometrySpec | None = None,
         radii: Sequence[float] | np.ndarray | None = None,
     ) -> None:
         super().__init__()
         self.atoms = atoms
         self.color_fn = color_fn
-        self.geometry = geometry or AtomSphereGeometry(
+        self.geometry = geometry or SphereGeometrySpec(
             radius=radius, slices=slices, stacks=stacks
         )
+        self._sphere = SphereMesh(self.geometry)
         self.radii = None if radii is None else np.asarray(radii, dtype=np.float32)
 
     @property
@@ -77,18 +79,18 @@ class AtomSpheresMesh(MolecularMesh):
     def build_mesh_data(self) -> MeshData:
         """Instance sphere geometry at each atom and assign per-atom colors.
 
-        Expands one :class:`~picogl.renderer.molecular.atom_geometry.AtomGeometry`
-        template with NumPy broadcasting. The result is a fully expanded
+        Expands one :class:`~picogl.core.geometry.sphere.SphereMesh` template
+        with NumPy broadcasting. The result is a fully expanded
         :class:`~picogl.renderer.meshdata.MeshData` (one sphere per atom) so
         existing VAO / ``first_item`` draw paths stay unchanged.
         """
         if not self.atoms:
             return self._empty_mesh_data(
-                elements_per_item=self.geometry.elements_per_item,
-                vertices_per_item=self.geometry.vertices_per_item,
+                elements_per_item=self._sphere.elements_per_item,
+                vertices_per_item=self._sphere.vertices_per_item,
             )
 
-        template = self.geometry.build()
+        template = self._sphere.build()
         vertices = template.positions
         normals = template.normals
         indices = np.asarray(template.indices, dtype=np.uint32).ravel()
@@ -130,7 +132,7 @@ class AtomSpheresMesh(MolecularMesh):
         mesh_data.draw_info = MeshDrawInfo(
             mode=GLDrawMode.TRIANGLES,
             indexed=True,
-            elements_per_item=self.geometry.elements_per_item,
-            vertices_per_item=self.geometry.vertices_per_item,
+            elements_per_item=self._sphere.elements_per_item,
+            vertices_per_item=self._sphere.vertices_per_item,
         )
         return mesh_data
