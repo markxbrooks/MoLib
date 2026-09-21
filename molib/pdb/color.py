@@ -9,6 +9,7 @@ from typing import Any
 
 from decologr import Decologr as log
 from molib.core.color import ColorMap
+from molib.entities.atom import Atom3D
 
 
 def get_atom_color(name: str) -> tuple[float, float, float]:
@@ -81,7 +82,7 @@ def make_chain_color_fn(
         for index, chain_id in enumerate(unique_sorted)
     }
 
-    def color_fn(atom: Any) -> tuple[float, float, float]:
+    def color_fn(atom: Atom3D) -> tuple[float, float, float]:
         """Return the palette color corresponding to ``atom.chain_id``."""
         chain_id = atom.chain_id
         if chain_id not in color_map:
