@@ -74,6 +74,9 @@ def test_connolly_resource_from_molecule_extracts_positions_and_radii():
     resource = cs.ConnollySurfaceResource.from_molecule(
         molecule, cs.ConnollySurfaceSpec()
     )
+    facade = SimpleNamespace(molecule=molecule)
+    from_facade = cs.extract_connolly_atom_data(facade)
 
     assert resource.positions.shape == (2, 3)
+    np.testing.assert_allclose(from_facade[0], resource.positions)
     np.testing.assert_allclose(resource.radii, [1.70, 1.52], rtol=1e-6)
