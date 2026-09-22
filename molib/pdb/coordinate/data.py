@@ -10,6 +10,9 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
+from molib.pdb.calculate.atom_data import AtomData
+from decologr import Decologr as log
+
 
 @dataclass
 class CoordinateData:
@@ -86,6 +89,50 @@ class CoordinateData:
         if force or self._kdtree is None:
             if self.coords is not None:
                 self._kdtree = cKDTree(self.coords)
+
+    def data_from_index(self, index: int) -> AtomData | None:
+        """
+        data_from_index
+
+        :param self: CoordinateData object with atom DataFrames.
+        :param index: Index into the ATOM dataframe (or other available type).
+        :return: (residue_number, chain_id) tuple or None.
+
+        Get residue number and chain ID for the atom at the given index in the coordinate data.
+        """
+        if not hasattr(self, "df"):
+            return None
+        try:
+            atom_df = self.df
+
+            if atom_df is None:
+                log.message("⚠️ No atom dataframe found in self_main.df")
+                return None
+
+            if not (0 <= index < len(atom_df)):
+                log.message(
+                    f"⚠️ Index {index} out of range for dataframe of length {len(atom_df)}"
+                )
+                return None
+
+            if 0 <= index < len(atom_df):
+                atom_row = atom_df.iloc[index]
+                atom_name = atom_row.get("atom_name")
+                residue_name = atom_row.get("residue_name")
+                residue_id = atom_row.get("residue_number")
+                chain_id = atom_row.get("chain_id")
+                record_type = atom_row.get("record_type", None)
+                atom_data = AtomData(atom_row=atom_row,
+                                     atom_name=atom_name,
+                                     residue_name=residue_name,
+                                     residue_id=residue_id,
+                                     chain_id=chain_id,
+                                     record_type=record_type)
+                return atom_data
+
+            return None
+        except Exception as ex:
+            log.error(f"Error reading atom metadata at index {index}: {ex}")
 
     def find_closest_atom(self, pos: Tuple[float, float, float]) -> int:
         """

@@ -1,72 +1,8 @@
-from dataclasses import dataclass
-from typing import Any
+"""get residues by index"""
 
 from biopandas.pdb import PandasPdb
-from pandas import Series
-
-from decologr import Decologr as log
 from molib.core.constants import MoLibConstant
 from molib.core.entity import MolEntityType
-from molib.pdb.coordinate.data import CoordinateData
-
-
-@dataclass
-class AtomData:
-    """Atom Data"""
-    atom_row: Series[Any] = None
-    atom_name: str = None
-    residue_name: str = None
-    residue_id: str = None
-    chain_id: str = None
-    record_type: str = None
-
-    def log_contents(self):
-        log.message(f"Atom data: {self.atom_row} {self.atom_name} {self.residue_name} {self.residue_id} {self.chain_id} {self.record_type}")
-
-
-def get_atom_data_from_index(coordinate_data: CoordinateData, index: int) -> AtomData | None:
-    """
-    get_atom_data_from_index
-
-    :param coordinate_data: CoordinateData object with atom DataFrames.
-    :param index: Index into the ATOM dataframe (or other available type).
-    :return: (residue_number, chain_id) tuple or None.
-
-    Get residue number and chain ID for the atom at the given index in the coordinate data.
-    """
-    if coordinate_data is None or not hasattr(coordinate_data, "df"):
-        return None
-    try:
-        atom_df = coordinate_data.df
-
-        if atom_df is None:
-            log.message("⚠️ No atom dataframe found in coordinate_data_main.df")
-            return None
-
-        if not (0 <= index < len(atom_df)):
-            log.message(
-                f"⚠️ Index {index} out of range for dataframe of length {len(atom_df)}"
-            )
-            return None
-
-        if 0 <= index < len(atom_df):
-            atom_row = atom_df.iloc[index]
-            atom_name = atom_row.get("atom_name")
-            residue_name = atom_row.get("residue_name")
-            residue_id = atom_row.get("residue_number")
-            chain_id = atom_row.get("chain_id")
-            record_type = atom_row.get("record_type", None)
-            atom_data = AtomData(atom_row=atom_row,
-                                 atom_name=atom_name,
-                                 residue_name=residue_name,
-                                 residue_id=residue_id,
-                                 chain_id=chain_id,
-                                 record_type=record_type)
-            return atom_data
-
-        return None
-    except Exception as ex:
-        log.error(f"Error reading atom metadata at index {index}: {ex}")
 
 
 def get_residue_from_by_index_and_chain_id(
