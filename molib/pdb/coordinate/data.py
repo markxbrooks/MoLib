@@ -74,6 +74,7 @@ class CoordinateData:
     element_symbols: Optional[np.ndarray] = None
     _kdtree = None
     _last_distance = None
+    atom_ids = None
 
     def build_kdtree(self, force: bool = False):
         """

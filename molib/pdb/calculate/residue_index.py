@@ -1,11 +1,30 @@
+from dataclasses import dataclass
+from typing import Any
+
 from biopandas.pdb import PandasPdb
+from pandas import Series
+
 from decologr import Decologr as log
 from molib.core.constants import MoLibConstant
 from molib.core.entity import MolEntityType
 from molib.pdb.coordinate.data import CoordinateData
 
 
-def get_atom_data_from_index(coordinate_data: CoordinateData, index: int):
+@dataclass
+class AtomData:
+    """Atom Data"""
+    atom_row: Series[Any] = None
+    atom_name: str = None
+    residue_name: str = None
+    residue_id: str = None
+    chain_id: str = None
+    record_type: str = None
+
+    def log_contents(self):
+        log.message(f"Atom data: {self.atom_row} {self.atom_name} {self.residue_name} {self.residue_id} {self.chain_id} {self.record_type}")
+
+
+def get_atom_data_from_index(coordinate_data: CoordinateData, index: int) -> AtomData | None:
     """
     get_atom_data_from_index
 
@@ -37,7 +56,13 @@ def get_atom_data_from_index(coordinate_data: CoordinateData, index: int):
             residue_id = atom_row.get("residue_number")
             chain_id = atom_row.get("chain_id")
             record_type = atom_row.get("record_type", None)
-            return atom_name, residue_name, residue_id, chain_id, record_type
+            atom_data = AtomData(atom_row=atom_row,
+                                 atom_name=atom_name,
+                                 residue_name=residue_name,
+                                 residue_id=residue_id,
+                                 chain_id=chain_id,
+                                 record_type=record_type)
+            return atom_data
 
         return None
     except Exception as ex:
