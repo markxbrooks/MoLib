@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
+from elmo.chem.amino_acids import is_amino_acid
 from molib.pdb.calculate.atom_data import AtomData
 from decologr import Decologr as log
 
@@ -89,6 +90,31 @@ class CoordinateData:
         if force or self._kdtree is None:
             if self.coords is not None:
                 self._kdtree = cKDTree(self.coords)
+
+    def get_atom_info_for_ligand_identification(
+        self, atom_index: int
+    ) -> tuple[int, AtomData] | tuple[None, None]:
+        """Get atom information for ligand identification"""
+        try:
+            atom_data = self.data_from_index(atom_index)
+            if atom_data:
+                # Prefer explicit record_type when available
+                is_hetatm = atom_data.is_hetatm
+                if not is_hetatm:
+                    # Fallback: infer by residue name when record_type is missing
+                    if (
+                        atom_data.residue_name
+                        and (not is_amino_acid(atom_data.residue_name))
+                        and (len(str(atom_data.residue_name)) <= 3)
+                    ):
+                        is_hetatm = True
+                        log.message(f"{atom_data.residue_name} found")
+                if is_hetatm:
+                    return atom_index, atom_data
+            return None, None
+        except Exception as e:
+            log.warning(f"Could not get atom data for ligand identification: {e}")
+            return None, None
 
     def data_from_index(self, index: int) -> AtomData | None:
         """

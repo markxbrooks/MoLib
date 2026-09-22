@@ -22,3 +22,7 @@ class AtomData:
     def log_contents(self):
         """log contents of the Atom Data"""
         log.message(f"Atom data: {self.atom_row} {self.atom_name} {self.residue_name} {self.residue_id} {self.chain_id} {self.record_type}")
+
+    @property
+    def is_hetatm(self) -> bool:
+        return self.record_type == "HETATM" if self.record_type is not None else False
