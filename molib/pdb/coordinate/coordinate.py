@@ -32,6 +32,9 @@ class Coordinates(Vec3Mixin):
             and self.z == other.z
         )
 
+    def to_tuple(self) -> tuple[float, float, float]:
+        return self.x, self.y, self.z
+
     @staticmethod
     def origin():
         return Coordinates(0.0, 0.0, 0.0)

@@ -11,10 +11,10 @@ from typing import Callable, Dict, Optional, Tuple, Any
 import gemmi
 import numpy as np
 from gemmi import Mtz, FloatGrid
-from numpy import dtype, ndarray, floating
-from numpy._typing import _64Bit
+from numpy import dtype, ndarray
 
 from decologr import Decologr as log
+from molib.pdb.coordinate.coordinate import Coordinates
 from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
     parse_symmetry_operator_to_matrix,
@@ -100,7 +100,7 @@ class AxisOrder(str, Enum):
                     f"Unsupported Gemmi axis order: {axis_order!r}"
                 )
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class UnitCell:
     """UnitCell"""
     a: float
@@ -140,7 +140,7 @@ class UnitCell:
                 or abs(self.gamma - 90.0) > 0.1)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class MapGrid:
     """MapGrid"""
     dimensions: tuple[int, int, int]
@@ -149,14 +149,14 @@ class MapGrid:
     axis_order: AxisOrder
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class CoordinateTransforms:
     """CoordinateTransforms"""
     frac_to_orth: np.ndarray
     orth_to_frac: np.ndarray
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class CrystallographicInfo:
     """CrystallographicInfo"""
     unit_cell: UnitCell
@@ -709,13 +709,13 @@ def load_ccp4_map(
                 return None
             np_array, crystallographic_info = mtz_result
             log.info(
-                f"📐 Unit cell: a={crystallographic_info['unit_cell']['a']:.2f}, "
-                f"b={crystallographic_info['unit_cell']['b']:.2f}, "
-                f"c={crystallographic_info['unit_cell']['c']:.2f} Å"
+                f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
+                f"b={crystallographic_info.unit_cell.b:.2f}, "
+                f"c={crystallographic_info.unit_cell.c:.2f} Å"
             )
-            log.info(f"📐 Grid dimensions: {crystallographic_info['grid_dimensions']}")
-            log.info(f"📐 Grid origin: {crystallographic_info['grid_origin']}")
-            log.info(f"📐 Axis order: {crystallographic_info['axis_order']}")
+            log.info(f"📐 Grid dimensions: {crystallographic_info.grid_dimensions}")
+            log.info(f"📐 Grid origin: {crystallographic_info.grid_origin}")
+            log.info(f"📐 Axis order: {crystallographic_info.axis_order}")
             log.info(f"ℹ️ Loaded MTZ → grid shape: {np_array.shape}")
         else:
             # Load the CCP4 map - returns Ccp4Map object
@@ -732,50 +732,37 @@ def load_ccp4_map(
             grid = ccp4_map.grid
 
             # Extract crystallographic information
-            crystallographic_info = {
-                "unit_cell": {
-                    "a": grid.unit_cell.a,
-                    "b": grid.unit_cell.b,
-                    "c": grid.unit_cell.c,
-                    "alpha": grid.unit_cell.alpha,
-                    "beta": grid.unit_cell.beta,
-                    "gamma": grid.unit_cell.gamma,
-                },
-                "space_group": str(grid.spacegroup),
-                "grid_dimensions": grid.shape,
-                "grid_origin": (0, 0, 0),  # CCP4 maps typically start at origin
-                "axis_order": grid.axis_order,
-            }
+            crystallographic_info = crystallographic_info_from_grid(grid)
 
             # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
             # This handles non-orthogonal systems (monoclinic, triclinic) correctly
             grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
-            crystallographic_info["grid_spacing"] = grid_spacing
-            crystallographic_info["grid_origin"] = grid_origin
+            crystallographic_info.grid.spacing = grid_spacing
+            crystallographic_info.grid.origin = grid_origin
 
             # COORDINATE SYSTEM FIX: Convert from fractional to cartesian coordinates
             # This ensures the map coordinates align properly with PDB structures
             grid_origin = _convert_grid_origin_to_cartesian(
                 grid, grid_spacing, grid_origin
             )
-            crystallographic_info["grid_origin"] = grid_origin
+            crystallographic_info.grid_origin = grid_origin
 
             # Add transformation matrices for proper coordinate handling
-            crystallographic_info["frac_to_orth"] = (
+            crystallographic_info.transforms.frac_to_orth = (
                 get_grid_fractional_to_orthogonal_matrix(grid)
             )
-            crystallographic_info["orth_to_frac"] = (
+            crystallographic_info.transforms.orth_to_frac = (
                 get_grid_orthogonal_to_fractional_matrix(grid)
             )
 
             log.info(
-                f"📐 Unit cell: a={crystallographic_info['unit_cell']['a']:.2f}, "
-                f"b={crystallographic_info['unit_cell']['b']:.2f}, "
-                f"c={crystallographic_info['unit_cell']['c']:.2f} Å"
+                f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
+                f"b={crystallographic_info.unit_cell.b:.2f}, "
+                f"c={crystallographic_info.unit_cell.c:.2f} Å"
             )
-            log.info(f"📐 Grid dimensions: {crystallographic_info['grid_dimensions']}")
-            log.info(f"📐 Grid origin: {crystallographic_info['grid_origin']}")
-            log.info(f"📐 Axis order: {crystallographic_info['axis_order']}")
+            log.info(f"📐 Grid dimensions: {crystallographic_info.grid.dimensions}")
+            log.info(f"📐 Grid origin: {crystallographic_info.grid.origin}")
+            log.info(f"📐 Axis order: {crystallographic_info.unit_cell.axis_order}")
 
             # Convert to NumPy array
             np_array = np.array(grid, copy=True)
@@ -2190,7 +2177,7 @@ def carve_density_around_protein(
 
 def _convert_grid_origin_to_cartesian(
     grid: gemmi.FloatGrid, grid_spacing: dict, grid_origin: dict
-) -> dict:
+) -> tuple[float, float, float] | dict:
     """
     Convert grid origin from fractional coordinates to cartesian coordinates
     using the same approach as the orthoganalize function.
@@ -2225,21 +2212,17 @@ def _convert_grid_origin_to_cartesian(
         cartesian_coords = frac_array @ matrix_array.T
 
         # Update the grid origin with cartesian coordinates
-        cartesian_origin = {
-            "x": cartesian_coords[0],
-            "y": cartesian_coords[1],
-            "z": cartesian_coords[2],
-        }
+        cartesian_origin = Coordinates(cartesian_coords[0], cartesian_coords[1], cartesian_coords[2])
 
         log.info("🔧 Converted grid origin to cartesian coordinates:")
         log.info(
             f"   Fractional origin: ({frac_coords.x:.3f}, {frac_coords.y:.3f}, {frac_coords.z:.3f})"
         )
         log.info(
-            f"   Cartesian origin: ({cartesian_origin['x']:.3f}, {cartesian_origin['y']:.3f}, {cartesian_origin['z']:.3f}) Å"
+            f"   Cartesian origin: ({cartesian_origin.x:.3f}, {cartesian_origin.y:.3f}, {cartesian_origin.z:.3f}) Å"
         )
 
-        return cartesian_origin
+        return cartesian_origin.to_tuple()
 
     except Exception as e:
         log.error(f"❌ Error converting grid origin to cartesian: {e}")
@@ -2312,15 +2295,18 @@ def _calculate_proper_grid_spacing(grid: gemmi.FloatGrid) -> tuple[dict, dict]:
             f"   Unit cell center: ({unit_cell_center_x:.3f}, {unit_cell_center_y:.3f}, {unit_cell_center_z:.3f}) Å"
         )
         log.info(
-            f"   Grid origin offset: ({grid_origin['x']:.3f}, {grid_origin['y']:.3f}, {grid_origin['z']:.3f}) Å"
+            f"   Grid origin offset: ({grid_origin.get('x', '-'):.3f}, {grid_origin.get('y', '-'):.3f}, {grid_origin.get('z', '-'):.3f}) Å"
         )
 
         log.info(
             "🔧 Calculated proper grid spacing using crystallographic transformations:"
         )
-        log.info(f"   X spacing: {grid_spacing['x']:.4f} Å/grid")
-        log.info(f"   Y spacing: {grid_spacing['y']:.4f} Å/grid")
-        log.info(f"   Z spacing: {grid_spacing['z']:.4f} Å/grid")
+        grid_x = grid_spacing.get("x", "-")
+        grid_y = grid_spacing.get("y", "-")
+        grid_z = grid_spacing.get("z", "-")
+        log.info(f"   X spacing: {grid_x:.4f} Å/grid")
+        log.info(f"   Y spacing: {grid_y:.4f} Å/grid")
+        log.info(f"   Z spacing: {grid_z:.4f} Å/grid")
 
         # Return both grid spacing and origin for proper coordinate alignment
         return grid_spacing, grid_origin
@@ -2852,31 +2838,18 @@ def load_density_map_with_extent(
         grid = ccp4_map.grid
 
         # Extract crystallographic information
-        crystallographic_info = {
-            "unit_cell": {
-                "a": grid.unit_cell.a,
-                "b": grid.unit_cell.b,
-                "c": grid.unit_cell.c,
-                "alpha": grid.unit_cell.alpha,
-                "beta": grid.unit_cell.beta,
-                "gamma": grid.unit_cell.gamma,
-            },
-            "space_group": str(grid.spacegroup),
-            "grid_dimensions": grid.shape,
-            "grid_origin": (0, 0, 0),
-            "axis_order": grid.axis_order,
-        }
+        crystallographic_info = crystallographic_info_from_grid(grid)
 
         # Calculate proper grid spacing and origin
         grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
-        crystallographic_info["grid_spacing"] = grid_spacing
-        crystallographic_info["grid_origin"] = grid_origin
+        crystallographic_info.grid.spacing = grid_spacing
+        crystallographic_info.grid.origin = grid_origin
 
         # Add transformation matrices
-        crystallographic_info["frac_to_orth"] = (
+        crystallographic_info.frac_to_orth = (
             get_grid_fractional_to_orthogonal_matrix(grid)
         )
-        crystallographic_info["orth_to_frac"] = (
+        crystallographic_info.orth_to_frac = (
             get_grid_orthogonal_to_fractional_matrix(grid)
         )
 
@@ -2887,8 +2860,8 @@ def load_density_map_with_extent(
         log.info(f"   Shape: {np_array.shape}")
         log.info(f"   Non-zero voxels: {np.count_nonzero(np_array):,}")
         log.info(f"   Margin: {margin}Å")
-        log.info(f"   Grid origin: {crystallographic_info['grid_origin']}")
-        log.info(f"   Grid spacing: {crystallographic_info['grid_spacing']}")
+        log.info(f"   Grid origin: {crystallographic_info.grid_origin}")
+        log.info(f"   Grid spacing: {crystallographic_info.grid_spacing}")
 
         return np_array, crystallographic_info
 
