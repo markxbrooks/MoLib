@@ -862,8 +862,8 @@ def load_ccp4_map(
             np_array = carve_density_around_protein(
                 np_array,
                 str(pdb_path),
-                crystallographic_info["grid_origin"],
-                crystallographic_info["grid_spacing"],
+                crystallographic_info.grid_origin,
+                crystallographic_info.grid_spacing,
                 carve_cutoff,
                 progress_callback,
             )
@@ -890,8 +890,8 @@ def load_ccp4_map(
             np_array = carve_density_around_position(
                 np_array,
                 pdb_centroid_or_clicked_position,
-                crystallographic_info["grid_origin"],
-                crystallographic_info["grid_spacing"],
+                crystallographic_info.grid.origin,
+                crystallographic_info.grid.spacing,
                 centroid_cutoff,
                 progress_callback,
             )
@@ -1387,21 +1387,12 @@ def load_density_map_auto(
                     np_array = np.array(grid, copy=True)
 
                     # Update crystallographic info
-                    crystallographic_info["grid_dimensions"] = grid.shape
-                    crystallographic_info["unit_cell"] = {
-                        "a": grid.unit_cell.a,
-                        "b": grid.unit_cell.b,
-                        "c": grid.unit_cell.c,
-                        "alpha": grid.unit_cell.alpha,
-                        "beta": grid.unit_cell.beta,
-                        "gamma": grid.unit_cell.gamma,
-                    }
-                    crystallographic_info["space_group"] = str(grid.spacegroup)
+                    crystallographic_info = crystallographic_info_from_grid(grid)
 
                     # Recalculate grid spacing and origin
                     grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
-                    crystallographic_info["grid_spacing"] = grid_spacing
-                    crystallographic_info["grid_origin"] = grid_origin
+                    crystallographic_info.grid.spacing = grid_spacing
+                    crystallographic_info.grid.origin = grid_origin
 
                     result = np_array, crystallographic_info
 
