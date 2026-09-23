@@ -2631,6 +2631,8 @@ def load_density_map_with_extent(
 
         # Extract crystallographic information
         crystallographic_info = crystallographic_info_from_grid(grid)
+        from molib.xtal.info.resolve import resolve_crystallographic_info_to_dict
+        crystallographic_info = resolve_crystallographic_info_to_dict(crystallographic_info)
 
         # Calculate proper grid spacing and origin
         grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
