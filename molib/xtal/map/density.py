@@ -327,6 +327,40 @@ class CrystallographicInfo:
         log.info("Grid spacing: %s", grid.spacing)
         log.info("Axis order: %s", grid.axis_order)
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "CrystallographicInfo":
+        """Create crystallographic information from a serialized dictionary."""
+
+        unit_cell_data = data["unit_cell"]
+
+        unit_cell = UnitCell(
+            a=unit_cell_data["a"],
+            b=unit_cell_data["b"],
+            c=unit_cell_data["c"],
+            alpha=unit_cell_data["alpha"],
+            beta=unit_cell_data["beta"],
+            gamma=unit_cell_data["gamma"],
+        )
+        empty_transform = np.empty((0, 0), dtype=float)
+
+        transforms = CoordinateTransforms(
+            frac_to_orth=data.get("frac_to_orth", empty_transform),
+            orth_to_frac=data.get("orth_to_frac", empty_transform),
+        )
+
+        grid = MapGrid(
+            dimensions=tuple(data["grid_dimensions"]),
+            origin=tuple(data["grid_origin"]),
+            axis_order=tuple(data["axis_order"]),
+        )
+
+        return cls(
+            unit_cell=unit_cell,
+            space_group=data["space_group"],
+            grid=grid,
+            transforms=transforms
+        )
+
     def to_dict(self):
         """for use during refactoring"""
         crystallographic_info = {
