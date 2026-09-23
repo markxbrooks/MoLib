@@ -15,6 +15,7 @@ from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
     parse_symmetry_operator_to_matrix,
 )
+from molib.xtal.map.density import crystallographic_info_from_grid
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
 faulthandler.enable()
@@ -173,20 +174,7 @@ def load_ccp4_map_optimized(
         grid = ccp4_map.grid
 
         # Extract crystallographic information
-        crystallographic_info = {
-            "unit_cell": {
-                "a": grid.unit_cell.a,
-                "b": grid.unit_cell.b,
-                "c": grid.unit_cell.c,
-                "alpha": grid.unit_cell.alpha,
-                "beta": grid.unit_cell.beta,
-                "gamma": grid.unit_cell.gamma,
-            },
-            "space_group": str(grid.spacegroup),
-            "grid_dimensions": grid.shape,
-            "grid_origin": (0, 0, 0),  # CCP4 maps typically start at origin
-            "axis_order": grid.axis_order,
-        }
+        crystallographic_info = crystallographic_info_from_grid(grid)
 
         # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
         # This handles non-orthogonal systems (monoclinic, triclinic) correctly
@@ -580,20 +568,7 @@ def load_ccp4_map(
             grid = ccp4_map.grid
 
             # Extract crystallographic information
-            crystallographic_info = {
-                "unit_cell": {
-                    "a": grid.unit_cell.a,
-                    "b": grid.unit_cell.b,
-                    "c": grid.unit_cell.c,
-                    "alpha": grid.unit_cell.alpha,
-                    "beta": grid.unit_cell.beta,
-                    "gamma": grid.unit_cell.gamma,
-                },
-                "space_group": str(grid.spacegroup),
-                "grid_dimensions": grid.shape,
-                "grid_origin": (0, 0, 0),  # CCP4 maps typically start at origin
-                "axis_order": grid.axis_order,
-            }
+            crystallographic_info = crystallographic_info_from_grid(grid)
 
             # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
             # This handles non-orthogonal systems (monoclinic, triclinic) correctly
@@ -2655,20 +2630,7 @@ def load_density_map_with_extent(
         grid = ccp4_map.grid
 
         # Extract crystallographic information
-        crystallographic_info = {
-            "unit_cell": {
-                "a": grid.unit_cell.a,
-                "b": grid.unit_cell.b,
-                "c": grid.unit_cell.c,
-                "alpha": grid.unit_cell.alpha,
-                "beta": grid.unit_cell.beta,
-                "gamma": grid.unit_cell.gamma,
-            },
-            "space_group": str(grid.spacegroup),
-            "grid_dimensions": grid.shape,
-            "grid_origin": (0, 0, 0),
-            "axis_order": grid.axis_order,
-        }
+        crystallographic_info = crystallographic_info_from_grid(grid)
 
         # Calculate proper grid spacing and origin
         grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
