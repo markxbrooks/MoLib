@@ -311,7 +311,7 @@ class CrystallographicInfo:
         grid = self.grid
 
         log.info(
-            "Unit cell: a=%.2f, b=%.2f, c=%.2f Å, "
+            "📐  Unit cell: a=%.2f, b=%.2f, c=%.2f Å, "
             "α=%.2f°, β=%.2f°, γ=%.2f°",
             cell.a,
             cell.b,
@@ -321,11 +321,11 @@ class CrystallographicInfo:
             cell.gamma,
         )
 
-        log.info("Space group: %s", self.space_group)
-        log.info("Grid dimensions: %s", grid.dimensions)
-        log.info("Grid origin: %s", grid.origin)
-        log.info("Grid spacing: %s", grid.spacing)
-        log.info("Axis order: %s", grid.axis_order)
+        log.info("📐 Space group: %s", self.space_group)
+        log.info("📐 Grid dimensions: %s", grid.dimensions)
+        log.info("📐 Grid origin: %s", grid.origin)
+        log.info("📐 Grid spacing: %s", grid.spacing)
+        log.info("📐Axis order: %s", grid.axis_order)
 
     @classmethod
     def from_dict(cls, data: dict) -> "CrystallographicInfo":
