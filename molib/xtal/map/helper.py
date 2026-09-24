@@ -40,13 +40,20 @@ class DensityMapData:
     crystallographic_info: CrystallographicInfo
 
 
-def _grid_to_xyz_array(grid: gemmi.FloatGrid) -> np.ndarray:
+def _grid_to_xyz_array(
+    grid: gemmi.FloatGrid,
+    crystallographic_info: CrystallographicInfo | None = None,
+) -> np.ndarray:
     """Return a NumPy array of the grid in the canonical X, Y, Z axis order.
 
     Gemmi stores the array with shape (nu, nv, nw); when the grid's axis
     order is not XYZ the array must be transposed so that ``array[i, j, k]``
     is the density at (X, Y, Z). Grids whose axis order is unknown are left
     in their native order (assumed XYZ).
+
+    When ``crystallographic_info`` is given, its grid dimensions and axis
+    order are synced to the returned XYZ array so the metadata always
+    describes the canonical volume.
     """
     array = np.array(grid, copy=True)
     try:
@@ -58,7 +65,10 @@ def _grid_to_xyz_array(grid: gemmi.FloatGrid) -> np.ndarray:
         )
         return array
     if axis_order is not AxisOrder.XYZ:
-        return axis_order.transpose_to_xyz(array)
+        array = axis_order.transpose_to_xyz(array)
+    if crystallographic_info is not None:
+        crystallographic_info.grid.axis_order = AxisOrder.XYZ
+        crystallographic_info.grid.dimensions = tuple(array.shape)
     return array
 
 
@@ -116,7 +126,7 @@ def load_density_map(
         # Convert to a NumPy array in the canonical XYZ axis order. The
         # spacing, origin, and transformations come from
         # crystallographic_info_from_grid() -- no manual overrides here.
-        np_array = _grid_to_xyz_array(grid)
+        np_array = _grid_to_xyz_array(grid, crystallographic_info)
         log.info(f"ℹ️ Loaded MTZ map shape: {np_array.shape}")
 
         return DensityMapData(
@@ -191,7 +201,7 @@ def load_ccp4_map_optimized(
         log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
 
         # Convert to NumPy array
-        np_array = _grid_to_xyz_array(grid)
+        np_array = _grid_to_xyz_array(grid, crystallographic_info)
         log.info(f"ℹ️ Loaded CCP4 map shape: {np_array.shape}")
 
         # Expand symmetry if requested and symmetry operations exist.
@@ -574,7 +584,7 @@ def load_ccp4_map(
             log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
 
             # Convert to NumPy array
-            np_array = _grid_to_xyz_array(grid)
+            np_array = _grid_to_xyz_array(grid, crystallographic_info)
             log.info(f"ℹ️ Loaded CCP4 map shape: {np_array.shape}")
 
             # Expand symmetry if requested and symmetry operations exist
@@ -1195,7 +1205,7 @@ def load_density_map_auto(
                     # Rebuild crystallographic info from the extent-clipped grid
                     grid = ccp4_map.grid
                     crystallographic_info = crystallographic_info_from_grid(grid)
-                    np_array = _grid_to_xyz_array(grid)
+                    np_array = _grid_to_xyz_array(grid, crystallographic_info)
                     result = np_array, crystallographic_info
 
                 if result is not None:
@@ -2072,7 +2082,7 @@ def load_density_map_with_extent(
         crystallographic_info = crystallographic_info_from_grid(grid)
 
         # Convert to NumPy array
-        np_array = _grid_to_xyz_array(grid)
+        np_array = _grid_to_xyz_array(grid, crystallographic_info)
 
         log.info("✅ Map loaded with extent:")
         log.info(f"   Shape: {np_array.shape}")

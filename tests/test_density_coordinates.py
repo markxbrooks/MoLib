@@ -3,7 +3,7 @@
 These pin down the canonical voxel -> Cartesian convention used by the
 viewer pipeline:
 
-    cart = (i, j, k) / dims @ frac_to_orth + origin
+    cart = (i, j, k) / dims @ frac_to_orth.T + origin
 
 and verify the exact inverse (Cartesian -> grid) used for world->grid
 lookups, against gemmi's ``grid.get_position`` ground truth, for both
@@ -12,12 +12,19 @@ orthorhombic and monoclinic (non-orthogonal) cells.
 
 import numpy as np
 import gemmi
+import os
+import tempfile
 from unittest import TestCase
 
 from molib.xtal.map.density import (
     AxisOrder,
     crystallographic_info_from_grid,
     transform_grid_vertices_to_cartesian,
+)
+from molib.xtal.map.helper import (
+    DensityMapData,
+    load_ccp4_map,
+    load_ccp4_map_optimized,
 )
 
 
@@ -107,3 +114,175 @@ class TestDensityCoordinateConvention(TestCase):
         cart = transform_grid_vertices_to_cartesian(pts, dims, f2o, origin)
         back = ((cart - np.asarray(origin)) @ np.linalg.inv(f2o).T) * np.asarray(dims)
         self.assertTrue(np.allclose(back, pts, atol=1e-9))
+
+
+class TestCentredCellFrame(TestCase):
+    """Centred space groups must pin the conventional-cell frame.
+
+    unit_cell.orth.mat is the conventional fractional -> Cartesian matrix,
+    i.e. the frame of PDB coordinates. gemmi's primitive_orth_matrix() maps
+    into a primitive-cell basis that differs for centred lattices, so these
+    tests assert frac_to_orth == orth.mat and explicitly != primitive --
+    which fails if the primitive path is ever reintroduced.
+    """
+
+    CENTRED = [
+        # (label, spacegroup, (a, b, c, alpha, beta, gamma), dims)
+        ("C2", "C 1 2 1", (50.0, 40.0, 60.0, 90.0, 101.2, 90.0), (24, 20, 30)),
+        ("H3", "H 3", (50.0, 50.0, 120.0, 90.0, 90.0, 120.0), (22, 22, 28)),
+        ("I222", "I 2 2 2", (50.0, 40.0, 60.0, 90.0, 90.0, 90.0), (25, 21, 31)),
+    ]
+
+    @staticmethod
+    def _make_centred_grid(sg, cell_params, dims):
+        cell = gemmi.UnitCell(*cell_params)
+        grid = gemmi.FloatGrid(np.zeros(dims, dtype=np.float32), cell=cell)
+        grid.spacegroup = gemmi.find_spacegroup_by_name(sg)
+        return grid
+
+    def test_info_uses_conventional_cell_not_primitive(self):
+        for label, sg, cell_params, dims in self.CENTRED:
+            with self.subTest(spacegroup=label):
+                grid = self._make_centred_grid(sg, cell_params, dims)
+                info = crystallographic_info_from_grid(grid)
+                f2o = np.asarray(info.transforms.frac_to_orth, dtype=np.float64)
+                f2i = np.asarray(info.transforms.orth_to_frac, dtype=np.float64)
+                orth = np.array(grid.unit_cell.orth.mat, dtype=np.float64)
+                prim = np.array(
+                    grid.unit_cell.primitive_orth_matrix(
+                        grid.spacegroup.centring_type()
+                    ),
+                    dtype=np.float64,
+                )
+
+                # Conventional-cell matrix, not the primitive-cell one.
+                self.assertTrue(np.allclose(f2o, orth, atol=1e-8))
+                self.assertFalse(
+                    np.allclose(orth, prim, atol=1e-6),
+                    "test lacks teeth: orth.mat differs from "
+                    "primitive_orth_matrix for this centred cell",
+                )
+
+                # Transforms are exact inverses; cart <-> grid round-trips.
+                self.assertTrue(np.allclose(f2o @ f2i, np.eye(3), atol=1e-8))
+                dims_t = tuple(info.grid.dimensions)
+                pts = np.random.default_rng(11).uniform(
+                    0, np.asarray(dims_t), size=(200, 3)
+                )
+                cart = transform_grid_vertices_to_cartesian(
+                    pts, dims_t, f2o, (0.0, 0.0, 0.0)
+                )
+                back = (cart @ np.linalg.inv(f2o).T) * np.asarray(dims_t)
+                self.assertTrue(np.allclose(back, pts, atol=1e-9))
+
+                # Spacing is the extent of each lattice vector per voxel.
+                spacing = (
+                    info.grid.spacing.x,
+                    info.grid.spacing.y,
+                    info.grid.spacing.z,
+                )
+                self.assertTrue(
+                    np.allclose(
+                        np.asarray(spacing),
+                        np.linalg.norm(f2o, axis=0) / np.asarray(dims_t),
+                        atol=1e-8,
+                    )
+                )
+
+
+class TestLoaderConventionalFrame(TestCase):
+    """CCP4 loaders must return the conventional-cell frac_to_orth (orth.mat)
+    with no primitive-cell override, and metadata consistent with the XYZ
+    volume."""
+
+    REAL_MAPS = [
+        "/home/brooks/projects/ElMo/elmo/test_data/2VUG.ccp4",
+        "/home/brooks/projects/ElMo/elmo/test_data/1mru.map",
+    ]
+
+    @staticmethod
+    def _loaders(path):
+        return [
+            ("load_ccp4_map", load_ccp4_map(
+                path, expand_symmetry=False, convert_to_cartesian=True,
+                carve_density=False,
+            )),
+            ("load_ccp4_map_optimized", load_ccp4_map_optimized(
+                path, expand_symmetry=False, convert_to_cartesian=True,
+                carve_density=False,
+            )),
+        ]
+
+    def _check_loader(self, result, map_path, centring_type=None):
+        self.assertIsInstance(
+            result, DensityMapData, f"{map_path} failed to load"
+        )
+        data = result
+        info = data.crystallographic_info
+        f2o = np.asarray(info.transforms.frac_to_orth, dtype=np.float64)
+        f2i = np.asarray(info.transforms.orth_to_frac, dtype=np.float64)
+        grid = gemmi.read_ccp4_map(map_path).grid
+        orth = np.array(grid.unit_cell.orth.mat, dtype=np.float64)
+
+        self.assertEqual(f2o.shape, (3, 3))
+        self.assertTrue(
+            np.allclose(f2o, orth, atol=1e-6),
+            f"{map_path}: frac_to_orth is not the conventional orth.mat",
+        )
+        self.assertTrue(
+            np.allclose(f2i, np.linalg.inv(f2o), atol=1e-8),
+            f"{map_path}: orth_to_frac is not the exact inverse",
+        )
+
+        # Metadata must describe the XYZ volume consistently.
+        self.assertEqual(tuple(info.grid.dimensions), data.volume.shape)
+        self.assertEqual(info.grid.axis_order, AxisOrder.XYZ)
+        origin = (info.grid.origin.x, info.grid.origin.y, info.grid.origin.z)
+        self.assertEqual(origin, (0.0, 0.0, 0.0))
+        dims = np.asarray(info.grid.dimensions, dtype=np.float64)
+        spacing = np.array(
+            [
+                info.grid.spacing.x,
+                info.grid.spacing.y,
+                info.grid.spacing.z,
+            ]
+        )
+        self.assertTrue(
+            np.allclose(spacing, np.linalg.norm(f2o, axis=0) / dims, atol=1e-8)
+        )
+
+        if centring_type is not None:
+            prim = np.array(
+                grid.unit_cell.primitive_orth_matrix(centring_type),
+                dtype=np.float64,
+            )
+            self.assertFalse(
+                np.allclose(orth, prim, atol=1e-6),
+                "teeth: orth.mat must differ from primitive for centred cell",
+            )
+
+    def test_load_ccp4_map_centred_synthetic(self):
+        sg = "C 1 2 1"
+        cell_params = (50.0, 40.0, 60.0, 90.0, 101.2, 90.0)
+        dims = (24, 20, 30)
+        cell = gemmi.UnitCell(*cell_params)
+        temp_grid = gemmi.FloatGrid(np.zeros(dims, dtype=np.float32), cell=cell)
+        temp_grid.spacegroup = gemmi.find_spacegroup_by_name(sg)
+        ccp4 = gemmi.Ccp4Map()
+        ccp4.grid = temp_grid
+        ccp4.update_ccp4_header()
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "centred.ccp4")
+            ccp4.write_ccp4_map(path)
+            for name, result in self._loaders(path):
+                with self.subTest(loader=name):
+                    self._check_loader(result, path, centring_type="C")
+
+    def test_real_ccp4_loaders(self):
+        for path in self.REAL_MAPS:
+            if not os.path.exists(path):
+                self.skipTest(f"missing test map: {path}")
+            with self.subTest(map=os.path.basename(path)):
+                for name, result in self._loaders(path):
+                    with self.subTest(loader=name):
+                        self._check_loader(result, path)
