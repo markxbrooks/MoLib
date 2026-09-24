@@ -540,7 +540,11 @@ def load_ccp4_map(
             mtz_result = load_density_map_auto_mtz(map_path)
             if mtz_result is None:
                 return None
-            np_array, crystallographic_info = mtz_result
+            if isinstance(mtz_result, DensityMapData):
+                np_array = mtz_result.volume
+                crystallographic_info = mtz_result.crystallographic_info
+            else:
+                np_array, crystallographic_info = mtz_result
             log.info(
                 f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
                 f"b={crystallographic_info.unit_cell.b:.2f}, "
@@ -717,12 +721,12 @@ def load_ccp4_map(
             )
             log.info(f"✅ Centroid carving complete - new shape: {np_array.shape}")
 
-        # Convert to cartesian coordinates if requested
+        # Build map data (always), then optionally convert to cartesian
+        map_data = DensityMapData(np_array, crystallographic_info)
+
         if convert_to_cartesian:
             log.info("🔄 Converting to cartesian coordinates...")
-            map_data = _convert_to_cartesian_coordinates(
-                DensityMapData(np_array, crystallographic_info)
-            )
+            map_data = _convert_to_cartesian_coordinates(map_data)
             crystallographic_info = map_data.crystallographic_info
             log.info(f"✅ Converted to cartesian - new shape: {map_data.volume.shape}")
 
