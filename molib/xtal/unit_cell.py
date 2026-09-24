@@ -8,6 +8,7 @@ from PDB, MTZ, and CCP4 files.
 from typing import Any, Dict, Optional
 
 from decologr import Decologr as log
+from molib.xtal.map.density import UnitCell
 
 
 def extract_unit_cell_from_pdb(pdb_data) -> Optional[Dict[str, Any]]:
@@ -220,7 +221,7 @@ def extract_unit_cell_from_ccp4(ccp4_data) -> Optional[Dict[str, Any]]:
         return None
 
 
-def validate_unit_cell(unit_cell_info: Dict[str, Any]) -> bool:
+def validate_unit_cell(unit_cell_info: UnitCell) -> bool:
     """
     Validate unit cell parameters.
 
@@ -233,20 +234,15 @@ def validate_unit_cell(unit_cell_info: Dict[str, Any]) -> bool:
     if not unit_cell_info:
         return False
 
-    required_keys = ["a", "b", "c", "alpha", "beta", "gamma"]
 
-    # Check if all required keys are present
-    if not all(key in unit_cell_info for key in required_keys):
-        log.warning(
-            "Missing required unit cell parameters",
-            scope="validate_unit_cell",
-            silent=True,
-        )
-        return False
+    """# Check if is UnitCell instance
+    if not isinstance(unit_cell_info, UnitCell):
+        print(unit_cell_info)
+        raise TypeError(f"unit_cell_info is of type {type(unit_cell_info)}")"""
 
     # Check if values are reasonable
     for key in ["a", "b", "c"]:
-        value = unit_cell_info[key]
+        value = getattr(unit_cell_info, key)
         if not isinstance(value, (int, float)) or value <= 0 or value > 1000:
             log.warning(
                 f"Invalid unit cell length {key}: {value}",
@@ -256,7 +252,7 @@ def validate_unit_cell(unit_cell_info: Dict[str, Any]) -> bool:
             return False
 
     for key in ["alpha", "beta", "gamma"]:
-        value = unit_cell_info[key]
+        value = getattr(unit_cell_info, key)
         if not isinstance(value, (int, float)) or value <= 0 or value >= 180:
             log.warning(
                 f"Invalid unit cell angle {key}: {value}",

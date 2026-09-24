@@ -218,6 +218,8 @@ class UnitCell:
     alpha: float
     beta: float
     gamma: float
+    source: str = ""
+    space_group: str = ""
 
     @property
     def center(self) -> tuple[float, float, float]:
@@ -226,6 +228,33 @@ class UnitCell:
             self.b / 2,
             self.c / 2,
         )
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "UnitCell":
+        """Create a UnitCell from a dictionary."""
+        return cls(
+            a=float(data["a"]),
+            b=float(data["b"]),
+            c=float(data["c"]),
+            alpha=float(data["alpha"]),
+            beta=float(data["beta"]),
+            gamma=float(data["gamma"]),
+            source=data.get("source", ""),
+            space_group=data.get("space_group", ""),
+        )
+
+    def to_dict(self) -> dict:
+        """Convert the UnitCell to a dictionary."""
+        return {
+            "a": self.a,
+            "b": self.b,
+            "c": self.c,
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "gamma": self.gamma,
+            "space_group": self.space_group,
+            "source": self.source,
+        }
 
 
     @property
@@ -302,7 +331,7 @@ class CrystallographicInfo:
     space_group: str
     grid: MapGrid
     transforms: CoordinateTransforms
-    map_type: str = None
+    map_type: str = ""
 
     def log_summary(self) -> None:
         """Log the contents of this crystallographic information."""
@@ -385,6 +414,7 @@ def load_density_map(
     f_label: str = "2FOFCWT",
     phi_label: str = "PH2FOFCWT",
     sample_rate: float = 0.0,
+    map_type: str = "CCP4_MAP"
 ) -> tuple[ndarray[Any, dtype[Any]], CrystallographicInfo] | None | Any:
     try:
         mtz = gemmi.read_mtz_file(mtz_path)
@@ -409,7 +439,7 @@ def load_density_map(
             sample_rate=sample_rate,
         )
 
-        crystallographic_info = crystallographic_info_from_grid(grid)
+        crystallographic_info = crystallographic_info_from_grid(grid, map_type=map_type)
 
         crystallographic_info.log_summary()
 
@@ -423,7 +453,7 @@ def load_density_map(
 
 
 def crystallographic_info_from_grid(
-    grid: FloatGrid,
+    grid: FloatGrid, map_type: str = "CCP4_MAP"
 ) -> CrystallographicInfo:
     """Create crystallographic information from a Gemmi map grid."""
 
@@ -493,8 +523,8 @@ def log_available_f_labels(f_label: str, f_labels: list[str]) -> Any:
 
 
 def _convert_grid_origin_to_cartesian(
-    grid: gemmi.FloatGrid, grid_origin: dict
-) -> tuple[float, float, float] | dict:
+    grid: gemmi.FloatGrid, grid_origin: GridOrigin
+) -> GridOrigin:
     """
     Convert grid origin from fractional coordinates to cartesian coordinates
     using the same approach as the orthoganalize function.
@@ -528,7 +558,7 @@ def _convert_grid_origin_to_cartesian(
         cartesian_coords = frac_array @ matrix_array.T
 
         # Update the grid origin with cartesian coordinates
-        cartesian_origin = Coordinates(cartesian_coords[0], cartesian_coords[1], cartesian_coords[2])
+        cartesian_origin = GridOrigin(cartesian_coords[0], cartesian_coords[1], cartesian_coords[2])
 
         log.info("🔧 Converted grid origin to cartesian coordinates:")
         log.info(
@@ -538,7 +568,7 @@ def _convert_grid_origin_to_cartesian(
             f"   Cartesian origin: ({cartesian_origin.x:.3f}, {cartesian_origin.y:.3f}, {cartesian_origin.z:.3f}) Å"
         )
 
-        return cartesian_origin.to_tuple()
+        return cartesian_origin
 
     except Exception as e:
         log.error(f"❌ Error converting grid origin to cartesian: {e}")

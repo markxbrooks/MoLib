@@ -34,6 +34,8 @@ def normalize_crystallographic_info_from_dict(crystallographic_info: Crystallogr
 def normalize_grid_objects(grid_origin: dict[Any, Any], grid_spacing: dict[Any, Any]) -> tuple[GridOrigin, GridSpacing]:
     """Return both grid spacing and origin for proper coordinate alignment"""
     from molib.xtal.map.density import GridOrigin, GridSpacing
-    grid_spacing = GridSpacing(grid_spacing['x'], grid_spacing['y'], grid_spacing['z'])
-    grid_origin = GridOrigin(grid_origin['x'], grid_origin['y'], grid_origin['z'])
+    if not isinstance(grid_spacing, GridSpacing):
+        grid_spacing = GridSpacing(grid_spacing.x, grid_spacing.y, grid_spacing.z)
+    if not isinstance(grid_origin, GridOrigin):
+        grid_origin = GridOrigin(grid_origin['x'], grid_origin['y'], grid_origin['z'])
     return grid_origin, grid_spacing
