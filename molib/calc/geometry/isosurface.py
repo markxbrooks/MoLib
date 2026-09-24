@@ -126,18 +126,6 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
             mode="nearest",
         )
 
-        for i, vertex in enumerate(vertices):
-            # Convert vertex coordinates to volume indices
-            x, y, z = vertex.astype(int)
-
-            # Ensure indices are within bounds
-            x = max(0, min(x, volume.shape[0] - 1))
-            y = max(0, min(y, volume.shape[1] - 1))
-            z = max(0, min(z, volume.shape[2] - 1))
-
-            # Get density value at this vertex
-            vertex_densities[i] = volume[x, y, z]
-
         log.parameter("vertices", len(vertices))
         log.parameter("faces", len(faces))
         log.parameter(
