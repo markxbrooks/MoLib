@@ -670,7 +670,9 @@ def transform_grid_vertices_to_cartesian(
     voxel at grid index i along the crystallographic X axis, etc. For a grid
     covering the full unit cell from its fractional origin, vertex (i, j, k)
     has fractional coordinates (i/nx, j/ny, k/nz), and its Cartesian position
-    is ``frac @ frac_to_orth + origin``.
+    is ``frac @ frac_to_orth.T + origin`` (the transpose matters for
+    non-orthogonal cells; with orthorhombic cells the matrix is symmetric
+    and both forms coincide).
 
     Args:
         vertices: (n, 3) float array of grid vertices from marching_cubes()

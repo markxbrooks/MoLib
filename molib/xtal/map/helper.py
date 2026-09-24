@@ -25,6 +25,8 @@ from molib.xtal.map.density import (
     GridOrigin,
     GridSpacing,
     crystallographic_info_from_grid,
+    get_grid_fractional_to_orthogonal_matrix,
+    get_grid_orthogonal_to_fractional_matrix,
 )
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
@@ -155,7 +157,7 @@ def load_ccp4_map_optimized(
         centroid_cutoff: Distance cutoff for centroid carving in Å (default: 15.0)
 
     Returns:
-        tuple of (numpy array, crystallographic_info) or None if loading fails
+        DensityMapData (volume + crystallographic_info) or None if loading fails
     """
     try:
         import os
@@ -178,14 +180,6 @@ def load_ccp4_map_optimized(
         # Extract crystallographic information
         crystallographic_info = crystallographic_info_from_grid(grid)
         crystallographic_info = normalize_crystallographic_info_from_dict(crystallographic_info)
-
-        # Add transformation matrices for proper coordinate handling
-        crystallographic_info.transforms.frac_to_orth = (
-            get_grid_fractional_to_orthogonal_matrix(grid)
-        )
-        crystallographic_info.transforms.orth_to_frac = (
-            get_grid_orthogonal_to_fractional_matrix(grid)
-        )
 
         log.info(
             f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
@@ -273,11 +267,10 @@ def load_ccp4_map_optimized(
                 log.info("ℹ️ No symmetry operations found in map header")
 
         # Convert to cartesian coordinates if requested
+        map_data = DensityMapData(np_array, crystallographic_info)
         if convert_to_cartesian:
             log.info("🔄 Converting to cartesian coordinates...")
-            map_data = _convert_to_cartesian_coordinates(
-                DensityMapData(np_array, crystallographic_info)
-            )
+            map_data = _convert_to_cartesian_coordinates(map_data)
             np_array = map_data.volume
             crystallographic_info = map_data.crystallographic_info
             log.info(f"✅ Converted to cartesian - new shape: {np_array.shape}")
@@ -296,7 +289,7 @@ def load_ccp4_map_optimized(
                 carve_cutoff,
                 progress_callback,
             )
-            log.info(f"✅ Density carving complete - new shape: {map_data.volume.shape}")
+            log.info(f"✅ Density carving complete - new shape: {np_array.shape}")
         elif carve_density and not pdb_path:
             log.warning("⚠️ Density carving requested but no PDB file provided")
 
@@ -325,7 +318,7 @@ def load_ccp4_map_optimized(
                 centroid_cutoff,
                 progress_callback,
             )
-            log.info(f"✅ Centroid carving complete - new shape: {np_array_carved.shape}")
+            log.info(f"✅ Centroid carving complete - new shape: {np_array.shape}")
 
         return DensityMapData(
             volume=np_array,
@@ -520,7 +513,7 @@ def load_ccp4_map(
         centroid_cutoff: Distance cutoff for centroid carving in Å (default: 15.0)
 
     Returns:
-        tuple of (numpy array, crystallographic_info) or None if loading fails
+        DensityMapData (volume + crystallographic_info) or None if loading fails
     """
     try:
         log.info(f"Loading CCP4 map: {map_path}")
@@ -570,14 +563,6 @@ def load_ccp4_map(
 
             # Extract crystallographic information
             crystallographic_info = crystallographic_info_from_grid(grid)
-
-            # Add transformation matrices for proper coordinate handling
-            crystallographic_info.transforms.frac_to_orth = (
-                get_grid_fractional_to_orthogonal_matrix(grid)
-            )
-            crystallographic_info.transforms.orth_to_frac = (
-                get_grid_orthogonal_to_fractional_matrix(grid)
-            )
 
             log.info(
                 f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
@@ -1987,489 +1972,26 @@ def _convert_to_cartesian_coordinates(
     map_data: DensityMapData,
 ) -> DensityMapData:
     """
-    Convert a density map from fractional/non-orthogonal coordinates
-    to Cartesian coordinates.
+    Return the density map unchanged, in canonical XYZ axes.
+
+    The viewer pipeline keeps the map volume in its native unit cell and
+    applies the fractional-to-orthogonal transformation (frac_to_orth) to
+    isosurface vertices when rendering. Non-orthogonal cells therefore need
+    no resampling, and ``convert_to_cartesian`` only guarantees the volume
+    axes are XYZ-ordered (already ensured at load time by
+    :func:`_grid_to_xyz_array`).
 
     Args:
         map_data: Density map and its crystallographic metadata.
 
     Returns:
-        DensityMapData containing the Cartesian volume and metadata.
-
-    Notes:
-        Orthogonal maps are returned unchanged.
-        Non-orthogonal maps are resampled onto an orthogonal Cartesian grid.
+        The same DensityMapData, unchanged.
     """
-    volume = map_data.volume
-    crystallographic_info = map_data.crystallographic_info
-
-    try:
-        unit_cell = crystallographic_info.unit_cell
-
-        # --------------------------------------------------------------
-        # Already orthogonal
-        # --------------------------------------------------------------
-        if unit_cell.is_orthogonal:
-            log.info(
-                "ℹ️ System is already orthogonal - no conversion needed"
-            )
-            return map_data
-
-        log.info(
-            "⚠️ Converting non-orthogonal system to Cartesian coordinates"
-        )
-
-        # --------------------------------------------------------------
-        # Transformation matrix
-        # --------------------------------------------------------------
-        frac_to_orth = crystallographic_info.transforms.frac_to_orth
-
-        if frac_to_orth.shape != (3, 3):
-            raise ValueError(
-                "Invalid fractional-to-orthogonal transformation matrix: "
-                f"{frac_to_orth.shape}"
-            )
-
-        # --------------------------------------------------------------
-        # Cartesian bounding box
-        #
-        # The fractional unit-cell corners define the Cartesian extent
-        # of the original volume.
-        # --------------------------------------------------------------
-        corners = np.array(
-            [
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [0.0, 0.0, 1.0],
-                [1.0, 1.0, 0.0],
-                [1.0, 0.0, 1.0],
-                [0.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0],
-            ],
-            dtype=float,
-        )
-
-        cartesian_corners = corners @ frac_to_orth
-
-        min_coords = np.min(cartesian_corners, axis=0)
-        max_coords = np.max(cartesian_corners, axis=0)
-
-        cartesian_dimensions = max_coords - min_coords
-
-        # --------------------------------------------------------------
-        # Original grid spacing
-        #
-        # Use the existing MapGrid spacing when available rather than
-        # reconstructing it from the transformation matrix.
-        # --------------------------------------------------------------
-        original_spacing = crystallographic_info.grid.spacing
-
-        spacing = np.array(
-            [
-                original_spacing.x,
-                original_spacing.y,
-                original_spacing.z,
-            ],
-            dtype=float,
-        )
-
-        if np.any(spacing <= 0.0):
-            raise ValueError(
-                f"Invalid grid spacing: {original_spacing}"
-            )
-
-        # --------------------------------------------------------------
-        # Determine Cartesian grid dimensions
-        # --------------------------------------------------------------
-        new_grid_shape = tuple(
-            int(np.ceil(cartesian_dimensions[i] / spacing[i]))
-            for i in range(3)
-        )
-
-        log.info(
-            "   Cartesian dimensions: "
-            "(%.3f, %.3f, %.3f) Å",
-            *cartesian_dimensions,
-        )
-
-        log.info(
-            "   Cartesian grid dimensions: %s",
-            new_grid_shape,
-        )
-
-        # --------------------------------------------------------------
-        # Create Cartesian volume
-        # --------------------------------------------------------------
-        cartesian_volume = np.zeros(
-            new_grid_shape,
-            dtype=volume.dtype,
-        )
-
-        # --------------------------------------------------------------
-        # Convert coordinates
-        # --------------------------------------------------------------
-        converted_points = 0
-        total_points = volume.size
-
-        for u in range(volume.shape[0]):
-            for v in range(volume.shape[1]):
-                for w in range(volume.shape[2]):
-
-                    if converted_points % 10000 == 0:
-                        progress = (
-                            converted_points / total_points
-                        ) * 100.0
-
-                        log.debug(
-                            "   Conversion progress: %.1f%%",
-                            progress,
-                            silent=True,
-                        )
-
-                    # Fractional coordinates.
-                    frac_coords = np.array(
-                        [
-                            u / volume.shape[0],
-                            v / volume.shape[1],
-                            w / volume.shape[2],
-                        ],
-                        dtype=float,
-                    )
-
-                    # Fractional -> Cartesian.
-                    cart_coords = frac_to_orth @ frac_coords
-
-                    # Translate Cartesian coordinates so that the
-                    # minimum corner becomes grid origin.
-                    cart_coords -= min_coords
-
-                    # Cartesian -> integer grid coordinates.
-                    grid_coords = np.floor(
-                        cart_coords / spacing
-                    ).astype(int)
-
-                    new_u, new_v, new_w = grid_coords
-
-                    if (
-                        0 <= new_u < new_grid_shape[0]
-                        and 0 <= new_v < new_grid_shape[1]
-                        and 0 <= new_w < new_grid_shape[2]
-                    ):
-                        cartesian_volume[
-                            new_u,
-                            new_v,
-                            new_w,
-                        ] = volume[u, v, w]
-
-                    converted_points += 1
-
-        # --------------------------------------------------------------
-        # Construct Cartesian crystallographic information
-        # --------------------------------------------------------------
-        cartesian_unit_cell = UnitCell(
-            a=float(cartesian_dimensions[0]),
-            b=float(cartesian_dimensions[1]),
-            c=float(cartesian_dimensions[2]),
-            alpha=90.0,
-            beta=90.0,
-            gamma=90.0,
-        )
-
-        cartesian_grid = MapGrid(
-            dimensions=new_grid_shape,
-            origin=GridOrigin(
-                x=float(min_coords[0]),
-                y=float(min_coords[1]),
-                z=float(min_coords[2]),
-            ),
-            spacing=GridSpacing(
-                x=float(spacing[0]),
-                y=float(spacing[1]),
-                z=float(spacing[2]),
-            ),
-            axis_order=AxisOrder.XYZ,
-        )
-
-        cartesian_transforms = CoordinateTransforms(
-            frac_to_orth=np.eye(3),
-            orth_to_frac=np.eye(3),
-        )
-
-        cartesian_info = CrystallographicInfo(
-            unit_cell=cartesian_unit_cell,
-            space_group="P 1",
-            grid=cartesian_grid,
-            transforms=cartesian_transforms,
-            map_type=crystallographic_info.map_type,
-        )
-
-        cartesian_info.log_summary()
-
-        log.info(
-            "✅ Converted to Cartesian: %s → %s",
-            volume.shape,
-            cartesian_volume.shape,
-        )
-
-        return DensityMapData(
-            volume=cartesian_volume,
-            crystallographic_info=cartesian_info,
-        )
-
-    except Exception as e:
-        log.error(
-            "❌ Error converting to Cartesian coordinates: %s",
-            e,
-        )
-
-        # Preserve the original map on failure.
-        return map_data
-
-def get_grid_fractional_to_orthogonal_matrix(grid: gemmi.FloatGrid) -> np.ndarray:
-    """
-    Get the transformation matrix from fractional to orthogonal coordinates.
-
-    :param grid: Gemmi FloatGrid object
-    :param centring_type: string type of crystallographic system. Default is "P"
-
-    :returns: 3x3 numpy array representing the transformation matrix
-    """
-    try:
-        # For monoclinic systems, gemmi's primitive_orth_matrix gives incorrect β angles
-        # We need to construct the matrix manually using the correct convention
-
-        centring_type = grid.spacegroup.centring_type()
-
-        frac_to_orth = grid.unit_cell.primitive_orth_matrix(
-            centring_type=centring_type
-        )  # for Orthogonal P system
-
-        matrix = np.array(frac_to_orth, dtype=np.float64)
-
-        return matrix
-
-    except Exception as e:
-        log.error(f"❌ Error getting fractional to orthogonal matrix: {e}")
-        return None
-
-
-def get_fractional_to_orthogonal_matrix(
-    unit_cell: gemmi.UnitCell, centring_type: str = "P"
-) -> np.ndarray:
-    """
-    Get the transformation matrix from fractional to orthogonal coordinates.
-
-    :param unit_cell: Gemmi UnitCell object
-    :param centring_type: string type of crystallographic system. Default is "P"
-
-    :returns: 3x3 numpy array representing the transformation matrix
-    """
-    try:
-        # For monoclinic systems, gemmi's primitive_orth_matrix gives incorrect β angles
-        # We need to construct the matrix manually using the correct convention
-
-        # Check if this is a monoclinic system (β ≠ 90°)
-        if abs(unit_cell.beta - 90.0) > 0.1:
-            log.info(
-                f"🔧 Constructing manual transformation matrix for monoclinic system (β = {unit_cell.beta:.3f}°)"
-            )
-
-            # Use the correct convention for monoclinic systems
-            # The non-orthogonal component goes in the first column, third row
-            a, b, c = unit_cell.a, unit_cell.b, unit_cell.c
-            beta_rad = np.radians(unit_cell.beta)
-            cos_beta = np.cos(beta_rad)
-            sin_beta = np.sin(beta_rad)
-
-            matrix = np.array(
-                [[a, 0, 0], [0, b, 0], [c * cos_beta, 0, c * sin_beta]],
-                dtype=np.float64,
-            )
-            frac_to_orth = unit_cell.primitive_orth_matrix(
-                centring_type=centring_type
-            )  # for Orthogonal P system
-
-            matrix = np.array(frac_to_orth, dtype=np.float64)
-            log.info("✅ Manual matrix constructed with correct β angle convention")
-
-        else:
-            # For orthogonal systems, use gemmi's method
-            log.info("🔧 Using gemmi transformation matrix for orthogonal system")
-            frac_to_orth = unit_cell.primitive_orth_matrix(
-                centring_type=centring_type
-            )  # for Orthogonal P system
-
-            matrix = np.array(frac_to_orth, dtype=np.float64)
-
-        return matrix
-
-    except Exception as e:
-        log.error(f"❌ Error getting fractional to orthogonal matrix: {e}")
-        return None
-
-
-def get_grid_orthogonal_to_fractional_matrix(grid: gemmi.FloatGrid) -> np.ndarray:
-    """
-    Get the transformation matrix from orthogonal to fractional coordinates.
-
-    Args:
-        grid: Gemmi FloatGrid object
-
-    Returns:
-        3x3 numpy array representing the inverse transformation matrix
-    """
-    try:
-        # Get the transformation matrix from Gemmi using the correct API
-        # For orthogonal to fractional, we need to invert the primitive_orth_matrix
-
-        centring_type = grid.spacegroup.centring_type()
-
-        frac_to_orth = grid.unit_cell.primitive_orth_matrix(centring_type)
-
-        # Convert Mat33 to numpy array with explicit memory layout for macOS compatibility
-        matrix = np.array(frac_to_orth, dtype=np.float64)
-
-        # Ensure the matrix is contiguous and properly aligned for macOS
-        matrix = np.ascontiguousarray(matrix, dtype=np.float64)
-
-        # Validate matrix before inversion to prevent SIGBUS on macOS
-        if matrix.shape != (3, 3):
-            raise ValueError(f"Expected 3x3 matrix, got {matrix.shape}")
-
-        # Check for singular matrix
-        det = np.linalg.det(matrix)
-        if abs(det) < 1e-12:
-            raise ValueError(f"Matrix is singular (determinant: {det})")
-
-        log.info(
-            f"DEBUG: Matrix inversion - shape: {matrix.shape}, dtype: {matrix.dtype}, det: {det}"
-        )
-        log.info(f"DEBUG: Matrix is contiguous: {matrix.flags.c_contiguous}")
-
-        # Invert the matrix to get orthogonal to fractional transformation
-        # Use manual LU decomposition to avoid SIGBUS issues with np.linalg.inv on macOS
-        try:
-            # Use scipy.linalg.solve instead of np.linalg.inv to avoid SIGBUS
-            from scipy.linalg import solve
-
-            identity = np.eye(3, dtype=np.float64)
-            orth_to_frac = solve(matrix, identity)
-            log.info("DEBUG: Used scipy.linalg.solve for matrix inversion")
-        except ImportError:
-            # Fallback to manual LU decomposition if scipy not available
-            try:
-                from scipy.linalg import lu_factor, lu_solve
-
-                lu, piv = lu_factor(matrix)
-                identity = np.eye(3, dtype=np.float64)
-                orth_to_frac = lu_solve((lu, piv), identity)
-                log.info("DEBUG: Used scipy LU decomposition for matrix inversion")
-            except ImportError:
-                # Final fallback to pseudo-inverse (less accurate but safer)
-                orth_to_frac = np.linalg.pinv(matrix)
-                log.warning(
-                    "⚠️ Used pseudo-inverse as final fallback (scipy not available)"
-                )
-        except Exception as e:
-            log.error(f"❌ Error in matrix inversion: {e}")
-            # Fallback to pseudo-inverse for numerical stability
-            orth_to_frac = np.linalg.pinv(matrix)
-            log.warning("⚠️ Used pseudo-inverse as fallback due to error")
-
-        # Ensure result is also contiguous
-        orth_to_frac = np.ascontiguousarray(orth_to_frac, dtype=np.float64)
-
-        log.info(
-            f"DEBUG: Inversion successful - result shape: {orth_to_frac.shape}, dtype: {orth_to_frac.dtype}"
-        )
-
-        return orth_to_frac
-
-    except Exception as ex:
-        log.error(f"❌ Error getting orthogonal to fractional matrix: {ex}")
-        return None
-
-
-def get_orthogonal_to_fractional_matrix(unit_cell: gemmi.UnitCell) -> np.ndarray:
-    """
-    Get the transformation matrix from orthogonal to fractional coordinates.
-
-    Args:
-        unit_cell: Gemmi UnitCell object
-
-    Returns:
-        3x3 numpy array representing the inverse transformation matrix
-    """
-    try:
-        # Get the transformation matrix from Gemmi using the correct API
-        # For orthogonal to fractional, we need to invert the primitive_orth_matrix
-        frac_to_orth = unit_cell.primitive_orth_matrix("P")
-
-        # Convert Mat33 to numpy array with explicit memory layout for macOS compatibility
-        matrix = np.array(frac_to_orth, dtype=np.float64)
-
-        # Ensure the matrix is contiguous and properly aligned for macOS
-        matrix = np.ascontiguousarray(matrix, dtype=np.float64)
-
-        # Validate matrix before inversion to prevent SIGBUS on macOS
-        if matrix.shape != (3, 3):
-            raise ValueError(f"Expected 3x3 matrix, got {matrix.shape}")
-
-        # Check for singular matrix
-        det = np.linalg.det(matrix)
-        if abs(det) < 1e-12:
-            raise ValueError(f"Matrix is singular (determinant: {det})")
-
-        log.info(
-            f"DEBUG: Matrix inversion (unit_cell) - shape: {matrix.shape}, dtype: {matrix.dtype}, det: {det}"
-        )
-        log.info(f"DEBUG: Matrix is contiguous: {matrix.flags.c_contiguous}")
-
-        # Invert the matrix to get orthogonal to fractional transformation
-        # Use manual LU decomposition to avoid SIGBUS issues with np.linalg.inv on macOS
-        try:
-            # Use scipy.linalg.solve instead of np.linalg.inv to avoid SIGBUS
-            from scipy.linalg import solve
-
-            identity = np.eye(3, dtype=np.float64)
-            orth_to_frac = solve(matrix, identity)
-            log.info("DEBUG: Used scipy.linalg.solve for matrix inversion (unit_cell)")
-        except ImportError:
-            # Fallback to manual LU decomposition if scipy not available
-            try:
-                from scipy.linalg import lu_factor, lu_solve
-
-                lu, piv = lu_factor(matrix)
-                identity = np.eye(3, dtype=np.float64)
-                orth_to_frac = lu_solve((lu, piv), identity)
-                log.info(
-                    "DEBUG: Used scipy LU decomposition for matrix inversion (unit_cell)"
-                )
-            except ImportError:
-                # Final fallback to pseudo-inverse (less accurate but safer)
-                orth_to_frac = np.linalg.pinv(matrix)
-                log.warning(
-                    "⚠️ Used pseudo-inverse as final fallback (scipy not available) (unit_cell)"
-                )
-        except Exception as e:
-            log.error(f"❌ Error in matrix inversion (unit_cell): {e}")
-            # Fallback to pseudo-inverse for numerical stability
-            orth_to_frac = np.linalg.pinv(matrix)
-            log.warning("⚠️ Used pseudo-inverse as fallback due to error (unit_cell)")
-
-        # Ensure result is also contiguous
-        orth_to_frac = np.ascontiguousarray(orth_to_frac, dtype=np.float64)
-
-        log.info(
-            f"DEBUG: Inversion successful - result shape: {orth_to_frac.shape}, dtype: {orth_to_frac.dtype}"
-        )
-
-        return orth_to_frac
-
-    except Exception as ex:
-        log.error(f"❌ Error getting orthogonal to fractional matrix: {ex}")
-        return None
+    log.info(
+        "ℹ️ Canonical pipeline keeps native-cell coordinates; "
+        "frac_to_orth is applied at render time - no resampling performed"
+    )
+    return map_data
 
 
 def load_density_map_with_extent(
@@ -2548,14 +2070,6 @@ def load_density_map_with_extent(
 
         # Extract crystallographic information
         crystallographic_info = crystallographic_info_from_grid(grid)
-
-        # Add transformation matrices
-        crystallographic_info.transforms.frac_to_orth = (
-            get_grid_fractional_to_orthogonal_matrix(grid)
-        )
-        crystallographic_info.transforms.orth_to_frac = (
-            get_grid_orthogonal_to_fractional_matrix(grid)
-        )
 
         # Convert to NumPy array
         np_array = _grid_to_xyz_array(grid)

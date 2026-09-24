@@ -78,7 +78,7 @@ class TestDensityCoordinateConvention(TestCase):
             grid_pts, dims, f2o, origin
         )
         back = (
-            (cart - np.asarray(origin)) @ np.linalg.inv(f2o)
+            (cart - np.asarray(origin)) @ np.linalg.inv(f2o).T
         ) * np.asarray(dims)
         self.assertTrue(np.allclose(back, grid_pts, atol=1e-9))
 
@@ -105,5 +105,5 @@ class TestDensityCoordinateConvention(TestCase):
         origin = (2.5, -3.0, 7.25)
         pts = np.random.default_rng(5).uniform(0, dims, (300, 3))
         cart = transform_grid_vertices_to_cartesian(pts, dims, f2o, origin)
-        back = ((cart - np.asarray(origin)) @ np.linalg.inv(f2o)) * np.asarray(dims)
+        back = ((cart - np.asarray(origin)) @ np.linalg.inv(f2o).T) * np.asarray(dims)
         self.assertTrue(np.allclose(back, pts, atol=1e-9))
