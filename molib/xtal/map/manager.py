@@ -1,0 +1,297 @@
+"""
+Map Manager for electron density maps
+
+Manages multiple electron density maps (2Fo-Fc, Fo-Fc, etc.) and their associated data.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional, Dict, Iterator, List, Tuple
+
+import numpy as np
+from numpy import ndarray
+
+from decologr import LogMixin, Decologr as log
+from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
+
+from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
+from molib.xtal.map.builder import build_map_info, build_map_information_specs
+from molib.xtal.map.density import load_density_map_with_columns
+# from molib.xtal.map.helper import load_density_map_auto
+from molib.xtal.map.info import MapInfo
+
+
+def mtz_id_from_file_name(mtz_file_path: str) -> str:
+    """get mtz id from file name"""
+    return Path(mtz_file_path).stem
+
+
+def map_from_coefficients(
+    spec: MtzFileSpec,
+) -> tuple[tuple[ndarray, dict] | None, tuple[ndarray, dict] | None]:
+    """map from coefficients"""
+    map_2fofc = load_density_map_with_columns(
+        spec.file_path, spec.map_coefficients.f_label , spec.map_coefficients.phi_label
+    )
+    map_fofc = load_density_map_with_columns(
+        spec.file_path, spec.difference_coefficients.f_label, spec.difference_coefficients.phi_label
+    )
+    return map_2fofc, map_fofc
+
+
+class MapManager(LogMixin):
+    """
+    Manager for multiple electron density maps.
+    Supports different map types (2Fo-Fc, Fo-Fc, etc.) with individual settings.
+    """
+
+    default_map: Optional[str] = None
+
+    def __init__(self):
+        self.maps: Dict[str, MapInfo] = {}
+
+    def __len__(self) -> int:
+        return len(self.maps)
+
+    def __iter__(self) -> Iterator[tuple[str, MapInfo]]:
+        return iter(self.maps.items())
+
+    def __contains__(self, map_id: str) -> bool:
+        return map_id in self.maps
+
+    def __getitem__(self, map_id: str) -> MapInfo:
+        return self.maps[map_id]
+
+    def log_maps(self):
+        """Debug: Check what's in the map manager"""
+        self.log_message("Map Manager debug:")
+        self.log_message(f"   Maps: {list(self.maps.keys())}")
+        self.log_message(f"   Default map: {self.default_map}")
+
+    def add_map_if_exists(self, mtz_file_path: str) -> str:
+        """add a map if it exists"""
+        # Create a map ID from the MTZ file path
+        mtz_id = mtz_id_from_file_name(mtz_file_path)
+
+        # Check if this map already exists
+        if mtz_id not in self.maps:
+            # Add the map to the manager
+            # We'll need to get the volume data and other info from GLMol
+            # For now, create a placeholder - this will be enhanced later
+            try:
+                self.load_2fofc_fofc(mtz_file_path, mtz_id)
+            except Exception as ex:
+                self.log_error("Error loading density map", ex)
+                self.create_placeholder_map(mtz_id)
+        else:
+            self.log_message(f"Map {mtz_id} already exists in Map Manager")
+        return mtz_id
+
+    def create_placeholder_map(self, mtz_id: str):
+        """Create placeholder maps anyway"""
+        map_info = build_map_info(
+            map_id=f"{mtz_id}_2Fo-Fc",
+            map_type="2Fo-Fc",
+            f_label="2FOFCWT",
+            phi_label="PH2FOFCWT",
+            volume=np.zeros((10, 10, 10)),  # Placeholder
+            crystallographic_info=None,
+        )
+        self.add_map_from_map_info(map_info, overwrite=True)
+
+    def clear(self):
+        """Clear the map manager when reinitializing"""
+        try:
+            # Clear the map manager
+            self.maps.clear()
+            self.default_map = None
+            # Update the widget to reflect the cleared state
+            # self.map_manager_widget.set_map_manager(self.map_manager)
+            log.message(
+                "Cleared map manager and updated widget",
+            )
+        except Exception as ex:
+            log.warning(f"Could not clear map manager: {ex}")
+
+    def add_map_from_map_info(self, map_info: MapInfo, overwrite: bool = False) -> None:
+        """Add a map from a MapInfo object."""
+
+        if map_info.map_id in self.maps and not overwrite:
+            raise ValueError(f"Map ID '{map_info.map_id}' already exists.")
+
+        # If overwrite, remove old mapping
+        if overwrite and map_info.map_id in self.maps:
+            del self.maps[map_info.map_id]
+
+        # Create new map info
+        map_type_norm = str(map_info.map_type).strip().lower()
+        is_difference_map = map_type_norm in {"fo-fc", "fofc", "delfwt", "difference"}
+        map_info.is_difference_map = is_difference_map
+
+        self.maps[map_info.map_id] = map_info
+
+        # Set as default if this is the first map
+        if self.default_map is None:
+            self.default_map = map_info.map_id
+
+        log.message(
+            f"Added map: {map_info.map_id} ({map_info.map_type}) with {map_info.volume.shape} volume"
+        )
+
+    def get_map(self, map_id: str) -> Optional[MapInfo]:
+        """Get a map by ID."""
+        return self.maps.get(map_id)
+
+    def get_default_map(self) -> Optional[MapInfo]:
+        """Get the default map."""
+        if self.default_map and self.default_map in self.maps:
+            return self.maps[self.default_map]
+        elif self.maps:
+            # Auto-pick first available map
+            self.default_map = next(iter(self.maps))
+            return self.maps[self.default_map]
+        return None
+
+    def get_all_maps(self) -> List[str]:
+        """Get list of all map IDs."""
+        return list(self.maps.keys())
+
+    def get_maps_by_type(self, map_type: str) -> List[MapInfo]:
+        """Get all maps of a specific type."""
+        return [
+            map_info for map_info in self.maps.values() if map_info.map_type == map_type
+        ]
+
+    def remove_map(self, map_id: str) -> None:
+        """Remove a map by ID."""
+        if map_id not in self.maps:
+            raise ValueError(f"Map ID '{map_id}' does not exist.")
+
+        del self.maps[map_id]
+
+        # Update default map if needed
+        if self.default_map == map_id:
+            self.default_map = next(iter(self.maps)) if self.maps else None
+
+        log.message(f"Removed map: {map_id}")
+
+    def set_default_map(self, map_id: str) -> None:
+        """Set the default map."""
+        if map_id not in self.maps:
+            raise ValueError(f"Map ID '{map_id}' does not exist.")
+        self.default_map = map_id
+        log.message(f"Set default map to: {map_id}")
+
+    def clear_all_maps(self) -> None:
+        """Clear all maps."""
+        self.maps.clear()
+        self.default_map = None
+        log.message("Cleared all maps")
+
+    def update_map_visibility(self, map_id: str, is_visible: bool) -> None:
+        """Update map visibility."""
+        if map_id in self.maps:
+            self.maps[map_id].is_visible = is_visible
+            log.message(f"Map {map_id} visibility: {is_visible}")
+
+    def update_map_sigma_level(self, map_id: str, sigma_level: float) -> None:
+        """Update map sigma level."""
+        if map_id in self.maps:
+            self.maps[map_id].sigma_level = sigma_level
+            log.message(f"Map {map_id} sigma level: {sigma_level}")
+
+    def update_map_color(self, map_id: str, color: Tuple[float, float, float]) -> None:
+        """Update map colour."""
+        if map_id in self.maps:
+            self.maps[map_id].color = color
+            log.message(f"Map {map_id} colour: {color}")
+
+    def update_difference_visibility(
+        self,
+        map_id: str,
+        positive_visible: Optional[bool] = None,
+        negative_visible: Optional[bool] = None,
+    ) -> None:
+        """Update Fo-Fc positive/negative contour visibility."""
+        if map_id in self.maps:
+            map_info = self.maps[map_id]
+            if positive_visible is not None:
+                map_info.positive_visible = bool(positive_visible)
+            if negative_visible is not None:
+                map_info.negative_visible = bool(negative_visible)
+
+    def get_visible_maps(self) -> List[MapInfo]:
+        """Get all currently visible maps."""
+        return [map_info for map_info in self.maps.values() if map_info.is_visible]
+
+    def get_map_summary(self) -> Dict[str, Dict]:
+        """Get summary information for all maps."""
+        summary = {}
+        for map_id, map_info in self.maps.items():
+            summary[map_id] = {
+                "type": map_info.map_type,
+                "f_label": map_info.f_label,
+                "phi_label": map_info.phi_label,
+                "volume_shape": map_info.volume.shape,
+                "sigma_level": map_info.sigma_level,
+                "is_visible": map_info.is_visible,
+                "description": map_info.description,
+            }
+        return summary
+
+    def load_2fofc_fofc(self, mtz_file_path: str, mtz_id: str):
+        """Load 2Fo-Fc and Fo-Fc from explicit MTZ coefficients when available"""
+
+        first_choice_coeff = MtzFileSpec(
+            file_path=mtz_file_path,
+            map_coefficients=MtzColumnPair(
+                f_label="2FOFCWT",
+                phi_label="PH2FOFCWT",
+            ),
+            difference_coefficients=MtzColumnPair(
+                f_label="DELFWT",
+                phi_label="PHDELWT",
+            ),
+        )
+
+        second_choice_coeff = MtzFileSpec(
+            file_path=mtz_file_path,
+            map_coefficients=MtzColumnPair(
+                f_label="2FOFCWT",
+                phi_label="PH2FOFCWT",
+            ),
+            difference_coefficients=MtzColumnPair(
+                f_label="FOFCWT",
+                phi_label="PHFOFCWT",
+            ),
+        )
+
+        result_2fofc, result_fofc = map_from_coefficients(first_choice_coeff)
+
+        # Common alternate naming seen in some MTZs
+        if result_fofc is None:
+            result_2fofc, result_fofc = map_from_coefficients(second_choice_coeff)
+
+        # Last-resort fallback to auto load
+        from molib.xtal.map.helper import load_density_map_auto
+        if result_2fofc is None:
+            result_2fofc = load_density_map_auto(mtz_file_path)
+
+        if result_2fofc:
+            volume_2fofc, crystallographic_info = result_2fofc
+            if result_fofc:
+                volume_fofc, _ = result_fofc
+            else:
+                volume_fofc = volume_2fofc
+                self.log_warning(
+                    "Fo-Fc coefficients not found in MTZ; using fallback volume"
+                )
+            map_information = build_map_information_specs(
+                crystallographic_info, mtz_id, volume_2fofc, volume_fofc
+            )
+            for map_name, map_info in map_information.items():
+                self.add_map_from_map_info(map_info)
+                self.log_message(f"Added maps to Map Manager: {map_name}")
+        else:
+            self.log_warning(f"Could not load density map from {mtz_file_path}")
