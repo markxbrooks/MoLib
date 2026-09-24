@@ -431,7 +431,6 @@ def crystallographic_info_from_grid(
 
     grid_origin = _convert_grid_origin_to_cartesian(
         grid,
-        grid_spacing,
         grid_origin,
     )
 
@@ -494,7 +493,7 @@ def log_available_f_labels(f_label: str, f_labels: list[str]) -> Any:
 
 
 def _convert_grid_origin_to_cartesian(
-    grid: gemmi.FloatGrid, grid_spacing: dict, grid_origin: dict
+    grid: gemmi.FloatGrid, grid_origin: dict
 ) -> tuple[float, float, float] | dict:
     """
     Convert grid origin from fractional coordinates to cartesian coordinates
@@ -502,7 +501,6 @@ def _convert_grid_origin_to_cartesian(
 
     Args:
         grid: Gemmi FloatGrid object
-        grid_spacing: Grid spacing dictionary
         grid_origin: Current grid origin dictionary
 
     Returns:
@@ -551,7 +549,7 @@ def _convert_grid_origin_to_cartesian(
 def _calculate_proper_grid_spacing(
     grid: gemmi.FloatGrid,
 ) -> tuple[GridSpacing, GridOrigin]:
-    """Calculate physical spacing and origin for a crystallographic grid."""
+    """Calculate physical spacing and origin for a crystallographic grid. @@@"""
 
     centring_type = grid.spacegroup.centring_type()
     log.message("centring_type: %s", centring_type)

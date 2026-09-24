@@ -6,16 +6,18 @@ import faulthandler
 import os
 import pathlib
 import re
-from typing import Callable, Dict, Optional, Tuple
+from numpy import dtype, ndarray
+from typing import Callable, Dict, Optional, Tuple, Any
 
 import gemmi
 import numpy as np
 from decologr import Decologr as log
+from molib.xtal.info.resolve import normalize_grid_objects, normalize_crystallographic_info_to_dict
 from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
     parse_symmetry_operator_to_matrix,
 )
-from molib.xtal.map.density import crystallographic_info_from_grid
+from molib.xtal.map.density import crystallographic_info_from_grid, GridOrigin, GridSpacing, CrystallographicInfo
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
 faulthandler.enable()
@@ -68,20 +70,8 @@ def load_density_map(
         grid = mtz.transform_f_phi_to_map(f_label, phi_label, sample_rate=sample_rate)
 
         # Extract crystallographic information
-        crystallographic_info = {
-            "unit_cell": {
-                "a": grid.unit_cell.a,
-                "b": grid.unit_cell.b,
-                "c": grid.unit_cell.c,
-                "alpha": grid.unit_cell.alpha,
-                "beta": grid.unit_cell.beta,
-                "gamma": grid.unit_cell.gamma,
-            },
-            "space_group": str(grid.spacegroup),
-            "grid_dimensions": grid.shape,
-            "grid_origin": (0, 0, 0),  # MTZ maps typically start at origin
-            "axis_order": grid.axis_order,
-        }
+        crystallographic_info = crystallographic_info_from_grid(grid)
+        crystallographic_info = normalize_crystallographic_info_to_dict(crystallographic_info)
 
         # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
         # This handles non-orthogonal systems (monoclinic, triclinic) correctly
@@ -175,6 +165,7 @@ def load_ccp4_map_optimized(
 
         # Extract crystallographic information
         crystallographic_info = crystallographic_info_from_grid(grid)
+        crystallographic_info = normalize_crystallographic_info_to_dict(crystallographic_info)
 
         # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
         # This handles non-orthogonal systems (monoclinic, triclinic) correctly
@@ -569,6 +560,7 @@ def load_ccp4_map(
 
             # Extract crystallographic information
             crystallographic_info = crystallographic_info_from_grid(grid)
+            crystallographic_info = normalize_crystallographic_info_to_dict(crystallographic_info)
 
             # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
             # This handles non-orthogonal systems (monoclinic, triclinic) correctly
@@ -2070,7 +2062,8 @@ def _convert_grid_origin_to_cartesian(
         return grid_origin
 
 
-def _calculate_proper_grid_spacing(grid: gemmi.FloatGrid) -> tuple[dict, dict]:
+def _calculate_proper_grid_spacing(grid: gemmi.FloatGrid, normalize_to_objects: bool = False) -> tuple["GridSpacing", "GridOrigin"] | tuple[
+    dict[str, Any], dict[str, Any]]:
     """
     Calculate proper grid spacing and origin for non-orthogonal crystallographic systems
     by using the actual crystallographic transformation matrices instead of
@@ -2145,7 +2138,8 @@ def _calculate_proper_grid_spacing(grid: gemmi.FloatGrid) -> tuple[dict, dict]:
         log.info(f"   Y spacing: {grid_spacing['y']:.4f} Å/grid")
         log.info(f"   Z spacing: {grid_spacing['z']:.4f} Å/grid")
 
-        # Return both grid spacing and origin for proper coordinate alignment
+        if normalize_to_objects:
+            grid_origin, grid_spacing = normalize_grid_objects(grid_origin, grid_spacing)
         return grid_spacing, grid_origin
 
     except Exception as e:
@@ -2562,7 +2556,7 @@ def load_density_map_with_extent(
     f_label="FWT",
     phi_label="PHWT",
     sample_rate=0.0,
-) -> tuple[np.ndarray, dict] | None:
+) -> tuple[ndarray[Any, dtype[Any]], CrystallographicInfo] | None:
     """
     Load density map using Gemmi's set_extent() to cover structure with margin.
     This is much more efficient than post-processing filtering.
@@ -2631,19 +2625,19 @@ def load_density_map_with_extent(
 
         # Extract crystallographic information
         crystallographic_info = crystallographic_info_from_grid(grid)
-        from molib.xtal.info.resolve import resolve_crystallographic_info_to_dict
-        crystallographic_info = resolve_crystallographic_info_to_dict(crystallographic_info)
+        # from molib.xtal.info.resolve import normalize_crystallographic_info_to_dict
+        # crystallographic_info = normalize_crystallographic_info_to_dict(crystallographic_info)
 
         # Calculate proper grid spacing and origin
-        grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
-        crystallographic_info["grid_spacing"] = grid_spacing
-        crystallographic_info["grid_origin"] = grid_origin
+        grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid, normalize_to_objects=True)
+        crystallographic_info.grid.spacing = grid_spacing
+        crystallographic_info.grid.origin = grid_origin
 
         # Add transformation matrices
-        crystallographic_info["frac_to_orth"] = (
+        crystallographic_info.transforms.frac_to_orth = (
             get_grid_fractional_to_orthogonal_matrix(grid)
         )
-        crystallographic_info["orth_to_frac"] = (
+        crystallographic_info.transforms.orth_to_frac = (
             get_grid_orthogonal_to_fractional_matrix(grid)
         )
 
@@ -2654,8 +2648,8 @@ def load_density_map_with_extent(
         log.info(f"   Shape: {np_array.shape}")
         log.info(f"   Non-zero voxels: {np.count_nonzero(np_array):,}")
         log.info(f"   Margin: {margin}Å")
-        log.info(f"   Grid origin: {crystallographic_info['grid_origin']}")
-        log.info(f"   Grid spacing: {crystallographic_info['grid_spacing']}")
+        log.info(f"   Grid origin: {crystallographic_info.grid.origin}")
+        log.info(f"   Grid spacing: {crystallographic_info.grid.spacing}")
 
         return np_array, crystallographic_info
 

@@ -1,5 +1,5 @@
 import math
-from typing import Sequence
+from typing import Sequence, Tuple
 
 from picogl.core.mixin.vec3 import Vec3Mixin
 
@@ -31,6 +31,10 @@ class Coordinates(Vec3Mixin):
             and self.y == other.y
             and self.z == other.z
         )
+
+    def to_tuple(self) -> Tuple[float, float, float]:
+        """to tuple"""
+        return self.x, self.y, self.z
 
     @staticmethod
     def origin():
