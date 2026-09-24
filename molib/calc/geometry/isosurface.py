@@ -38,9 +38,16 @@ def extract_isosurface(volume: np.ndarray, level: float = 1.0):
     """
     extract_isosurface
 
+    Extracts a surface mesh at ``level`` via skimage marching cubes. Vertices
+    are returned in grid (i, j, k) coordinates. Normals are intentionally NOT
+    computed here: the caller applies the crystallographic
+    ``cart = frac @ frac_to_orth.T + origin`` transform (which can shear/scale
+    non-orthogonal cells), so surface normals must be recomputed AFTER that
+    transform by the consumer (see ``_transform_local_contour_mesh``).
+
     :param volume: np.ndarray
     :param level: level
-    :return: tuple of (vertices, faces, normals) or None if extraction fails
+    :return: tuple of (vertices, faces) or None if extraction fails
     """
     log.message("extracting isosurface", silent=True)
     try:
@@ -49,7 +56,7 @@ def extract_isosurface(volume: np.ndarray, level: float = 1.0):
             log.warning("⚠️ Volume has no variation - cannot extract isosurface")
             return None
         try:
-            vertices, faces, normals, _ = measure.marching_cubes(volume, level=adj)
+            vertices, faces = measure.marching_cubes(volume, level=adj)[:2]
         except ValueError as ex:
             if "within volume data range" in str(ex).lower():
                 # Fallback: isosurface near median density (common for odd grids)
@@ -59,9 +66,7 @@ def extract_isosurface(volume: np.ndarray, level: float = 1.0):
                     f"⚠️ marching_cubes rejected level {adj:.6f}; retrying at {adj2:.6f}: {ex}"
                 )
                 try:
-                    vertices, faces, normals, _ = measure.marching_cubes(
-                        volume, level=adj2
-                    )
+                    vertices, faces = measure.marching_cubes(volume, level=adj2)[:2]
                 except ValueError as ex2:
                     log.warning(
                         f"extract_isosurface: marching_cubes failed after clamp: {ex2}"
@@ -70,14 +75,9 @@ def extract_isosurface(volume: np.ndarray, level: float = 1.0):
             else:
                 raise
 
-        # Compute better normals using PicoGL's method for improved lighting
-        from picogl.gpu.buffers.vertex.normals.compute import compute_vertex_normals
-
-        normals = compute_vertex_normals(vertices, faces)
-
         log.parameter("vertices", vertices, silent=True)
         log.parameter("faces", faces, silent=True)
-        return vertices, faces, normals
+        return vertices, faces
     except Exception as ex:
         log.warning(f"extract_isosurface failed: {ex}")
         return None
@@ -90,14 +90,20 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
     This function is specifically designed for fo-fc maps where we need
     to colour positive values in green and negative values in red.
 
+    Vertices are returned in grid (i, j, k) coordinates. Normals are
+    intentionally NOT computed here: the caller applies the crystallographic
+    ``cart = frac @ frac_to_orth.T + origin`` transform (which can shear/scale
+    non-orthogonal cells), so surface normals must be recomputed AFTER that
+    transform by the consumer.
+
     Args:
         volume: np.ndarray - 3D volume data
         level: float - isosurface level
 
     Returns:
-        tuple: (vertices, faces, vertex_densities, normals) where vertex_densities
-               contains the density values at each vertex for coloring and normals
-               contains the surface normals for proper lighting
+        tuple: (vertices, faces, vertex_densities) where vertex_densities
+               contains the density values at each vertex for coloring, or
+               None if extraction fails
     """
     log.message(
         "extracting isosurface with density values for fo-fc coloring", silent=True
@@ -106,15 +112,10 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
         adj = _clamp_isosurface_level_to_data_range(volume, level)
         if adj is None:
             log.warning("⚠️ Volume has no variation - cannot extract isosurface")
-            return None, None, None, None
+            return None
         level = adj
 
-        vertices, faces, normals, _ = measure.marching_cubes(volume, level=level)
-
-        # Compute better normals using PicoGL's method for improved lighting
-        from picogl.gpu.buffers.vertex.normals.compute import compute_vertex_normals
-
-        normals = compute_vertex_normals(vertices, faces)
+        vertices, faces = measure.marching_cubes(volume, level=level)[:2]
 
         # Interpolate density values at the vertices
         from scipy.ndimage import map_coordinates
@@ -133,18 +134,18 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
             f"{vertex_densities.min():.3f} to {vertex_densities.max():.3f}",
         )
 
-        return vertices, faces, vertex_densities, normals
+        return vertices, faces, vertex_densities
 
     except Exception as ex:
         log.warning(f"extract_isosurface_with_density failed: {ex}")
-        return None, None, None, None
+        return None
 
 
 def create_fofc_color_map(
     vertex_densities: np.ndarray,
-    positive_color: RGBColor = RGBColor(0.0, 1.0, 0.0),  # Green
-    negative_color: RGBColor = RGBColor(1.0, 0.0, 0.0),  # Red
-    zero_color: RGBColor = RGBColor(0.5, 0.5, 0.5),
+    positive_color: RGBColor = RGBColor.GREEN,  # Green
+    negative_color: RGBColor = RGBColor.RED,  # Red
+    zero_color: RGBColor = RGBColor.GREY,
 ):  # Gray
     """
     Create a colour map for fo-fc difference maps.
