@@ -270,8 +270,17 @@ class ConnollySurfaceResource:
 
 
 def extract_connolly_atom_data(molecule) -> tuple[np.ndarray, np.ndarray]:
-    """Extract atom positions and van der Waals radii for Connolly generation."""
+    """Extract atom positions and van der Waals radii for Connolly generation.
+
+    Accepts a :class:`~molib.entities.molecule.Molecule3D` or a renderer
+    façade that exposes ``.molecule``.
+    """
     from molib.ligand.element import vdw_radius_for_element
+
+    if not getattr(molecule, "models", None):
+        inner = getattr(molecule, "molecule", None)
+        if inner is not None:
+            molecule = inner
 
     atom_positions = []
     atom_radii = []

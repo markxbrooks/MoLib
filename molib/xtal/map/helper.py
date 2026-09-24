@@ -40,6 +40,237 @@ class DensityMapData:
     crystallographic_info: CrystallographicInfo
 
 
+@dataclass
+class SimpleHeader:
+    """Minimal CCP4 header view used by the symmetry-expansion helpers."""
+
+    nsymbt: int
+    nx: int = 0
+    ny: int = 0
+    nz: int = 0
+    nxstart: int = 0
+    nystart: int = 0
+    nzstart: int = 0
+
+
+def _log_grid_metadata(crystallographic_info) -> None:
+    """Log the unit-cell and grid metadata of a crystallographic info object."""
+    log.info(
+        f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
+        f"b={crystallographic_info.unit_cell.b:.2f}, "
+        f"c={crystallographic_info.unit_cell.c:.2f} Å"
+    )
+    log.info(f"📐 Grid dimensions: {crystallographic_info.grid.dimensions}")
+    log.info(f"📐 Grid origin: {crystallographic_info.grid.origin}")
+    log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
+
+
+def _build_header_from_ccp4_map(ccp4_map) -> SimpleHeader:
+    """Build a ``SimpleHeader`` from a gemmi Ccp4Map (or test mock).
+
+    Prefers parsing the raw CCP4 header bytes, then falls back to the
+    ``header.nsymbt`` / ``grid.shape`` attributes used by mocks.
+    """
+    header = None
+    try:
+        import struct
+
+        if hasattr(ccp4_map, "ccp4_header") and isinstance(
+            ccp4_map.ccp4_header, (bytes, bytearray)
+        ):
+            header_ints = struct.unpack("<256i", ccp4_map.ccp4_header[:1024])
+            header = SimpleHeader(
+                nsymbt=header_ints[23],
+                nx=header_ints[7],
+                ny=header_ints[8],
+                nz=header_ints[9],
+                nxstart=header_ints[4],
+                nystart=header_ints[5],
+                nzstart=header_ints[6],
+            )
+    except Exception:
+        header = None
+
+    if header is None:
+        nsymbt = 0
+        if hasattr(ccp4_map, "header") and hasattr(ccp4_map.header, "nsymbt"):
+            try:
+                nsymbt = int(ccp4_map.header.nsymbt)
+            except Exception:
+                nsymbt = 0
+        shape = getattr(ccp4_map.grid, "shape", (0, 0, 0))
+        nx, ny, nz = (
+            (int(shape[0]), int(shape[1]), int(shape[2]))
+            if len(shape) == 3
+            else (0, 0, 0)
+        )
+        header = SimpleHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
+    return header
+
+
+def _read_symmetry_ops(
+    map_path: str, header
+) -> tuple[bytes, int, list, list, list]:
+    """Read the raw CCP4 bytes and derive (buffer, nsymbt, n_grid, start, end)."""
+    with open(map_path, "rb") as f:
+        map_buffer = f.read()
+    nsymbt = header.nsymbt
+    n_grid = [header.nx, header.ny, header.nz]
+    start = [header.nxstart, header.nystart, header.nzstart]
+    end = [start[0] + n_grid[0], start[1] + n_grid[1], start[2] + n_grid[2]]
+    return map_buffer, nsymbt, n_grid, start, end
+
+
+def _parse_symmetry_matrix(symop: str, n_grid: list) -> list:
+    """Parse a CCP4 symmetry text line into a grid-scaled 4x4 matrix."""
+    symop_matrix = parse_symmetry_operator_to_matrix(symop)
+    for j in range(3):
+        symop_matrix[j][3] = round(symop_matrix[j][3] * n_grid[j])
+    return symop_matrix
+
+
+def _apply_symmetry_mates(
+    volume: np.ndarray,
+    expanded_volume: np.ndarray,
+    map_buffer: bytes,
+    nsymbt: int,
+    n_grid: list,
+    start: list,
+    end: list,
+    center_offset: list,
+) -> int:
+    """Apply every symmetry mate from ``map_buffer`` into ``expanded_volume``.
+
+    Returns the number of symmetry operations applied.
+    """
+    symmetry_count = 0
+    for i in range(0, nsymbt, 80):
+        symop = extract_symop_text(map_buffer, i)
+        symop = symop.strip()
+
+        # Skip identity operation
+        if re.match(r"^\s*x\s*,\s*y\s*,\s*z\s*$", symop, re.I):
+            continue
+
+        try:
+            # Parse symmetry operation
+            symop_matrix = _parse_symmetry_matrix(symop, n_grid)
+
+            log.info(f"🔄 Applying symmetry: {symop}")
+
+            # Apply symmetry operation to create symmetry mate
+            apply_symmetry_to_volume(
+                volume,
+                expanded_volume,
+                symop_matrix,
+                0,
+                1,
+                2,  # Default axis order
+                start,
+                end,
+                center_offset,
+            )
+            symmetry_count += 1
+
+        except Exception as e:
+            log.warning(f"⚠️ Failed to apply symmetry operation '{symop}': {e}")
+            continue
+
+    return symmetry_count
+
+
+def _collect_atom_coordinates(pdb) -> list[list[float]]:
+    """Collect ``[x, y, z]`` coordinates for every atom in a gemmi structure."""
+    atoms = []
+    for model in pdb:
+        for chain in model:
+            for residue in chain:
+                for atom in residue:
+                    atoms.append([atom.pos.x, atom.pos.y, atom.pos.z])
+    return atoms
+
+
+def _xyz_to_dict(value) -> dict:
+    """Accept ``GridOrigin``/``GridSpacing`` dataclasses or ``{"x", "y", "z"}`` dicts.
+
+    Returns a plain ``{"x": float, "y": float, "z": float}`` dict so carving
+    code is agnostic to whether the crystallographic metadata came from the
+    normalized dataclasses or a legacy dict.
+    """
+    if isinstance(value, dict):
+        return {k: float(value[k]) for k in ("x", "y", "z")}
+    return {
+        "x": float(value.x),
+        "y": float(value.y),
+        "z": float(value.z),
+    }
+
+
+def _apply_mask_and_finalize(
+    density_map: np.ndarray,
+    mask: np.ndarray,
+    progress_callback,
+    cutoff_distance: float,
+    label: str,
+    extra_log_fn=None,
+    guard_division: bool = True,
+) -> np.ndarray:
+    """Zero masked-out voxels, then log carve statistics and finalize."""
+    carved_density = density_map.copy()
+    carved_density[~mask] = 0.0
+
+    if progress_callback:
+        progress_callback(90, 100, "Finalizing carved density...")
+
+    original_nonzero = np.count_nonzero(density_map)
+    carved_nonzero = np.count_nonzero(carved_density)
+    if guard_division and original_nonzero == 0:
+        reduction_factor = 0
+    else:
+        reduction_factor = (
+            (original_nonzero - carved_nonzero) / original_nonzero * 100
+        )
+
+    log.info(f"✅ {label}:")
+    if extra_log_fn:
+        extra_log_fn()
+    log.info(f"   Original non-zero voxels: {original_nonzero:,}")
+    log.info(f"   Carved non-zero voxels: {carved_nonzero:,}")
+    log.info(f"   Reduction: {reduction_factor:.1f}%")
+    log.info(f"   Cutoff distance: {cutoff_distance}Å")
+
+    if progress_callback:
+        progress_callback(100, 100, f"{label} complete")
+
+    return carved_density
+
+
+def _carve_protein_if_requested(
+    np_array: np.ndarray,
+    pdb_path,
+    crystallographic_info,
+    carve_density: bool,
+    carve_cutoff: float,
+    progress_callback,
+) -> np.ndarray:
+    """Carve density around the protein structure when requested."""
+    log.parameter("carve_density", carve_density)
+    if carve_density and pdb_path and os.path.exists(pdb_path):
+        log.info(f"🔪 Carving density within {carve_cutoff}Å of protein structure...")
+        np_array = carve_density_around_protein(
+            np_array,
+            pdb_path,
+            crystallographic_info.grid.origin,
+            crystallographic_info.grid.spacing,
+            carve_cutoff,
+            progress_callback,
+        )
+        log.info(f"✅ Density carving complete - new shape: {np_array.shape}")
+    elif carve_density and not pdb_path:
+        log.warning("⚠️ Density carving requested but no PDB file provided")
+    return np_array
+
+
 def _grid_to_xyz_array(
     grid: gemmi.FloatGrid,
     crystallographic_info: CrystallographicInfo | None = None,
@@ -72,7 +303,7 @@ def _grid_to_xyz_array(
     return array
 
 
-def load_density_map(
+def load_density_map_from_columns(
     mtz_path: str,
     f_label: str = "2FOFCWT",
     phi_label: str = "PH2FOFCWT",
@@ -139,6 +370,225 @@ def load_density_map(
 
 
 
+def _resolve_centroid(
+    centroid: tuple[float, float, float] | None,
+    crystallographic_info: CrystallographicInfo,
+) -> tuple[float, float, float]:
+    """Return the caller-provided centroid or fall back to the unit-cell center.
+
+    The centroid is in Cartesian Å orthogonal coordinates.
+    """
+    if centroid is not None:
+        return tuple(float(v) for v in centroid)
+
+    unit_cell = crystallographic_info.unit_cell
+    centroid = (
+        unit_cell.a / 2.0,
+        unit_cell.b / 2.0,
+        unit_cell.c / 2.0,
+    )
+    log.info(f"🧬 Using unit cell center as default centroid: {centroid}")
+    return centroid
+
+
+def _load_mtz_density_map(map_path: pathlib.Path) -> DensityMapData | None:
+    """Grid an MTZ file into a canonical :class:`DensityMapData`.
+
+    MTZ files hold structure factors rather than a pre-computed density map,
+    so density is gridded from the F/PHI columns via
+    :func:`load_density_map_auto_mtz` (label auto-detection). Symmetry
+    expansion and density carving are CCP4-map operations and do not apply.
+    """
+    try:
+        log.info(
+            "MTZ detected — gridding density from reflections "
+            "(not a CCP4 .map; use .map/.ccp4 for pre-computed maps)."
+        )
+        mtz_result = load_density_map_auto_mtz(str(map_path))
+        if mtz_result is None:
+            return None
+        if isinstance(mtz_result, DensityMapData):
+            volume = mtz_result.volume
+            crystallographic_info = mtz_result.crystallographic_info
+        else:
+            volume, crystallographic_info = mtz_result
+        crystallographic_info = normalize_crystallographic_info_from_dict(
+            crystallographic_info
+        )
+        _log_grid_metadata(crystallographic_info)
+        log.info(f"ℹ️ Loaded MTZ → grid shape: {volume.shape}")
+        return DensityMapData(
+            volume=volume,
+            crystallographic_info=crystallographic_info,
+        )
+    except Exception as e:
+        log.error(f"❌ Could not load map from {map_path}: {e}")
+        return None
+
+
+def _load_ccp4_density_map(
+    map_path: pathlib.Path,
+    *,
+    pdb_path: pathlib.Path | None = None,
+    expand_symmetry: bool,
+    convert_to_cartesian: bool,
+    carve_density: bool,
+    carve_cutoff: float,
+    carve_density_centroid: bool,
+    centroid: tuple[float, float, float] | None,
+    centroid_cutoff: float,
+    progress_callback: Callable | None,
+) -> DensityMapData | None:
+    """Load a CCP4 map (``.map``/``.ccp4``) into a canonical :class:`DensityMapData`.
+
+    Coordinate semantics:
+        Carving is a grid operation measured in Cartesian Å. Each grid point
+        (i, j, k) has Cartesian position ``origin + index * spacing``, and
+        ``centroid`` is in the same Cartesian Å frame. ``pdb_path``, when the
+        corresponding structure exists, is used for coordinate-based symmetry
+        expansion and protein carving. ``convert_to_cartesian`` is a metadata
+        guarantee: the canonical pipeline keeps the native-cell volume and
+        applies ``frac_to_orth`` at render time, so it does not resample.
+    """
+    try:
+        log.info(f"Loading CCP4 map: {map_path}")
+
+        if pdb_path is None:
+            pdb_path = map_path.with_suffix(".pdb")
+        else:
+            pdb_path = pathlib.Path(pdb_path)
+        if pdb_path.exists():
+            log.info(f"Loading corresponding PDB file: {pdb_path}")
+        else:
+            log.warning(f"⚠️ Corresponding PDB file not found: {pdb_path}")
+
+        ccp4_map = gemmi.read_ccp4_map(str(map_path))
+        grid = ccp4_map.grid
+
+        crystallographic_info = crystallographic_info_from_grid(grid)
+        crystallographic_info = normalize_crystallographic_info_from_dict(
+            crystallographic_info
+        )
+
+        _log_grid_metadata(crystallographic_info)
+
+        volume = _grid_to_xyz_array(grid, crystallographic_info)
+        log.info(f"ℹ️ Loaded CCP4 map shape: {volume.shape}")
+
+        if expand_symmetry:
+            header = _build_header_from_ccp4_map(ccp4_map)
+
+            if header.nsymbt > 0:
+                log.info(f"🔄 Expanding symmetry operations (NSYMBT: {header.nsymbt})")
+                volume = expand_ccp4_symmetry_optimized(
+                    volume,
+                    str(map_path),
+                    header,
+                    str(pdb_path),
+                )
+                log.info(f"✅ Symmetry expanded - new shape: {volume.shape}")
+            else:
+                log.info("ℹ️ No symmetry operations found in map header")
+
+        map_data = DensityMapData(
+            volume=volume,
+            crystallographic_info=crystallographic_info,
+        )
+
+        if convert_to_cartesian:
+            log.info("🔄 Converting to cartesian coordinates...")
+            map_data = _convert_to_cartesian_coordinates(map_data)
+            volume = map_data.volume
+            crystallographic_info = map_data.crystallographic_info
+            log.info(f"✅ Converted to cartesian - new shape: {volume.shape}")
+
+        volume = _carve_protein_if_requested(
+            volume,
+            str(pdb_path),
+            crystallographic_info,
+            carve_density,
+            carve_cutoff,
+            progress_callback,
+        )
+
+        if carve_density_centroid:
+            centroid = _resolve_centroid(centroid, crystallographic_info)
+            log.info(
+                f"🔪 Carving density within {centroid_cutoff}Å of centroid {centroid}..."
+            )
+            volume = carve_density_around_position(
+                volume,
+                centroid,
+                crystallographic_info.grid.origin,
+                crystallographic_info.grid.spacing,
+                centroid_cutoff,
+                progress_callback,
+            )
+            log.info(f"✅ Centroid carving complete - new shape: {volume.shape}")
+
+        return DensityMapData(
+            volume=volume,
+            crystallographic_info=crystallographic_info,
+        )
+
+    except FileNotFoundError:
+        log.error(f"❌ File not found: {map_path}")
+        return None
+    except Exception as e:
+        log.error(f"❌ Could not load CCP4 map from {map_path}: {e}")
+        return None
+
+
+def load_density_map(
+    map_path: str | pathlib.Path,
+    *,
+    pdb_path: str | pathlib.Path | None = None,
+    expand_symmetry: bool = True,
+    convert_to_cartesian: bool = False,
+    carve_density: bool = True,
+    carve_cutoff: float = 4.0,
+    carve_density_centroid: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    centroid_cutoff: float = 15.0,
+    progress_callback: Callable | None = None,
+) -> DensityMapData | None:
+    """Canonical density-map loader: dispatches on file type.
+
+    CCP4 maps (``.map``/``.ccp4``/``.omap``) are loaded via
+    :func:`_load_ccp4_density_map`; MTZ files are gridded from reflections via
+    :func:`_load_mtz_density_map`.
+
+    ``pdb_path`` defaults to the map path with a ``.pdb`` suffix. The returned
+    volume is always in canonical XYZ axis order (``array[i, j, k]`` is the
+    density at (X, Y, Z)); ``centroid`` is in Cartesian Å. Symmetry expansion
+    and carving apply to CCP4 maps.
+
+    Returns:
+        DensityMapData (volume + crystallographic_info) or None if loading fails
+    """
+    map_path = pathlib.Path(map_path)
+    if pdb_path is None:
+        pdb_path = map_path.with_suffix(".pdb")
+    else:
+        pdb_path = pathlib.Path(pdb_path)
+
+    if map_path.suffix.lower() == ".mtz":
+        return _load_mtz_density_map(map_path)
+
+    return _load_ccp4_density_map(
+        map_path,
+        pdb_path=pdb_path,
+        expand_symmetry=expand_symmetry,
+        convert_to_cartesian=convert_to_cartesian,
+        carve_density=carve_density,
+        carve_cutoff=carve_cutoff,
+        carve_density_centroid=carve_density_centroid,
+        centroid=centroid,
+        centroid_cutoff=centroid_cutoff,
+        progress_callback=progress_callback,
+    )
+
+
 def load_ccp4_map_optimized(
     map_path: str,
     pdb_path: str = None,
@@ -153,6 +603,8 @@ def load_ccp4_map_optimized(
 ) -> DensityMapData | None:
     """
     Load a CCP4 map file using Gemmi with optimized symmetry expansion and optional density carving.
+
+    Backward-compatible wrapper around :func:`load_density_map`.
 
     Args:
         map_path: Path to CCP4 map file
@@ -169,178 +621,18 @@ def load_ccp4_map_optimized(
     Returns:
         DensityMapData (volume + crystallographic_info) or None if loading fails
     """
-    try:
-        import os
-
-        log.info(f"Loading CCP4 map (optimized): {map_path}")
-        if pdb_path is None:
-            pdb_path = pathlib.Path(map_path).with_suffix(".pdb")
-        else:
-            pdb_path = pathlib.Path(pdb_path)
-        if pdb_path.exists():
-            log.info(f"Loading corresponding PDB file: {pdb_path}")
-        else:
-            log.warning(f"⚠️ Corresponding PDB file not found: {pdb_path}")
-        # Load the CCP4 map - returns Ccp4Map object
-        ccp4_map = gemmi.read_ccp4_map(map_path)
-
-        # Access the FloatGrid object
-        grid = ccp4_map.grid
-
-        # Extract crystallographic information
-        crystallographic_info = crystallographic_info_from_grid(grid)
-        crystallographic_info = normalize_crystallographic_info_from_dict(crystallographic_info)
-
-        log.info(
-            f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
-            f"b={crystallographic_info.unit_cell.b:.2f}, "
-            f"c={crystallographic_info.unit_cell.c:.2f} Å"
-        )
-        log.info(f"📐 Grid dimensions: {crystallographic_info.grid.dimensions}")
-        log.info(f"📐 Grid origin: {crystallographic_info.grid.origin}")
-        log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
-
-        # Convert to NumPy array
-        np_array = _grid_to_xyz_array(grid, crystallographic_info)
-        log.info(f"ℹ️ Loaded CCP4 map shape: {np_array.shape}")
-
-        # Expand symmetry if requested and symmetry operations exist.
-        # In unit tests with mocks, we only validate that expansion path is invoked,
-        # not that the shape changes. To keep tests predictable, avoid doubling the
-        # shape under mocks and keep the original size.
-        if expand_symmetry:
-            # Create a simple header object from gemmi Ccp4Map or mocks
-            class SimpleHeader:
-                def __init__(
-                    self,
-                    nsymbt: int,
-                    nx: int,
-                    ny: int,
-                    nz: int,
-                    nxstart: int = 0,
-                    nystart: int = 0,
-                    nzstart: int = 0,
-                ):
-                    self.nsymbt = nsymbt
-                    self.nx = nx
-                    self.ny = ny
-                    self.nz = nz
-                    self.nxstart = nxstart
-                    self.nystart = nystart
-                    self.nzstart = nzstart
-
-            header = None
-            try:
-                # Prefer parsing real CCP4 header bytes when available
-                import struct
-
-                if hasattr(ccp4_map, "ccp4_header") and isinstance(
-                    ccp4_map.ccp4_header, (bytes, bytearray)
-                ):
-                    header_ints = struct.unpack("<256i", ccp4_map.ccp4_header[:1024])
-                    header = SimpleHeader(
-                        nsymbt=header_ints[23],
-                        nx=header_ints[7],
-                        ny=header_ints[8],
-                        nz=header_ints[9],
-                        nxstart=header_ints[4],
-                        nystart=header_ints[5],
-                        nzstart=header_ints[6],
-                    )
-            except Exception:
-                header = None
-
-            # Fallback for tests/mocks: use ccp4_map.header.nsymbt and grid.shape
-            if header is None:
-                nsymbt = 0
-                if hasattr(ccp4_map, "header") and hasattr(ccp4_map.header, "nsymbt"):
-                    try:
-                        nsymbt = int(ccp4_map.header.nsymbt)
-                    except Exception:
-                        nsymbt = 0
-                shape = getattr(ccp4_map.grid, "shape", (0, 0, 0))
-                nx, ny, nz = (
-                    (int(shape[0]), int(shape[1]), int(shape[2]))
-                    if len(shape) == 3
-                    else (0, 0, 0)
-                )
-                header = SimpleHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
-
-            if header.nsymbt > 0:
-                log.parameter("ccp4_map", ccp4_map)
-                log.info(f"🔄 Expanding symmetry operations (NSYMBT: {header.nsymbt})")
-                np_array = expand_ccp4_symmetry_optimized(
-                    np_array, map_path, header, pdb_path
-                )
-                log.info(f"✅ Symmetry expanded - new shape: {np_array.shape}")
-            else:
-                log.info("ℹ️ No symmetry operations found in map header")
-
-        # Convert to cartesian coordinates if requested
-        map_data = DensityMapData(np_array, crystallographic_info)
-        if convert_to_cartesian:
-            log.info("🔄 Converting to cartesian coordinates...")
-            map_data = _convert_to_cartesian_coordinates(map_data)
-            np_array = map_data.volume
-            crystallographic_info = map_data.crystallographic_info
-            log.info(f"✅ Converted to cartesian - new shape: {np_array.shape}")
-
-        # Carve density around protein if requested
-        log.parameter("carve_density", carve_density)
-        if carve_density and pdb_path and os.path.exists(pdb_path):
-            log.info(
-                f"🔪 Carving density within {carve_cutoff}Å of protein structure..."
-            )
-            np_array = carve_density_around_protein(
-                np_array,
-                pdb_path,
-                crystallographic_info.grid.origin,
-                crystallographic_info.grid.spacing,
-                carve_cutoff,
-                progress_callback,
-            )
-            log.info(f"✅ Density carving complete - new shape: {np_array.shape}")
-        elif carve_density and not pdb_path:
-            log.warning("⚠️ Density carving requested but no PDB file provided")
-
-        # Carve density around centroid if requested
-        log.parameter("carve_density_centroid", carve_density_centroid)
-        if carve_density_centroid:
-            # Calculate default centroid if none provided
-            if centroid is None:
-                # Use the center of the unit cell as default centroid
-                unit_cell = crystallographic_info.unit_cell
-                centroid = (
-                    unit_cell.a / 2,
-                    unit_cell.b / 2,
-                    unit_cell.c / 2,
-                )
-                log.info(f"🧬 Using unit cell center as default centroid: {centroid}")
-
-            log.info(
-                f"🔪 Carving density within {centroid_cutoff}Å of centroid {centroid}..."
-            )
-            np_array = carve_density_around_position(
-                np_array,
-                centroid,
-                crystallographic_info.grid.origin,
-                crystallographic_info.grid.spacing,
-                centroid_cutoff,
-                progress_callback,
-            )
-            log.info(f"✅ Centroid carving complete - new shape: {np_array.shape}")
-
-        return DensityMapData(
-            volume=np_array,
-            crystallographic_info=crystallographic_info,
-        )
-
-    except FileNotFoundError:
-        log.error(f"❌ File not found: {map_path}")
-        return None
-    except Exception as e:
-        log.error(f"❌ Could not load CCP4 map from {map_path}: {e}")
-        return None
+    return load_density_map(
+        map_path,
+        pdb_path=pdb_path,
+        expand_symmetry=expand_symmetry,
+        convert_to_cartesian=convert_to_cartesian,
+        carve_density=carve_density,
+        carve_cutoff=carve_cutoff,
+        carve_density_centroid=carve_density_centroid,
+        centroid=centroid,
+        centroid_cutoff=centroid_cutoff,
+        progress_callback=progress_callback,
+    )
 
 
 def carve_density_with_gemmi(
@@ -508,231 +800,40 @@ def load_ccp4_map(
     centroid_cutoff: float = 15.0,
 ) -> DensityMapData | None:
     """
-    Load a CCP4 map or grid an MTZ reflection file using Gemmi.
+    Load a CCP4 map using Gemmi.
+
+    Backward-compatible wrapper around :func:`load_density_map` (CCP4 branch).
+    The centroid argument keeps its historical name
+    ``pdb_centroid_or_clicked_position``; the loader itself only needs the
+    Cartesian-Å coordinate, and the caller decides whether it came from a PDB
+    centroid, a mouse click, or the unit-cell center.
 
     Args:
-        map_path: Path to a CCP4 map (``.map``, ``.ccp4``, …) or an ``.mtz`` file
-            (density is gridded via :func:`load_density_map_auto_mtz`).
+        map_path: Path to a CCP4 map (``.map``, ``.ccp4``, …).
         expand_symmetry: Whether to expand symmetry operations (default: True)
         convert_to_cartesian: Whether to convert from fractional to cartesian coordinates (default: False)
         carve_density: Whether to carve density around protein structure (default: True)
         carve_cutoff: Distance cutoff for protein carving in Å (default: 4.0)
         progress_callback: Callback function for progress updates
         carve_density_centroid: Whether to carve density around centroid (default: False)
-        pdb_centroid_or_clicked_position: Tuple of (x, y, z) coordinates for centroid carving (default: None)
+        pdb_centroid_or_clicked_position: Tuple of (x, y, z) Cartesian Å coordinates for centroid carving (default: None — falls back to unit-cell center)
         centroid_cutoff: Distance cutoff for centroid carving in Å (default: 15.0)
 
     Returns:
         DensityMapData (volume + crystallographic_info) or None if loading fails
     """
-    try:
-        log.info(f"Loading CCP4 map: {map_path}")
-
-        pdb_path = pathlib.Path(map_path).with_suffix(".pdb")
-        if pdb_path.exists():
-            log.info(f"Loading corresponding PDB file: {pdb_path}")
-        else:
-            log.warning(f"⚠️ Corresponding PDB file not found: {pdb_path}")
-
-        if map_path.lower().endswith(".mtz"):
-            # MTZ holds structure factors, not a CCP4 map; grid via Gemmi F/Phi columns.
-            log.info(
-                "MTZ detected — gridding density from reflections "
-                "(not a CCP4 .map; use .map/.ccp4 for pre-computed maps)."
-            )
-            mtz_result = load_density_map_auto_mtz(map_path)
-            if mtz_result is None:
-                return None
-            if isinstance(mtz_result, DensityMapData):
-                np_array = mtz_result.volume
-                crystallographic_info = mtz_result.crystallographic_info
-            else:
-                np_array, crystallographic_info = mtz_result
-            log.info(
-                f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
-                f"b={crystallographic_info.unit_cell.b:.2f}, "
-                f"c={crystallographic_info.unit_cell.c:.2f} Å"
-            )
-            log.info(f"📐 Grid dimensions: {crystallographic_info.grid.dimensions}")
-            log.info(f"📐 Grid origin: {crystallographic_info.grid.origin}")
-            log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
-            log.info(f"ℹ️ Loaded MTZ → grid shape: {np_array.shape}")
-        else:
-            # Load the CCP4 map - returns Ccp4Map object
-            ccp4_map = gemmi.read_ccp4_map(map_path)
-
-            if carve_density and pdb_path.exists():
-                log.parameter("carve_density", carve_density)
-                log.parameter("pdb_path", pdb_path)
-                # ccp4_map = carve_density_with_gemmi(ccp4_map, str(pdb_path), carve_cutoff)
-                # st = gemmi.read_structure(str(pdb_path))
-                # ccp4_map.set_extent(st.calculate_fractional_box(margin=carve_cutoff))
-
-            # Access the FloatGrid object
-            grid = ccp4_map.grid
-
-            # Extract crystallographic information
-            crystallographic_info = crystallographic_info_from_grid(grid)
-
-            log.info(
-                f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
-                f"b={crystallographic_info.unit_cell.b:.2f}, "
-                f"c={crystallographic_info.unit_cell.c:.2f} Å"
-            )
-            log.info(f"📐 Grid dimensions: {crystallographic_info.grid.dimensions}")
-            log.info(f"📐 Grid origin: {crystallographic_info.grid.origin}")
-            log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
-
-            # Convert to NumPy array
-            np_array = _grid_to_xyz_array(grid, crystallographic_info)
-            log.info(f"ℹ️ Loaded CCP4 map shape: {np_array.shape}")
-
-            # Expand symmetry if requested and symmetry operations exist
-            if expand_symmetry:
-                # Create a simple header object from gemmi Ccp4Map
-                class SimpleHeader:
-                    def __init__(
-                        self,
-                        nsymbt: int,
-                        nx: int,
-                        ny: int,
-                        nz: int,
-                        nxstart: int = 0,
-                        nystart: int = 0,
-                        nzstart: int = 0,
-                    ):
-                        self.nsymbt = nsymbt
-                        self.nx = nx
-                        self.ny = ny
-                        self.nz = nz
-                        self.nxstart = nxstart
-                        self.nystart = nystart
-                        self.nzstart = nzstart
-
-                header = None
-                try:
-                    import struct
-
-                    if hasattr(ccp4_map, "ccp4_header") and isinstance(
-                        ccp4_map.ccp4_header, (bytes, bytearray)
-                    ):
-                        header_ints = struct.unpack(
-                            "<256i", ccp4_map.ccp4_header[:1024]
-                        )
-                        header = SimpleHeader(
-                            nsymbt=header_ints[23],
-                            nx=header_ints[7],
-                            ny=header_ints[8],
-                            nz=header_ints[9],
-                            nxstart=header_ints[4],
-                            nystart=header_ints[5],
-                            nzstart=header_ints[6],
-                        )
-                except Exception:
-                    header = None
-                if header is None:
-                    nsymbt = 0
-                    if hasattr(ccp4_map, "header") and hasattr(
-                        ccp4_map.header, "nsymbt"
-                    ):
-                        try:
-                            nsymbt = int(ccp4_map.header.nsymbt)
-                        except Exception:
-                            nsymbt = 0
-                    shape = getattr(ccp4_map.grid, "shape", (0, 0, 0))
-                    nx, ny, nz = (
-                        (int(shape[0]), int(shape[1]), int(shape[2]))
-                        if len(shape) == 3
-                        else (0, 0, 0)
-                    )
-                    header = SimpleHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
-
-                if header.nsymbt > 0:
-                    log.parameter("ccp4_map", ccp4_map)
-                    log.info(
-                        f"🔄 Expanding symmetry operations (NSYMBT: {header.nsymbt})"
-                    )
-                    try:
-                        # If running under mocks (no real file), keep shape unchanged
-                        if isinstance(ccp4_map, type(np)) or not os.path.exists(
-                            map_path
-                        ):
-                            _ = expand_ccp4_symmetry(
-                                np_array, map_path, header
-                            )  # smoke
-                        else:
-                            np_array = expand_ccp4_symmetry(np_array, map_path, header)
-                        log.info(f"✅ Symmetry expanded - new shape: {np_array.shape}")
-                    except Exception as _:
-                        # On any expansion error, proceed with unexpanded array
-                        log.warning(
-                            "⚠️ Symmetry expansion failed; continuing without expansion"
-                        )
-                else:
-                    log.info("ℹ️ No symmetry operations found in map header")
-
-        # Carve density around protein if requested
-        log.parameter("carve_density", carve_density)
-
-        if carve_density and pdb_path and os.path.exists(pdb_path):
-            log.info(
-                f"🔪 Carving density within {carve_cutoff}Å of protein structure..."
-            )
-            np_array = carve_density_around_protein(
-                np_array,
-                str(pdb_path),
-                crystallographic_info.grid.origin,
-                crystallographic_info.grid.spacing,
-                carve_cutoff,
-                progress_callback,
-            )
-            log.info(f"✅ Density carving complete - new shape: {np_array.shape}")
-        elif carve_density and not pdb_path:
-            log.warning("⚠️ Density carving requested but no PDB file provided")
-
-        # Carve density around centroid if requested
-        log.parameter("carve_density_centroid", carve_density_centroid)
-        if carve_density_centroid:
-            # Calculate default centroid if none provided
-            if pdb_centroid_or_clicked_position is None:
-                # Use the center of the unit cell as default centroid
-                unit_cell = crystallographic_info.get("unit_cell", {})
-                # pdb centroid is the centroid of the pdb structure and not part of the unit cell centroid
-                # pdb_centroid_or_clicked_position = 27.481, 38.6285, 55.464995  # hard coded for now
-                log.info(
-                    f"🧬 Using unit cell center as default centroid: {pdb_centroid_or_clicked_position}"
-                )
-
-            log.info(
-                f"🔪 Carving density within {centroid_cutoff}Å of centroid {pdb_centroid_or_clicked_position}..."
-            )
-            np_array = carve_density_around_position(
-                np_array,
-                pdb_centroid_or_clicked_position,
-                crystallographic_info.grid.origin,
-                crystallographic_info.grid.spacing,
-                centroid_cutoff,
-                progress_callback,
-            )
-            log.info(f"✅ Centroid carving complete - new shape: {np_array.shape}")
-
-        # Build map data (always), then optionally convert to cartesian
-        map_data = DensityMapData(np_array, crystallographic_info)
-
-        if convert_to_cartesian:
-            log.info("🔄 Converting to cartesian coordinates...")
-            map_data = _convert_to_cartesian_coordinates(map_data)
-            crystallographic_info = map_data.crystallographic_info
-            log.info(f"✅ Converted to cartesian - new shape: {map_data.volume.shape}")
-
-        return map_data
-
-    except FileNotFoundError:
-        log.error(f"❌ File not found: {map_path}")
-        return None
-    except Exception as e:
-        log.error(f"❌ Could not load density map from {map_path}: {e}")
-        return None
+    return load_density_map(
+        map_path,
+        pdb_path=None,
+        expand_symmetry=expand_symmetry,
+        convert_to_cartesian=convert_to_cartesian,
+        carve_density=carve_density,
+        carve_cutoff=carve_cutoff,
+        carve_density_centroid=carve_density_centroid,
+        centroid=pdb_centroid_or_clicked_position,
+        centroid_cutoff=centroid_cutoff,
+        progress_callback=progress_callback,
+    )
 
 
 def load_ccp4_maps(
@@ -992,7 +1093,7 @@ def load_density_map_auto_mtz(
         for f_label, phi_label in common_combinations:
             log.info(f"🔄 Trying column combination: {f_label}/{phi_label}")
 
-            result = load_density_map(mtz_path, f_label, phi_label, sample_rate)
+            result = load_density_map_from_columns(mtz_path, f_label, phi_label, sample_rate)
             if result is not None:
                 log.info(f"✅ Successfully loaded with {f_label}/{phi_label}")
                 return result
@@ -1029,7 +1130,7 @@ def load_density_map_with_columns(
         log.info(f"📊 F column: {f_column}, PHI column: {phi_column}")
 
         # Load the density map with specified columns
-        result = load_density_map(mtz_path, f_column, phi_column, sample_rate)
+        result = load_density_map_from_columns(mtz_path, f_column, phi_column, sample_rate)
 
         if result is not None:
             log.info(f"✅ Successfully loaded MTZ with {f_column}/{phi_column}")
@@ -1249,20 +1350,12 @@ def expand_ccp4_symmetry_optimized(
         log.info(f"🔄 Optimized symmetry expansion for {map_path}")
 
         # Read the raw file to access symmetry operations
-        with open(map_path, "rb") as f:
-            map_buffer = f.read()
-
-        nsymbt = header.nsymbt
+        map_buffer, nsymbt, n_grid, start, end = _read_symmetry_ops(map_path, header)
         if nsymbt == 0:
             log.info("ℹ️ No symmetry operations to expand")
             return volume
 
         log.info(f"📐 Found {nsymbt} bytes of symmetry operations")
-
-        # Get grid dimensions from header
-        n_grid = [header.nx, header.ny, header.nz]
-        start = [header.nxstart, header.nystart, header.nzstart]
-        end = [start[0] + n_grid[0], start[1] + n_grid[1], start[2] + n_grid[2]]
 
         # Calculate optimal expansion bounds based on molecular coordinates
         if pdb_path and os.path.exists(pdb_path):
@@ -1295,42 +1388,16 @@ def expand_ccp4_symmetry_optimized(
         )
 
         # Process each symmetry operation
-        symmetry_count = 0
-        for i in range(0, nsymbt, 80):
-            symop = extract_symop_text(map_buffer, i)
-            symop = symop.strip()
-
-            # Skip identity operation
-            if re.match(r"^\s*x\s*,\s*y\s*,\s*z\s*$", symop, re.I):
-                continue
-
-            try:
-                # Parse symmetry operation
-                symop_matrix = parse_symmetry_operator_to_matrix(symop)
-
-                # Scale translation components by grid spacing
-                for j in range(3):
-                    symop_matrix[j][3] = round(symop_matrix[j][3] * n_grid[j])
-
-                log.info(f"🔄 Applying symmetry: {symop}")
-
-                # Apply symmetry operation to create symmetry mate
-                apply_symmetry_to_volume(
-                    volume,
-                    expanded_volume,
-                    symop_matrix,
-                    0,
-                    1,
-                    2,  # Default axis order
-                    start,
-                    end,
-                    center_offset,
-                )
-                symmetry_count += 1
-
-            except Exception as e:
-                log.warning(f"⚠️ Failed to apply symmetry operation '{symop}': {e}")
-                continue
+        symmetry_count = _apply_symmetry_mates(
+            volume,
+            expanded_volume,
+            map_buffer,
+            nsymbt,
+            n_grid,
+            start,
+            end,
+            center_offset,
+        )
 
         log.info(f"✅ Applied {symmetry_count} symmetry operations")
         return expanded_volume
@@ -1364,20 +1431,12 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         log.info(f"🔄 Expanding symmetry for {map_path}")
 
         # Read the raw file to access symmetry operations
-        with open(map_path, "rb") as f:
-            map_buffer = f.read()
-
-        nsymbt = header.nsymbt
+        map_buffer, nsymbt, n_grid, start, end = _read_symmetry_ops(map_path, header)
         if nsymbt == 0:
             log.info("ℹ️ No symmetry operations to expand")
             return volume
 
         log.info(f"📐 Found {nsymbt} bytes of symmetry operations")
-
-        # Get grid dimensions from header
-        n_grid = [header.nx, header.ny, header.nz]
-        start = [header.nxstart, header.nystart, header.nzstart]
-        end = [start[0] + n_grid[0], start[1] + n_grid[1], start[2] + n_grid[2]]
 
         # Get axis mapping (assuming standard order)
         ax, ay, az = 0, 1, 2  # Default axis order
@@ -1398,42 +1457,16 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         log.info(f"📊 Expanded volume shape: {expanded_shape}")
 
         # Process each symmetry operation
-        symmetry_count = 0
-        for i in range(0, nsymbt, 80):
-            symop = extract_symop_text(map_buffer, i)
-            symop = symop.strip()
-
-            # Skip identity operation
-            if re.match(r"^\s*x\s*,\s*y\s*,\s*z\s*$", symop, re.I):
-                continue
-
-            try:
-                # Parse symmetry operation
-                symop_matrix = parse_symmetry_operator_to_matrix(symop)
-
-                # Scale translation components by grid spacing
-                for j in range(3):
-                    symop_matrix[j][3] = round(symop_matrix[j][3] * n_grid[j])
-
-                log.info(f"🔄 Applying symmetry: {symop}")
-
-                # Apply symmetry operation to create symmetry mate
-                apply_symmetry_to_volume(
-                    volume,
-                    expanded_volume,
-                    symop_matrix,
-                    ax,
-                    ay,
-                    az,
-                    start,
-                    end,
-                    center_offset,
-                )
-                symmetry_count += 1
-
-            except Exception as e:
-                log.warning(f"⚠️ Failed to apply symmetry operation '{symop}': {e}")
-                continue
+        symmetry_count = _apply_symmetry_mates(
+            volume,
+            expanded_volume,
+            map_buffer,
+            nsymbt,
+            n_grid,
+            start,
+            end,
+            center_offset,
+        )
 
         log.info(f"✅ Applied {symmetry_count} symmetry operations")
         return expanded_volume
@@ -1522,12 +1555,7 @@ def _calculate_optimal_expansion_bounds(
         pdb = gemmi.read_structure(pdb_path)
 
         # Get all atomic coordinates
-        atoms = []
-        for model in pdb:
-            for chain in model:
-                for residue in chain:
-                    for atom in residue:
-                        atoms.append([atom.pos.x, atom.pos.y, atom.pos.z])
+        atoms = _collect_atom_coordinates(pdb)
 
         if not atoms:
             log.warning("No atoms found in PDB, using default expansion")
@@ -1540,10 +1568,7 @@ def _calculate_optimal_expansion_bounds(
         log.info(f"Found {len(atoms)} atoms in PDB structure")
 
         # Get symmetry operations
-        with open(map_path, "rb") as f:
-            map_buffer = f.read()
-
-        nsymbt = header.nsymbt
+        map_buffer, nsymbt, n_grid, _, _ = _read_symmetry_ops(map_path, header)
         symmetry_operations = []
 
         for i in range(0, nsymbt, 80):
@@ -1555,11 +1580,7 @@ def _calculate_optimal_expansion_bounds(
                 continue
 
             try:
-                symop_matrix = parse_symmetry_operator_to_matrix(symop)
-                # Scale translation components by grid spacing
-                for j in range(3):
-                    symop_matrix[j][3] = round(symop_matrix[j][3] * n_grid[j])
-                symmetry_operations.append(symop_matrix)
+                symmetry_operations.append(_parse_symmetry_matrix(symop, n_grid))
             except Exception as e:
                 log.warning(f"Failed to parse symmetry operation '{symop}': {e}")
                 continue
@@ -1673,6 +1694,10 @@ def carve_density_around_position(
             f"🔪 Carving density within {cutoff_distance}Å of centroid at {position}"
         )
 
+        # Normalize origin/spacing to dicts (accepts GridOrigin/GridSpacing or dicts)
+        grid_origin = _xyz_to_dict(grid_origin)
+        grid_spacing = _xyz_to_dict(grid_spacing)
+
         if progress_callback:
             progress_callback(10, 100, "Processing centroid coordinates...")
         # Validate centroid coordinates
@@ -1721,33 +1746,15 @@ def carve_density_around_position(
         if progress_callback:
             progress_callback(80, 100, "Applying density mask...")
 
-        # Apply mask to density map
-        carved_density = density_map.copy()
-        carved_density[~mask] = 0.0
-
-        if progress_callback:
-            progress_callback(90, 100, "Finalizing carved density...")
-
-        # Calculate statistics
-        original_nonzero = np.count_nonzero(density_map)
-        carved_nonzero = np.count_nonzero(carved_density)
-        reduction_factor = (
-            (original_nonzero - carved_nonzero) / original_nonzero * 100
-            if original_nonzero > 0
-            else 0
+        # Apply mask to density map and finalize
+        return _apply_mask_and_finalize(
+            density_map,
+            mask,
+            progress_callback,
+            cutoff_distance,
+            "Density carving around centroid complete",
+            extra_log_fn=lambda: log.info(f"   Centroid: {position}"),
         )
-
-        log.info("✅ Density carving around centroid complete:")
-        log.info(f"   Centroid: {position}")
-        log.info(f"   Original non-zero voxels: {original_nonzero:,}")
-        log.info(f"   Carved non-zero voxels: {carved_nonzero:,}")
-        log.info(f"   Reduction: {reduction_factor:.1f}%")
-        log.info(f"   Cutoff distance: {cutoff_distance}Å")
-
-        if progress_callback:
-            progress_callback(100, 100, "Density carving around centroid complete")
-
-        return carved_density
 
     except Exception as e:
         log.error(f"❌ Error carving density around centroid: {e}")
@@ -1784,6 +1791,10 @@ def carve_density_around_protein(
 
         log.info(f"🔪 Carving density within {cutoff_distance}Å of protein structure")
 
+        # Normalize origin/spacing to dicts (accepts GridOrigin/GridSpacing or dicts)
+        grid_origin = _xyz_to_dict(grid_origin)
+        grid_spacing = _xyz_to_dict(grid_spacing)
+
         if progress_callback:
             progress_callback(10, 100, "Loading PDB structure...")
 
@@ -1794,12 +1805,7 @@ def carve_density_around_protein(
             progress_callback(20, 100, "Extracting atomic coordinates...")
 
         # Get all atomic coordinates
-        atoms = []
-        for model in pdb:
-            for chain in model:
-                for residue in chain:
-                    for atom in residue:
-                        atoms.append([atom.pos.x, atom.pos.y, atom.pos.z])
+        atoms = _collect_atom_coordinates(pdb)
 
         if not atoms:
             log.warning("No atoms found in PDB, returning original density map")
@@ -1949,28 +1955,15 @@ def carve_density_around_protein(
         mask = min_distances <= cutoff_distance
         mask = mask.reshape(grid_shape)
 
-        # Apply mask to density map
-        carved_density = density_map.copy()
-        carved_density[~mask] = 0.0
-
-        if progress_callback:
-            progress_callback(90, 100, "Finalizing carved density...")
-
-        # Calculate statistics
-        original_nonzero = np.count_nonzero(density_map)
-        carved_nonzero = np.count_nonzero(carved_density)
-        reduction_factor = (original_nonzero - carved_nonzero) / original_nonzero * 100
-
-        log.info("✅ Density carving complete:")
-        log.info(f"   Original non-zero voxels: {original_nonzero:,}")
-        log.info(f"   Carved non-zero voxels: {carved_nonzero:,}")
-        log.info(f"   Reduction: {reduction_factor:.1f}%")
-        log.info(f"   Cutoff distance: {cutoff_distance}Å")
-
-        if progress_callback:
-            progress_callback(100, 100, "Density carving complete")
-
-        return carved_density
+        # Apply mask to density map and finalize
+        return _apply_mask_and_finalize(
+            density_map,
+            mask,
+            progress_callback,
+            cutoff_distance,
+            "Density carving complete",
+            guard_division=False,
+        )
 
     except Exception as e:
         log.error(f"❌ Error carving density around protein: {e}")
