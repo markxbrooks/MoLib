@@ -701,7 +701,11 @@ def transform_grid_vertices_to_cartesian(
             )
 
         fractional = vertices / dims
-        cartesian = fractional @ frac_to_orth
+        # frac_to_orth is gemmi's conventional orthogonalization matrix whose
+        # COLUMNS are the lattice vectors (a, b, c), so Cartesian coordinates
+        # follow gemmi's orthogonalize(): cart = frac @ M^T. The transpose is
+        # essential for non-orthogonal cells where M is not symmetric.
+        cartesian = fractional @ frac_to_orth.T
 
         if origin is not None:
             if isinstance(origin, GridOrigin):
