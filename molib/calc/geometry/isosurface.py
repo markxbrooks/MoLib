@@ -117,7 +117,14 @@ def extract_isosurface_with_density(volume: np.ndarray, level: float = 1.0):
         normals = compute_vertex_normals(vertices, faces)
 
         # Interpolate density values at the vertices
-        vertex_densities = np.zeros(len(vertices))
+        from scipy.ndimage import map_coordinates
+
+        vertex_densities = map_coordinates(
+            volume,
+            vertices.T,
+            order=1,
+            mode="nearest",
+        )
 
         for i, vertex in enumerate(vertices):
             # Convert vertex coordinates to volume indices

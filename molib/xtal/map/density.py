@@ -4,13 +4,12 @@ Utilities for loading and processing electron density maps from MTZ and CCP4 fil
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-
 import gemmi
 import numpy as np
-from gemmi import FloatGrid, UnitCell, Mtz
+from gemmi import FloatGrid, Mtz
 from numpy import ndarray, dtype
 
-from elmo.ui.widgets.gl.mol.base import CoordinateTuple
+
 from picogl.core.mixin.vec3 import Vec3Mixin
 from decologr import Decologr as log
 from molib.pdb.coordinate.coordinate import Coordinates
@@ -73,11 +72,20 @@ class GridSpacing(Vec3Mixin):
         grid: gemmi.FloatGrid,
         frac_to_orth: np.ndarray,
     ) -> "GridSpacing":
-        """Calculate Cartesian grid spacing from a crystallographic grid."""
+        """Calculate Cartesian grid spacing from a crystallographic grid.
+
+        The columns of the fractional-to-orthogonal matrix are the lattice
+        vectors, so the spacing along a crystallographic axis is the length of
+        that lattice vector divided by the number of voxels along the axis.
+        Maps from transform_f_phi_to_map() are always stored in XYZ order, so
+        grid.shape[0] is the number of voxels along the X (a) axis. Using the
+        row norms instead would mix components of different lattice vectors
+        and give wrong results for monoclinic/triclinic cells.
+        """
         return cls(
-            x=np.linalg.norm(frac_to_orth[0, :]) / grid.shape[0],
-            y=np.linalg.norm(frac_to_orth[1, :]) / grid.shape[1],
-            z=np.linalg.norm(frac_to_orth[2, :]) / grid.shape[2],
+            x=np.linalg.norm(frac_to_orth[:, 0]) / grid.shape[0],
+            y=np.linalg.norm(frac_to_orth[:, 1]) / grid.shape[1],
+            z=np.linalg.norm(frac_to_orth[:, 2]) / grid.shape[2],
         )
 
     def log_summary(self):
@@ -209,6 +217,23 @@ class AxisOrder(str, Enum):
                 )
 
 
+def _axis_order_from_gemmi(axis_order: gemmi.AxisOrder) -> AxisOrder:
+    """Convert a gemmi axis order, defaulting to XYZ for unknown grids.
+
+    CCP4 maps read without setup() report AxisOrder.Unknown; spacing/origin
+    math in this module assumes the canonical XYZ ordering, which is the
+    ordering gemmi itself guarantees for transform_f_phi_to_map() grids.
+    """
+    try:
+        return AxisOrder.from_gemmi(axis_order)
+    except ValueError:
+        log.warning(
+            "⚠️ Unsupported grid axis order %r; assuming XYZ",
+            axis_order,
+        )
+        return AxisOrder.XYZ
+
+
 @dataclass(slots=True)
 class UnitCell:
     """UnitCell"""
@@ -293,27 +318,12 @@ class MapGrid:
         grid: gemmi.FloatGrid,
         frac_to_orth: np.ndarray,
     ) -> "MapGrid":
-        spacing = GridSpacing.from_grid(
-            grid,
-            frac_to_orth,
-        )
-
-        grid_center = (
-            (grid.shape[0] - 1) * spacing.x / 2,
-            (grid.shape[1] - 1) * spacing.y / 2,
-            (grid.shape[2] - 1) * spacing.z / 2,
-        )
-
-        origin = GridOrigin.from_grid_center(
-            grid.unit_cell.centroid,
-            grid_center,
-        )
-
+        spacing, origin = _calculate_proper_grid_spacing(grid)
         return cls(
             dimensions=tuple(grid.shape),
             origin=origin,
             spacing=spacing,
-            axis_order=AxisOrder.from_gemmi(grid.axis_order),
+            axis_order=_axis_order_from_gemmi(grid.axis_order),
         )
 
 
@@ -361,38 +371,52 @@ class CrystallographicInfo:
         """Create crystallographic information from a serialized dictionary."""
 
         unit_cell_data = data["unit_cell"]
-
         unit_cell = UnitCell(
-            a=unit_cell_data["a"],
-            b=unit_cell_data["b"],
-            c=unit_cell_data["c"],
-            alpha=unit_cell_data["alpha"],
-            beta=unit_cell_data["beta"],
-            gamma=unit_cell_data["gamma"],
+            a=float(unit_cell_data["a"]),
+            b=float(unit_cell_data["b"]),
+            c=float(unit_cell_data["c"]),
+            alpha=float(unit_cell_data["alpha"]),
+            beta=float(unit_cell_data["beta"]),
+            gamma=float(unit_cell_data["gamma"]),
+            source=unit_cell_data.get("source", ""),
+            space_group=unit_cell_data.get("space_group", ""),
         )
-        empty_transform = np.empty((0, 0), dtype=float)
+
+        grid_origin = data["grid_origin"]
+        origin = GridOrigin(
+            x=float(grid_origin["x"]),
+            y=float(grid_origin["y"]),
+            z=float(grid_origin["z"]),
+        )
+
+        grid_spacing = data["grid_spacing"]
+        spacing = GridSpacing(
+            x=float(grid_spacing["x"]),
+            y=float(grid_spacing["y"]),
+            z=float(grid_spacing["z"]),
+        )
 
         transforms = CoordinateTransforms(
-            frac_to_orth=data.get("frac_to_orth", empty_transform),
-            orth_to_frac=data.get("orth_to_frac", empty_transform),
-        )
-
-        grid = MapGrid(
-            dimensions=tuple(data["grid_dimensions"]),
-            origin=tuple(data["grid_origin"]),
-            axis_order=tuple(data["axis_order"]),
+            frac_to_orth=np.array(data.get("frac_to_orth") or [], dtype=float),
+            orth_to_frac=np.array(data.get("orth_to_frac") or [], dtype=float),
         )
 
         return cls(
             unit_cell=unit_cell,
             space_group=data["space_group"],
-            grid=grid,
-            transforms=transforms
+            grid=MapGrid(
+                dimensions=tuple(data["grid_dimensions"]),
+                origin=origin,
+                spacing=spacing,
+                axis_order=AxisOrder(str(data["axis_order"])),
+            ),
+            transforms=transforms,
+            map_type=data.get("map_type", ""),
         )
 
-    def to_dict(self):
-        """for use during refactoring"""
-        crystallographic_info = {
+    def to_dict(self) -> dict:
+        """Serialize to a plain dict that round-trips with from_dict()."""
+        return {
             "unit_cell": {
                 "a": self.unit_cell.a,
                 "b": self.unit_cell.b,
@@ -400,13 +424,26 @@ class CrystallographicInfo:
                 "alpha": self.unit_cell.alpha,
                 "beta": self.unit_cell.beta,
                 "gamma": self.unit_cell.gamma,
+                "space_group": self.unit_cell.space_group,
+                "source": self.unit_cell.source,
             },
             "space_group": str(self.space_group),
-            "grid_dimensions": self.grid.dimensions,
-            "grid_origin": CoordinateTuple.ORIGIN,
-            "axis_order": self.grid.axis_order,
+            "map_type": self.map_type,
+            "grid_dimensions": list(self.grid.dimensions),
+            "grid_origin": {
+                "x": self.grid.origin.x,
+                "y": self.grid.origin.y,
+                "z": self.grid.origin.z,
+            },
+            "grid_spacing": {
+                "x": self.grid.spacing.x,
+                "y": self.grid.spacing.y,
+                "z": self.grid.spacing.z,
+            },
+            "axis_order": str(self.grid.axis_order.value),
+            "frac_to_orth": np.asarray(self.transforms.frac_to_orth).tolist(),
+            "orth_to_frac": np.asarray(self.transforms.orth_to_frac).tolist(),
         }
-        return crystallographic_info
 
 
 def load_density_map(
@@ -439,11 +476,18 @@ def load_density_map(
             sample_rate=sample_rate,
         )
 
+        axis_order = _axis_order_from_gemmi(grid.axis_order)
+        np_array = axis_order.transpose_to_xyz(
+            np.array(grid, copy=True),
+        )
+
+        # The returned array is guaranteed to be in X, Y, Z axis order
+        # (numpy axis 0 -> X), matching the origin/spacing convention.
         crystallographic_info = crystallographic_info_from_grid(grid, map_type=map_type)
+        crystallographic_info.grid.dimensions = tuple(np_array.shape)
+        crystallographic_info.grid.axis_order = axis_order
 
         crystallographic_info.log_summary()
-
-        np_array = np.array(grid, copy=True)
 
         return np_array, crystallographic_info
 
@@ -459,11 +503,6 @@ def crystallographic_info_from_grid(
 
     grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
 
-    grid_origin = _convert_grid_origin_to_cartesian(
-        grid,
-        grid_origin,
-    )
-
     return CrystallographicInfo(
         unit_cell=UnitCell(
             a=grid.unit_cell.a,
@@ -472,18 +511,20 @@ def crystallographic_info_from_grid(
             alpha=grid.unit_cell.alpha,
             beta=grid.unit_cell.beta,
             gamma=grid.unit_cell.gamma,
+            space_group=str(grid.spacegroup),
         ),
         space_group=str(grid.spacegroup),
         grid=MapGrid(
             dimensions=tuple(grid.shape),
             origin=grid_origin,
             spacing=grid_spacing,
-            axis_order=grid.axis_order,
+            axis_order=_axis_order_from_gemmi(grid.axis_order),
         ),
         transforms=CoordinateTransforms(
             frac_to_orth=get_grid_fractional_to_orthogonal_matrix(grid),
             orth_to_frac=get_grid_orthogonal_to_fractional_matrix(grid),
         ),
+        map_type=map_type,
     )
 
 
@@ -522,68 +563,17 @@ def log_available_f_labels(f_label: str, f_labels: list[str]) -> Any:
     return None
 
 
-def _convert_grid_origin_to_cartesian(
-    grid: gemmi.FloatGrid, grid_origin: GridOrigin
-) -> GridOrigin:
-    """
-    Convert grid origin from fractional coordinates to cartesian coordinates
-    using the same approach as the orthoganalize function.
-
-    Args:
-        grid: Gemmi FloatGrid object
-        grid_origin: Current grid origin dictionary
-
-    Returns:
-        Updated grid_origin dictionary with cartesian coordinates
-    """
-    try:
-        # Get the transformation matrix from fractional to cartesian coordinates
-        frac_to_cart_matrix = grid.unit_cell.orth.mat
-
-        # Get the grid start offset from the header
-        # For most CCP4 maps, the grid starts at (0,0,0)
-        start_u, start_v, start_w = 0, 0, 0
-
-        # Calculate the fractional coordinates of the grid origin
-        # The grid origin represents the position of grid point (0,0,0)
-        grid_coords = gemmi.Position(start_u, start_v, start_w)
-
-        # Convert to fractional coordinates
-        frac_coords = grid.unit_cell.fractionalize(grid_coords)
-
-        # Convert fractional coordinates to cartesian coordinates
-        # Convert gemmi objects to numpy arrays for matrix operations
-        frac_array = np.array([frac_coords.x, frac_coords.y, frac_coords.z])
-        matrix_array = np.array(frac_to_cart_matrix)
-        cartesian_coords = frac_array @ matrix_array.T
-
-        # Update the grid origin with cartesian coordinates
-        cartesian_origin = GridOrigin(cartesian_coords[0], cartesian_coords[1], cartesian_coords[2])
-
-        log.info("🔧 Converted grid origin to cartesian coordinates:")
-        log.info(
-            f"   Fractional origin: ({frac_coords.x:.3f}, {frac_coords.y:.3f}, {frac_coords.z:.3f})"
-        )
-        log.info(
-            f"   Cartesian origin: ({cartesian_origin.x:.3f}, {cartesian_origin.y:.3f}, {cartesian_origin.z:.3f}) Å"
-        )
-
-        return cartesian_origin
-
-    except Exception as e:
-        log.error(f"❌ Error converting grid origin to cartesian: {e}")
-        log.warning("⚠️ Returning original grid origin")
-        return grid_origin
-
-
 def _calculate_proper_grid_spacing(
     grid: gemmi.FloatGrid,
 ) -> tuple[GridSpacing, GridOrigin]:
-    """Calculate physical spacing and origin for a crystallographic grid. @@@"""
+    """Calculate physical spacing and origin for a crystallographic grid.
 
-    centring_type = grid.spacegroup.centring_type()
-    log.message("centring_type: %s", centring_type)
-
+    The origin is the Cartesian position of grid point (0, 0, 0), matching
+    gemmi's get_position()/point_to_position(). Maps produced by
+    transform_f_phi_to_map() are XYZ-ordered and cover the full unit cell
+    starting at the fractional origin, so the origin is the Cartesian origin
+    of the unit cell.
+    """
     frac_to_orth = get_grid_fractional_to_orthogonal_matrix(grid)
 
     if frac_to_orth is None:
@@ -596,24 +586,17 @@ def _calculate_proper_grid_spacing(
         np.asarray(frac_to_orth),
     )
 
-    grid_center = (
-        (grid.shape[0] - 1) * spacing.x / 2,
-        (grid.shape[1] - 1) * spacing.y / 2,
-        (grid.shape[2] - 1) * spacing.z / 2,
-    )
-    frac_to_orth = get_grid_fractional_to_orthogonal_matrix(grid)
+    if grid.axis_order != gemmi.AxisOrder.XYZ:
+        log.warning(
+            "⚠️ Grid axis order is %s; spacing/origin assume XYZ order",
+            grid.axis_order,
+        )
 
-    if frac_to_orth is None:
-        raise ValueError("Could not determine fractional-to-orthogonal transform")
-
-    matrix = np.asarray(frac_to_orth)
-    fractional_center = np.array([0.5, 0.5, 0.5])
-
-    unit_cell_center = matrix @ fractional_center
+    position = grid.get_position(0, 0, 0)
     origin = GridOrigin(
-        x=unit_cell_center[0] - grid_center[0],
-        y=unit_cell_center[1] - grid_center[1],
-        z=unit_cell_center[2] - grid_center[2],
+        x=position.x,
+        y=position.y,
+        z=position.z,
     )
 
     origin.log_summary()
@@ -627,21 +610,15 @@ def get_grid_fractional_to_orthogonal_matrix(grid: gemmi.FloatGrid) -> np.ndarra
     Get the transformation matrix from fractional to orthogonal coordinates.
 
     :param grid: Gemmi FloatGrid object
-    :param centring_type: string type of crystallographic system. Default is "P"
 
     :returns: 3x3 numpy array representing the transformation matrix
     """
     try:
-        # For monoclinic systems, gemmi's primitive_orth_matrix gives incorrect β angles
-        # We need to construct the matrix manually using the correct convention
-
-        centring_type = grid.spacegroup.centring_type()
-
-        frac_to_orth = grid.unit_cell.primitive_orth_matrix(
-            centring_type=centring_type
-        )  # for Orthogonal P system
-
-        matrix = np.array(frac_to_orth, dtype=np.float64)
+        # The grid stores fractional coordinates in the conventional unit
+        # cell, so we use the cell's standard orthogonalization matrix -- the
+        # same frame as the PDB coordinates. primitive_orth_matrix() maps into
+        # the primitive-cell frame, which differs for centred space groups.
+        matrix = np.array(grid.unit_cell.orth.mat, dtype=np.float64)
 
         return matrix
 
@@ -661,72 +638,86 @@ def get_grid_orthogonal_to_fractional_matrix(grid: gemmi.FloatGrid) -> np.ndarra
         3x3 numpy array representing the inverse transformation matrix
     """
     try:
-        # Get the transformation matrix from Gemmi using the correct API
-        # For orthogonal to fractional, we need to invert the primitive_orth_matrix
+        # Invert the fractional->orthogonal matrix (same frame as above).
+        frac_to_orth = np.array(grid.unit_cell.orth.mat, dtype=np.float64)
 
-        centring_type = grid.spacegroup.centring_type()
+        # Validate the matrix before inversion to prevent numerical issues.
+        if frac_to_orth.shape != (3, 3):
+            raise ValueError(f"Expected 3x3 matrix, got {frac_to_orth.shape}")
 
-        frac_to_orth = grid.unit_cell.primitive_orth_matrix(centring_type)
-
-        # Convert Mat33 to numpy array with explicit memory layout for macOS compatibility
-        matrix = np.array(frac_to_orth, dtype=np.float64)
-
-        # Ensure the matrix is contiguous and properly aligned for macOS
-        matrix = np.ascontiguousarray(matrix, dtype=np.float64)
-
-        # Validate matrix before inversion to prevent SIGBUS on macOS
-        if matrix.shape != (3, 3):
-            raise ValueError(f"Expected 3x3 matrix, got {matrix.shape}")
-
-        # Check for singular matrix
-        det = np.linalg.det(matrix)
+        det = np.linalg.det(frac_to_orth)
         if abs(det) < 1e-12:
             raise ValueError(f"Matrix is singular (determinant: {det})")
 
-        log.info(
-            f"DEBUG: Matrix inversion - shape: {matrix.shape}, dtype: {matrix.dtype}, det: {det}"
-        )
-        log.info(f"DEBUG: Matrix is contiguous: {matrix.flags.c_contiguous}")
+        orth_to_frac = np.linalg.inv(frac_to_orth)
 
-        # Invert the matrix to get orthogonal to fractional transformation
-        # Use manual LU decomposition to avoid SIGBUS issues with np.linalg.inv on macOS
-        try:
-            # Use scipy.linalg.solve instead of np.linalg.inv to avoid SIGBUS
-            from scipy.linalg import solve
-
-            identity = np.eye(3, dtype=np.float64)
-            orth_to_frac = solve(matrix, identity)
-            log.info("DEBUG: Used scipy.linalg.solve for matrix inversion")
-        except ImportError:
-            # Fallback to manual LU decomposition if scipy not available
-            try:
-                from scipy.linalg import lu_factor, lu_solve
-
-                lu, piv = lu_factor(matrix)
-                identity = np.eye(3, dtype=np.float64)
-                orth_to_frac = lu_solve((lu, piv), identity)
-                log.info("DEBUG: Used scipy LU decomposition for matrix inversion")
-            except ImportError:
-                # Final fallback to pseudo-inverse (less accurate but safer)
-                orth_to_frac = np.linalg.pinv(matrix)
-                log.warning(
-                    "⚠️ Used pseudo-inverse as final fallback (scipy not available)"
-                )
-        except Exception as e:
-            log.error(f"❌ Error in matrix inversion: {e}")
-            # Fallback to pseudo-inverse for numerical stability
-            orth_to_frac = np.linalg.pinv(matrix)
-            log.warning("⚠️ Used pseudo-inverse as fallback due to error")
-
-        # Ensure result is also contiguous
-        orth_to_frac = np.ascontiguousarray(orth_to_frac, dtype=np.float64)
-
-        log.info(
-            f"DEBUG: Inversion successful - result shape: {orth_to_frac.shape}, dtype: {orth_to_frac.dtype}"
-        )
-
-        return orth_to_frac
+        return np.ascontiguousarray(orth_to_frac, dtype=np.float64)
 
     except Exception as ex:
         log.error(f"❌ Error getting orthogonal to fractional matrix: {ex}")
         return None
+
+
+def transform_grid_vertices_to_cartesian(
+    vertices: np.ndarray,
+    dimensions: tuple[int, int, int],
+    frac_to_orth: np.ndarray,
+    origin: GridOrigin | tuple[float, float, float] | None = None,
+) -> np.ndarray:
+    """Convert marching-cubes grid vertices to Cartesian Å coordinates.
+
+    The volume is assumed to be XYZ-ordered: vertex (i, j, k) refers to the
+    voxel at grid index i along the crystallographic X axis, etc. For a grid
+    covering the full unit cell from its fractional origin, vertex (i, j, k)
+    has fractional coordinates (i/nx, j/ny, k/nz), and its Cartesian position
+    is ``frac @ frac_to_orth + origin``.
+
+    Args:
+        vertices: (n, 3) float array of grid vertices from marching_cubes()
+        dimensions: XYZ grid shape: (nx, ny, nz)
+        frac_to_orth: 3x3 fractional-to-orthogonal matrix (columns are the
+            lattice vectors), i.e. the conventional cell orthogonalization
+        origin: Cartesian position of grid voxel (0, 0, 0) in Å; default None
+            means (0, 0, 0)
+
+    Returns:
+        (n, 3) float array of Cartesian Å coordinates
+    """
+    try:
+        vertices = np.asarray(vertices, dtype=np.float64)
+        if vertices.ndim != 2 or vertices.shape[1] != 3:
+            raise ValueError(
+                f"Expected (n, 3) vertex array, got {vertices.shape}"
+            )
+
+        dims = np.asarray(tuple(dimensions), dtype=np.float64)
+        if dims.shape != (3,) or np.any(dims <= 0):
+            raise ValueError(f"Expected positive XYZ dimensions, got {dims}")
+
+        frac_to_orth = np.asarray(frac_to_orth, dtype=np.float64)
+        if frac_to_orth.shape != (3, 3):
+            raise ValueError(
+                f"Expected 3x3 frac_to_orth matrix, got {frac_to_orth.shape}"
+            )
+
+        fractional = vertices / dims
+        cartesian = fractional @ frac_to_orth
+
+        if origin is not None:
+            if isinstance(origin, GridOrigin):
+                origin_vec = np.array(
+                    [origin.x, origin.y, origin.z], dtype=np.float64
+                )
+            else:
+                origin_vec = np.asarray(tuple(origin), dtype=np.float64)
+            if origin_vec.shape != (3,):
+                raise ValueError(
+                    f"Expected 3-element origin, got {origin_vec.shape}"
+                )
+            cartesian = cartesian + origin_vec
+
+        return np.ascontiguousarray(cartesian, dtype=np.float64)
+
+    except Exception as ex:
+        log.error(f"❌ Error transforming grid vertices: {ex}")
+        raise

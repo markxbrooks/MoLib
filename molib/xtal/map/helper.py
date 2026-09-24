@@ -7,20 +7,25 @@ import faulthandler
 import os
 import pathlib
 import re
-from gemmi import FloatGrid
 from numpy import dtype, ndarray
 from typing import Callable, Dict, Optional, Tuple, Any
 
 import gemmi
 import numpy as np
 from decologr import Decologr as log
-from molib.xtal.info.resolve import normalize_grid_objects, normalize_crystallographic_info_to_dict, normalize_crystallographic_info_from_dict
+from molib.xtal.info.resolve import normalize_crystallographic_info_from_dict
 from molib.xtal.uglymol.map import grid_array
 from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
     parse_symmetry_operator_to_matrix,
 )
-from molib.xtal.map.density import crystallographic_info_from_grid, GridOrigin, GridSpacing, CrystallographicInfo
+from molib.xtal.map.density import (
+    AxisOrder,
+    CrystallographicInfo,
+    GridOrigin,
+    GridSpacing,
+    crystallographic_info_from_grid,
+)
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
 faulthandler.enable()
@@ -31,6 +36,28 @@ class DensityMapData:
 
     volume: np.ndarray
     crystallographic_info: CrystallographicInfo
+
+
+def _grid_to_xyz_array(grid: gemmi.FloatGrid) -> np.ndarray:
+    """Return a NumPy array of the grid in the canonical X, Y, Z axis order.
+
+    Gemmi stores the array with shape (nu, nv, nw); when the grid's axis
+    order is not XYZ the array must be transposed so that ``array[i, j, k]``
+    is the density at (X, Y, Z). Grids whose axis order is unknown are left
+    in their native order (assumed XYZ).
+    """
+    array = np.array(grid, copy=True)
+    try:
+        axis_order = AxisOrder.from_gemmi(grid.axis_order)
+    except ValueError:
+        log.warning(
+            "⚠️ Unknown grid axis order %r; assuming XYZ",
+            grid.axis_order,
+        )
+        return array
+    if axis_order is not AxisOrder.XYZ:
+        return axis_order.transpose_to_xyz(array)
+    return array
 
 
 def load_density_map(
@@ -82,36 +109,16 @@ def load_density_map(
         # Extract crystallographic information
         crystallographic_info = crystallographic_info_from_grid(grid)
 
-        # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
-        # This handles non-orthogonal systems (monoclinic, triclinic) correctly
-        grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid, normalize_to_objects=True)
-        crystallographic_info.grid.spacing = grid_spacing
-        crystallographic_info.grid.origin = grid_origin
-
-        # Add transformation matrices for proper coordinate handling
-        try:
-            crystallographic_info.transforms.frac_to_orth = (
-                get_grid_fractional_to_orthogonal_matrix(grid)
-            )
-        except Exception as ex:
-            log.error(f"❌❌❌ Error getting fractional to orthogonal matrix: {ex}")
-            crystallographic_info.transforms.frac_to_orth = np.eye(3)
-        try:
-            crystallographic_info.transforms.orth_to_frac = (
-                get_grid_orthogonal_to_fractional_matrix(grid)
-            )
-        except Exception as ex:
-            log.error(f"❌❌❌ Error getting orthogonal to fractional matrix: {ex}")
-            crystallographic_info.transforms.orth_to_frac = np.eye(3)
-
         crystallographic_info.log_summary()
 
-        # Convert to NumPy array
-        grid_np_array = np.array(grid, copy=True)
-        log.info(f"ℹ️ Loaded MTZ map shape: {grid_np_array.shape}")
-        crystallographic_info_dict = normalize_crystallographic_info_to_dict(crystallographic_info)
+        # Convert to a NumPy array in the canonical XYZ axis order. The
+        # spacing, origin, and transformations come from
+        # crystallographic_info_from_grid() -- no manual overrides here.
+        np_array = _grid_to_xyz_array(grid)
+        log.info(f"ℹ️ Loaded MTZ map shape: {np_array.shape}")
+
         return DensityMapData(
-            volume=np.array(grid, copy=True),
+            volume=np_array,
             crystallographic_info=crystallographic_info,
         )
     except Exception as e:
@@ -172,17 +179,6 @@ def load_ccp4_map_optimized(
         crystallographic_info = crystallographic_info_from_grid(grid)
         crystallographic_info = normalize_crystallographic_info_from_dict(crystallographic_info)
 
-        # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
-        # This handles non-orthogonal systems (monoclinic, triclinic) correctly
-        grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid, normalize_to_objects=True)
-        crystallographic_info.grid.spacing = grid_spacing
-        crystallographic_info.grid.origin = grid_origin
-
-        # COORDINATE SYSTEM FIX: Convert from fractional to cartesian coordinates
-        # This ensures the map coordinates align properly with PDB structures
-        grid_origin = _convert_grid_origin_to_cartesian(grid, grid_origin)
-        crystallographic_info.grid.origin = grid_origin
-
         # Add transformation matrices for proper coordinate handling
         crystallographic_info.transforms.frac_to_orth = (
             get_grid_fractional_to_orthogonal_matrix(grid)
@@ -201,7 +197,7 @@ def load_ccp4_map_optimized(
         log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
 
         # Convert to NumPy array
-        np_array = np.array(grid, copy=True)
+        np_array = _grid_to_xyz_array(grid)
         log.info(f"ℹ️ Loaded CCP4 map shape: {np_array.shape}")
 
         # Expand symmetry if requested and symmetry operations exist.
@@ -570,20 +566,6 @@ def load_ccp4_map(
 
             # Extract crystallographic information
             crystallographic_info = crystallographic_info_from_grid(grid)
-            crystallographic_info = normalize_crystallographic_info_to_dict(crystallographic_info)
-
-            # CRITICAL FIX: Calculate proper grid spacing and origin using crystallographic transformations
-            # This handles non-orthogonal systems (monoclinic, triclinic) correctly
-            grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
-            crystallographic_info.grid.spacing = grid_spacing
-            crystallographic_info.grid.origin = grid_origin
-
-            # COORDINATE SYSTEM FIX: Convert from fractional to cartesian coordinates
-            # This ensures the map coordinates align properly with PDB structures
-            grid_origin = _convert_grid_origin_to_cartesian(
-                grid, grid_origin
-            )
-            crystallographic_info.grid.origin = grid_origin
 
             # Add transformation matrices for proper coordinate handling
             crystallographic_info.transforms.frac_to_orth = (
@@ -603,7 +585,7 @@ def load_ccp4_map(
             log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
 
             # Convert to NumPy array
-            np_array = np.array(grid, copy=True)
+            np_array = _grid_to_xyz_array(grid)
             log.info(f"ℹ️ Loaded CCP4 map shape: {np_array.shape}")
 
             # Expand symmetry if requested and symmetry operations exist
@@ -1221,25 +1203,10 @@ def load_density_map_auto(
                         structure.calculate_fractional_box(margin=sphere_radius)
                     )
 
-                    # Convert back to our format
+                    # Rebuild crystallographic info from the extent-clipped grid
                     grid = ccp4_map.grid
-                    np_array = np.array(grid, copy=True)
-
-                    # Update crystallographic info
-                    crystallographic_info.grid_dimensions = grid.shape
-                    crystallographic_info.unit_cell.a = grid.unit_cell.a
-                    crystallographic_info.unit_cell.b = grid.unit_cell.b
-                    crystallographic_info.unit_cell.c = grid.unit_cell.c
-                    crystallographic_info.unit_cell.alpha = grid.unit_cell.alpha
-                    crystallographic_info.unit_cell.beta = grid.unit_cell.beta
-                    crystallographic_info.unit_cell.gamma = grid.unit_cell.gamma
-                    crystallographic_info.space_group  = str(grid.spacegroup)
-
-                    # Recalculate grid spacing and origin
-                    grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid, normalize_to_objects=True)
-                    crystallographic_info.grid.spacing = grid_spacing
-                    crystallographic_info.grid.origin = grid_origin
-
+                    crystallographic_info = crystallographic_info_from_grid(grid)
+                    np_array = _grid_to_xyz_array(grid)
                     result = np_array, crystallographic_info
 
                 if result is not None:
@@ -2012,171 +1979,6 @@ def carve_density_around_protein(
         return density_map
 
 
-def _convert_grid_origin_to_cartesian(
-    grid: gemmi.FloatGrid, grid_origin: GridOrigin
-) -> GridOrigin:
-    """
-    Convert grid origin from fractional coordinates to cartesian coordinates
-    using the same approach as the orthoganalize function.
-
-    Args:
-        grid: Gemmi FloatGrid object
-        grid_spacing: Grid spacing GridSpacing
-        grid_origin: Current grid origin GridOrigin
-
-    Returns:
-        Updated grid_origin dictionary with cartesian coordinates
-    """
-    try:
-        # Get the transformation matrix from fractional to cartesian coordinates
-        frac_to_cart_matrix = grid.unit_cell.orth.mat
-
-        # Get the grid start offset from the header
-        # For most CCP4 maps, the grid starts at (0,0,0)
-        start_u, start_v, start_w = 0, 0, 0
-
-        # Calculate the fractional coordinates of the grid origin
-        # The grid origin represents the position of grid point (0,0,0)
-        grid_coords = gemmi.Position(start_u, start_v, start_w)
-
-        # Convert to fractional coordinates
-        frac_coords = grid.unit_cell.fractionalize(grid_coords)
-
-        # Convert fractional coordinates to cartesian coordinates
-        # Convert gemmi objects to numpy arrays for matrix operations
-        frac_array = np.array([frac_coords.x, frac_coords.y, frac_coords.z])
-        matrix_array = np.array(frac_to_cart_matrix)
-        cartesian_coords = frac_array @ matrix_array.T
-
-        # Update the grid origin with cartesian coordinates
-        cartesian_origin = GridOrigin(x=cartesian_coords[0], y=cartesian_coords[1], z=cartesian_coords[2])
-
-        log.info("🔧 Converted grid origin to cartesian coordinates:")
-        log.info(
-            f"   Fractional origin: ({frac_coords.x:.3f}, {frac_coords.y:.3f}, {frac_coords.z:.3f})"
-        )
-        log.info(
-            f"   Cartesian origin: ({cartesian_origin.x:.3f}, {cartesian_origin.y:.3f}, {cartesian_origin.z:.3f}) Å"
-        )
-
-        return cartesian_origin
-
-    except Exception as e:
-        log.error(f"❌ Error converting grid origin to cartesian: {e}")
-        log.warning("⚠️ Returning original grid origin")
-        return grid_origin
-
-
-def _calculate_proper_grid_spacing(grid: gemmi.FloatGrid, normalize_to_objects: bool = True) -> tuple[dict[
-                                                                                                           Any, Any] | GridSpacing,
-                                                                                                       dict[
-                                                                                                           Any, Any] | Any] | \
-                                                                                                 tuple[dict[str, Any],
-                                                                                                 dict[str, Any]]:
-    """
-    Calculate proper grid spacing and origin for non-orthogonal crystallographic systems
-    by using the actual crystallographic transformation matrices instead of
-    simple division which assumes orthogonal systems.
-
-    Args:
-        grid: Gemmi FloatGrid object with unit_cell and shape attributes
-
-    Returns:
-        Tuple of (grid_spacing_dict, grid_origin_dict) for proper coordinate alignment
-    """
-    try:
-        unit_cell = grid.unit_cell
-
-        # Get the transformation matrix from fractional to orthogonal coordinates
-        # This handles the non-orthogonal nature of monoclinic/triclinic systems
-        # For monoclinic systems, we need to use the correct convention
-        centring_type = grid.spacegroup.centring_type()
-        log.message(f"centring_type: {centring_type}")
-        frac_to_orth = get_grid_fractional_to_orthogonal_matrix(grid)
-
-        if frac_to_orth is None:
-            raise ValueError("Failed to get transformation matrix")
-
-        # Calculate proper grid spacing using the transformation matrix
-        # This accounts for the actual crystallographic meshdata
-        grid_spacing = {}
-
-        # For each crystallographic axis, calculate the proper spacing
-        # using the magnitude of the transformation vectors
-        # The matrix is already a numpy array from our function
-        frac_to_orth_np = frac_to_orth
-        grid_spacing = GridSpacing(x=np_normalize(frac_to_orth_np, grid, 0),
-                                   y=np_normalize(frac_to_orth_np, grid, 1),
-                                   z=np_normalize(frac_to_orth_np, grid, 2))
-
-        # CRITICAL FIX: Calculate proper grid origin to align with unit cell
-        # The grid should be centered on the unit cell, not start at (0,0,0)
-        grid_origin = {}
-
-        # Calculate the center of the grid in real coordinates
-        grid_center_x = (grid.shape[0] - 1) * grid_spacing.x / 2
-        grid_center_y = (grid.shape[1] - 1) * grid_spacing.y / 2
-        grid_center_z = (grid.shape[2] - 1) * grid_spacing.z / 2
-
-        # Calculate the center of the unit cell
-        unit_cell_center_x = unit_cell.a / 2
-        unit_cell_center_y = unit_cell.b / 2
-        unit_cell_center_z = unit_cell.c / 2
-
-        # Calculate the offset needed to center the grid on the unit cell
-        from molib.pdb.coordinate.coordinate import Coordinates
-        grid_origin = GridOrigin(x=(unit_cell_center_x - grid_center_x),
-                                  y=(unit_cell_center_y - grid_center_y),
-                                  z=unit_cell_center_z - grid_center_z)
-
-        log.info("🔧 Calculated proper grid origin for coordinate alignment:")
-        log.info(
-            f"   Grid center: ({grid_center_x:.3f}, {grid_center_y:.3f}, {grid_center_z:.3f}) Å"
-        )
-        log.info(
-            f"   Unit cell center: ({unit_cell_center_x:.3f}, {unit_cell_center_y:.3f}, {unit_cell_center_z:.3f}) Å"
-        )
-        log.info(
-            f"   Grid origin offset: ({grid_origin.x:.3f}, {grid_origin.y:.3f}, {grid_origin.z:.3f}) Å"
-        )
-
-        log.info(
-            "🔧 Calculated proper grid spacing using crystallographic transformations:"
-        )
-        log.info(f"   X spacing: {grid_spacing.x:.4f} Å/grid")
-        log.info(f"   Y spacing: {grid_spacing.y:.4f} Å/grid")
-        log.info(f"   Z spacing: {grid_spacing.z:.4f} Å/grid")
-
-        if normalize_to_objects:
-            pass
-        grid_origin, grid_spacing = normalize_grid_objects(grid_origin, grid_spacing)
-        return grid_spacing, grid_origin
-
-    except Exception as e:
-        log.error(f"❌ Error calculating proper grid spacing: {e}")
-        log.warning("⚠️ Falling back to simple division method")
-
-        # Fallback to simple method (less accurate for non-orthogonal systems)
-        fallback_spacing = {
-            "x": grid.unit_cell.a / grid.shape[0],
-            "y": grid.unit_cell.b / grid.shape[1],
-            "z": grid.unit_cell.c / grid.shape[2],
-        }
-
-        # Calculate fallback origin (center grid on unit cell)
-        fallback_origin = {
-            "x": grid.unit_cell.a / 2 - (grid.shape[0] - 1) * fallback_spacing["x"] / 2,
-            "y": grid.unit_cell.b / 2 - (grid.shape[1] - 1) * fallback_spacing["y"] / 2,
-            "z": grid.unit_cell.c / 2 - (grid.shape[2] - 1) * fallback_spacing["z"] / 2,
-        }
-
-        return fallback_spacing, fallback_origin
-
-
-def np_normalize(frac_to_orth_np: ndarray[Any, Any], grid: FloatGrid, pos: int) -> Any:
-    return np.linalg.norm(frac_to_orth_np[pos, :]) / grid.shape[pos]
-
-
 def _convert_to_cartesian_coordinates(
     map_data: DensityMapData,
 ) -> DensityMapData:
@@ -2742,13 +2544,6 @@ def load_density_map_with_extent(
 
         # Extract crystallographic information
         crystallographic_info = crystallographic_info_from_grid(grid)
-        # from molib.xtal.info.resolve import normalize_crystallographic_info_to_dict
-        # crystallographic_info = normalize_crystallographic_info_to_dict(crystallographic_info)
-
-        # Calculate proper grid spacing and origin
-        grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid, normalize_to_objects=True)
-        crystallographic_info.grid.spacing = grid_spacing
-        crystallographic_info.grid.origin = grid_origin
 
         # Add transformation matrices
         crystallographic_info.transforms.frac_to_orth = (
@@ -2759,7 +2554,7 @@ def load_density_map_with_extent(
         )
 
         # Convert to NumPy array
-        np_array = np.array(grid, copy=True)
+        np_array = _grid_to_xyz_array(grid)
 
         log.info("✅ Map loaded with extent:")
         log.info(f"   Shape: {np_array.shape}")
