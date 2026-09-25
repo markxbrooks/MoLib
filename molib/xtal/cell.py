@@ -94,14 +94,50 @@ class UnitCell:
 
     @classmethod
     def from_mapping(cls, mapping: Mapping) -> UnitCell:
-        """Build a unit cell from a Gemmi-style parameter mapping."""
+        """Build a unit cell from a Gemmi-style parameter mapping.
+
+        Accepts a ``Mapping`` (dict-like) or any object with ``a``/``b``/``c``/
+        ``alpha``/``beta``/``gamma`` attributes (e.g. density ``UnitCell``).
+        """
+        if isinstance(mapping, Mapping):
+            get_a = mapping["a"]
+            get_b = mapping["b"]
+            get_c = mapping["c"]
+            get_alpha = mapping["alpha"]
+            get_beta = mapping["beta"]
+            get_gamma = mapping["gamma"]
+            space_group = mapping.get("space_group")
+            crystal_system = mapping.get("crystal_system")
+        else:
+            get_a = getattr(mapping, "a")
+            get_b = getattr(mapping, "b")
+            get_c = getattr(mapping, "c")
+            get_alpha = getattr(mapping, "alpha")
+            get_beta = getattr(mapping, "beta")
+            get_gamma = getattr(mapping, "gamma")
+            space_group = getattr(mapping, "space_group", None)
+            crystal_system = getattr(mapping, "crystal_system", None)
+
         return cls(
-            a=float(mapping["a"]),
-            b=float(mapping["b"]),
-            c=float(mapping["c"]),
-            alpha=float(mapping["alpha"]),
-            beta=float(mapping["beta"]),
-            gamma=float(mapping["gamma"]),
-            space_group=_optional_string(mapping.get("space_group")),
-            crystal_system=_optional_string(mapping.get("crystal_system")),
+            a=float(get_a),
+            b=float(get_b),
+            c=float(get_c),
+            alpha=float(get_alpha),
+            beta=float(get_beta),
+            gamma=float(get_gamma),
+            space_group=_optional_string(space_group),
+            crystal_system=_optional_string(crystal_system),
         )
+
+    def to_param_dict(self) -> dict[str, float | str | None]:
+        """Return a plain dict of cell parameters (renderer / UI friendly)."""
+        return {
+            "a": self.a,
+            "b": self.b,
+            "c": self.c,
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "gamma": self.gamma,
+            "space_group": self.space_group,
+            "crystal_system": self.crystal_system,
+        }
