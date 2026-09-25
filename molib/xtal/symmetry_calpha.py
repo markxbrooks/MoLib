@@ -14,6 +14,10 @@ import gemmi
 import numpy as np
 from decologr import Decologr as log
 
+SYMMETRY_MATES_CONTACT_DISTANCE = 8.0
+
+SYMMETRY_MATES_MAXIMUM_MATES = 50
+
 
 @dataclass(frozen=True)
 class SymmetryCalphaTrace:
@@ -80,8 +84,8 @@ def _transform_ca_cloud(
 def generate_closest_calpha_mates(
     structure: gemmi.Structure,
     *,
-    contact_distance: float = 8.0,
-    max_mates: int = 50,
+    contact_distance: float = SYMMETRY_MATES_CONTACT_DISTANCE,
+    max_mates: int = SYMMETRY_MATES_MAXIMUM_MATES,
     lattice_range: int = 1,
 ) -> List[SymmetryCalphaTrace]:
     """Generate contacting symmetry-mate Cα traces closest to the ASU.
@@ -165,8 +169,8 @@ def generate_closest_calpha_mates(
 def generate_closest_calpha_mates_from_pdb(
     pdb_path: str,
     *,
-    contact_distance: float = 8.0,
-    max_mates: int = 50,
+    contact_distance: float = SYMMETRY_MATES_CONTACT_DISTANCE,
+    max_mates: int = SYMMETRY_MATES_MAXIMUM_MATES,
     lattice_range: int = 1,
 ) -> Tuple[List[SymmetryCalphaTrace], Dict[str, Any]]:
     """Load *pdb_path* and return closest Cα mate traces plus symmetry metadata.
