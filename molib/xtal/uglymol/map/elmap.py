@@ -62,9 +62,9 @@ For reference CCP4 Map header information
 57-256  LABEL(20,10)    10  80 character text labels (ie. A4 format)
 
 """
-import dataclasses
 import re
-from typing import Iterable, SupportsBytes, SupportsIndex, Any
+from dataclasses import dataclass
+from typing import Iterable, SupportsBytes, SupportsIndex
 
 import numpy as np
 from molib.xtal.ccp4.map.globals import (
@@ -76,6 +76,7 @@ from molib.xtal.ccp4.map.globals import (
 from molib.xtal.ccp4.map.header import Ccp4MapHeaderLocation
 from molib.xtal.ccp4.map.parameters import Ccp4MapParameters
 from molib.xtal.ccp4.map.volume import VolumeStatistics
+from molib.xtal.symop.parse import parse_symop_term
 from molib.xtal.uglymol.block import Block
 from molib.xtal.uglymol.map.grid_array import GridArray
 from molib.xtal.uglymol.map.helpers import (
@@ -87,25 +88,6 @@ from molib.xtal.uglymol.math.helpers import calculate_stddev
 from molib.xtal.uglymol.unit_cell import UnitCellGeometry
 from typing_extensions import Buffer
 
-_SYMOP_COORDINATE_RE = re.compile(r"^[+-]?([xyz])$")
-_SYMOP_TRANSLATION_RE = re.compile(r"^[+-]?(\d)/(\d)$")
-
-def parse_symop_term(row: list[int], symop, term: str | Any):
-    """parse symop term"""
-    m = _SYMOP_COORDINATE_RE.match(term)
-    if m:
-        pos = {"x": 0, "y": 1, "z": 2}[m["axis"]]
-        row[pos] = sign
-    else:
-        m = _SYMOP_TRANSLATION_RE.match(term)
-        if not m:
-            raise ValueError("What is " + term + " in " + symop)
-
-        row[3] = (
-                sign
-                * int(m["numerator"])
-                / int(m["denominator"])
-        )
 
 @dataclass(slots=True)
 class MapParameters:

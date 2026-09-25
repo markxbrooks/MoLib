@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from elmo.ui.state.map import MapType
-from molib.xtal.map.helper import MAP_NEGATIVE_RATIO_THRESHOLD
+from molib.xtal.map.density import MAP_NEGATIVE_RATIO_THRESHOLD
 
 
 @dataclass(frozen=True, slots=True)

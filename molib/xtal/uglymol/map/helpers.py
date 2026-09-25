@@ -7,7 +7,7 @@ from molib.xtal.ccp4.map.globals import (
     CCP4_SYMOP_CHUNK_SIZE,
     CCP4_SYMOP_REGEX_MATCH,
 )
-from molib.xtal.uglymol.map.elmap import parse_symop_term
+
 
 
 def vectorized_apply_symmetry(
@@ -110,6 +110,7 @@ def parse_symmetry_operator_to_matrix(symmetry_operator: str) -> list:
         for term in terms:
             if not term:  # Skip empty terms
                 continue
+            from molib.xtal.symop.parse import parse_symop_term
             parse_symop_term(row, symmetry_operator, term)
         mat.append(row)
     return mat
