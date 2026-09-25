@@ -2,6 +2,7 @@
 Utilities for loading and processing electron density maps from MTZ and CCP4 files.
 """
 from dataclasses import dataclass
+from enum import Enum
 
 import faulthandler
 import os
@@ -13,6 +14,7 @@ from typing import Callable, Dict, Optional, Tuple, Any
 import gemmi
 import numpy as np
 from decologr import Decologr as log
+from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
 from molib.xtal.info.resolve import normalize_crystallographic_info_from_dict
 from molib.xtal.uglymol.map import grid_array
 from molib.xtal.uglymol.map.helpers import (
@@ -31,6 +33,106 @@ from molib.xtal.map.density import (
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
 faulthandler.enable()
+
+ORIGIN = (0.0, 0.0, 0.0)
+
+class MapType(str, Enum):
+    """Requested electron-density map type used to select MTZ coefficients.
+
+    Values match the canonical ElMo ``MapType`` (``"2Fo-Fc"`` / ``"Fo-Fc"``)
+    so either enum (or the plain string) can be passed to the loaders.
+    """
+
+    TWO_FO_FC = "2Fo-Fc"
+    FO_FC = "Fo-Fc"
+
+    @classmethod
+    def coerce(cls, map_type: "MapType | str") -> "MapType":
+        """Normalize a map type (str or StrEnum) to this enum; raise on unknown."""
+        if isinstance(map_type, cls):
+            return map_type
+        if not isinstance(map_type, str):
+            raise ValueError(f"Unsupported map type: {map_type!r}")
+        try:
+            return cls(map_type)
+        except ValueError:
+            raise ValueError(
+                f"Unsupported map type: {map_type!r}. "
+                f"Expected one of: {[m.value for m in cls]}"
+            ) from None
+
+
+_TWO_FO_FC_CANDIDATES = (
+    ("FWT", "PHWT"),
+    ("2FOFCWT", "PH2FOFCWT"),
+)
+
+_FO_FC_CANDIDATES = (
+    ("DELFWT", "PHDELWT"),
+    ("DELF", "PHDEL"),
+)
+
+
+def _mtz_f_phi_label_sets(mtz_path: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Return {UPPER: original-case-label} lookups for F and PHI columns."""
+    mtz = gemmi.read_mtz_file(mtz_path)
+    f_map = {col.label.upper(): col.label for col in mtz.columns if col.type == "F"}
+    p_map = {col.label.upper(): col.label for col in mtz.columns if col.type == "P"}
+    return f_map, p_map
+
+
+def _select_map_columns(mtz_path: str, map_type: MapType) -> tuple[str, str]:
+    """Deterministically choose the F/PHI columns for a requested map type.
+
+    Unlike guessing through arbitrary combinations, this checks the labels
+    actually present in the file and only ever returns coefficient pairs that
+    represent the requested map type. It fails explicitly (``ValueError``)
+    rather than silently gridding an unrelated pair (e.g. observed FP/PHIC).
+    """
+    map_type = MapType.coerce(map_type)
+    f_map, p_map = _mtz_f_phi_label_sets(mtz_path)
+
+    if map_type is MapType.TWO_FO_FC:
+        candidates = _TWO_FO_FC_CANDIDATES
+    elif map_type is MapType.FO_FC:
+        candidates = _FO_FC_CANDIDATES
+    else:
+        raise ValueError(f"Unsupported map type: {map_type!r}")
+
+    for f_label, phi_label in candidates:
+        if f_label in f_map and phi_label in p_map:
+            return f_map[f_label], p_map[phi_label]
+
+    raise ValueError(
+        f"No {map_type.value} coefficients found in {mtz_path}. "
+        f"Available F columns: {sorted(f_map)}; "
+        f"available PHI columns: {sorted(p_map)}"
+    )
+
+
+def _log_density_statistics(volume: np.ndarray) -> None:
+    """Log density statistics immediately after gridding to catch stale/constant data."""
+    if volume is None or volume.size == 0:
+        log.error("❌ Generated density volume is empty")
+        return
+    finite = np.isfinite(volume)
+    finite_count = int(finite.sum())
+    log.info(
+        "📊 Density statistics: "
+        f"shape={volume.shape}, "
+        f"finite={finite_count}/{volume.size}, "
+        f"min={np.min(volume[finite]):.6f}, "
+        f"max={np.max(volume[finite]):.6f}, "
+        f"mean={np.mean(volume[finite]):.6f}, "
+        f"std={np.std(volume[finite]):.6f}"
+    )
+    if finite_count == 0:
+        log.error("❌ Generated density volume contains no finite values")
+    elif np.all(volume[finite] == volume[finite].flat[0]):
+        log.error(
+            "❌ Generated density volume has no variation: "
+            f"value={volume[finite].flat[0]}"
+        )
 
 @dataclass
 class DensityMapData:
@@ -53,19 +155,7 @@ class SimpleHeader:
     nzstart: int = 0
 
 
-def _log_grid_metadata(crystallographic_info) -> None:
-    """Log the unit-cell and grid metadata of a crystallographic info object."""
-    log.info(
-        f"📐 Unit cell: a={crystallographic_info.unit_cell.a:.2f}, "
-        f"b={crystallographic_info.unit_cell.b:.2f}, "
-        f"c={crystallographic_info.unit_cell.c:.2f} Å"
-    )
-    log.info(f"📐 Grid dimensions: {crystallographic_info.grid.dimensions}")
-    log.info(f"📐 Grid origin: {crystallographic_info.grid.origin}")
-    log.info(f"📐 Axis order: {crystallographic_info.grid.axis_order}")
-
-
-def _build_header_from_ccp4_map(ccp4_map) -> SimpleHeader:
+def _build_header_from_ccp4_map(ccp4_map: gemmi.Ccp4Map) -> SimpleHeader:
     """Build a ``SimpleHeader`` from a gemmi Ccp4Map (or test mock).
 
     Prefers parsing the raw CCP4 header bytes, then falls back to the
@@ -98,11 +188,11 @@ def _build_header_from_ccp4_map(ccp4_map) -> SimpleHeader:
                 nsymbt = int(ccp4_map.header.nsymbt)
             except Exception:
                 nsymbt = 0
-        shape = getattr(ccp4_map.grid, "shape", (0, 0, 0))
+        shape = getattr(ccp4_map.grid, "shape", ORIGIN)
         nx, ny, nz = (
             (int(shape[0]), int(shape[1]), int(shape[2]))
             if len(shape) == 3
-            else (0, 0, 0)
+            else ORIGIN
         )
         header = SimpleHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
     return header
@@ -358,6 +448,7 @@ def load_density_map_from_columns(
         # crystallographic_info_from_grid() -- no manual overrides here.
         np_array = _grid_to_xyz_array(grid, crystallographic_info)
         log.info(f"ℹ️ Loaded MTZ map shape: {np_array.shape}")
+        _log_density_statistics(np_array)
 
         return DensityMapData(
             volume=np_array,
@@ -367,6 +458,34 @@ def load_density_map_from_columns(
         log.error(f"❌ Could not load map from {mtz_path}: {e}")
         return None
 
+
+def load_maps_from_mtz_file_spec(
+    spec: MtzFileSpec,
+) -> tuple[DensityMapData | None, DensityMapData | None]:
+    """Load the 2Fo-Fc (map) and Fo-Fc (difference) maps from an MTZ file spec.
+
+    Args:
+        spec: MTZ file spec with the map (2Fo-Fc) and difference (Fo-Fc)
+            coefficient column pairs.
+
+    Returns:
+        tuple of (map_data, difference_data); either element is None when
+        the requested columns are not present in the file.
+    """
+    log.info(
+        f"Loading maps from MTZ spec: {spec.file_path} "
+        f"({spec.map_coefficients.f_label}/{spec.map_coefficients.phi_label}, "
+        f"{spec.difference_coefficients.f_label}/{spec.difference_coefficients.phi_label})"
+    )
+    map_data = load_density_map_from_columns(
+        spec.file_path, spec.map_coefficients.f_label, spec.map_coefficients.phi_label
+    )
+    difference_data = load_density_map_from_columns(
+        spec.file_path,
+        spec.difference_coefficients.f_label,
+        spec.difference_coefficients.phi_label,
+    )
+    return map_data, difference_data
 
 
 def _resolve_centroid(
@@ -414,7 +533,7 @@ def _load_mtz_density_map(map_path: pathlib.Path) -> DensityMapData | None:
         crystallographic_info = normalize_crystallographic_info_from_dict(
             crystallographic_info
         )
-        _log_grid_metadata(crystallographic_info)
+        crystallographic_info.log_grid_metadata()
         log.info(f"ℹ️ Loaded MTZ → grid shape: {volume.shape}")
         return DensityMapData(
             volume=volume,
@@ -469,10 +588,11 @@ def _load_ccp4_density_map(
             crystallographic_info
         )
 
-        _log_grid_metadata(crystallographic_info)
+        crystallographic_info.log_grid_metadata()
 
         volume = _grid_to_xyz_array(grid, crystallographic_info)
         log.info(f"ℹ️ Loaded CCP4 map shape: {volume.shape}")
+        _log_density_statistics(volume)
 
         if expand_symmetry:
             header = _build_header_from_ccp4_map(ccp4_map)
@@ -939,7 +1059,7 @@ def load_mtz_maps(
         for i, mtz_path in enumerate(mtz_paths):
             log.info(f"📁 Loading MTZ map {i+1}/{len(mtz_paths)}: {mtz_path}")
 
-            result = load_density_map_auto_mtz(mtz_path, sample_rate)
+            result = load_density_map_auto_mtz(mtz_path, sample_rate=sample_rate)
             if result is None:
                 log.error(f"❌ Failed to load MTZ map {i+1}: {mtz_path}")
                 return None
@@ -1065,44 +1185,35 @@ def get_mtz_info(mtz_path: str) -> dict | None:
 
 
 def load_density_map_auto_mtz(
-    mtz_path: str, sample_rate=0.0
-) -> tuple[np.ndarray, dict] | None:
+    mtz_path: str,
+    *,
+    map_type: MapType | str = MapType.TWO_FO_FC,
+    sample_rate: float = 0.0,
+) -> DensityMapData | None:
     """
-    Automatically load density map from MTZ file with smart column label detection.
+    Load a density map from an MTZ file for a specific map type.
+
+    Coefficient selection is deterministic: the requested ``map_type``
+    (``"2Fo-Fc"`` by default) selects only coefficient pairs that represent
+    that map. No arbitrary fallbacks (FP/PHIC, etc.) are tried — if the
+    relevant columns are absent the load fails explicitly.
 
     Args:
         mtz_path: Path to MTZ file
+        map_type: Requested map type ("2Fo-Fc" or "Fo-Fc"), as a string or
+            MapType/ElMo MapType enum value
         sample_rate: Sampling rate for map generation (0.0 = full resolution)
 
     Returns:
-        tuple of (numpy array, crystallographic_info) or None if loading fails
+        DensityMapData or None if loading fails
     """
     try:
-        log.info(f"Auto-loading MTZ file: {mtz_path}")
-
-        # Try common column label combinations
-        common_combinations = [
-            ("2FOFCWT", "PH2FOFCWT"),  # Standard 2Fo-Fc map
-            ("FWT", "PHWT"),  # Standard Fo-Fc map
-            ("FP", "PHIC"),  # Standard F/phi
-            ("F", "PHI"),  # Generic F/phi
-            ("FC", "PHIC"),  # Calculated structure factors
-        ]
-
-        for f_label, phi_label in common_combinations:
-            log.info(f"🔄 Trying column combination: {f_label}/{phi_label}")
-
-            result = load_density_map_from_columns(mtz_path, f_label, phi_label, sample_rate)
-            if result is not None:
-                log.info(f"✅ Successfully loaded with {f_label}/{phi_label}")
-                return result
-
-        log.error("❌ Could not load MTZ file with any common column combinations")
-        log.error("Available combinations tried:")
-        for f_label, phi_label in common_combinations:
-            log.error(f"  - {f_label}/{phi_label}")
-
-        return None
+        f_label, phi_label = _select_map_columns(mtz_path, map_type)
+        log.info(
+            f"Auto-loading MTZ file: {mtz_path} "
+            f"(map type: {MapType.coerce(map_type).value}, columns: {f_label}/{phi_label})"
+        )
+        return load_density_map_from_columns(mtz_path, f_label, phi_label, sample_rate)
 
     except Exception as e:
         log.error(f"❌ Error in auto-loading MTZ file {mtz_path}: {e}")
@@ -1111,7 +1222,7 @@ def load_density_map_auto_mtz(
 
 def load_density_map_with_columns(
     mtz_path: str, f_column: str, phi_column: str, sample_rate=0.0
-) -> tuple[np.ndarray, dict] | None:
+) -> DensityMapData | None:
     """
     Load density map from MTZ file with specific F and PHI column selections.
 
@@ -1122,7 +1233,7 @@ def load_density_map_with_columns(
         sample_rate: Sampling rate for map generation (0.0 = full resolution)
 
     Returns:
-        tuple of (numpy array, crystallographic_info) or None if loading fails
+        DensityMapData or None if loading fails
     """
     try:
         log.info(f"Loading MTZ file with specific columns: {mtz_path}")
@@ -1240,7 +1351,7 @@ def load_density_map_auto(
         # Check file extension to determine type
         if file_path.lower().endswith((".mtz", ".hkl", ".mmcif")):
             log.info(f"Detected MTZ/MMCIF file: {file_path}")
-            result = load_density_map_auto_mtz(file_path, sample_rate)
+            result = load_density_map_auto_mtz(file_path, sample_rate=sample_rate)
         elif file_path.lower().endswith((".map", ".ccp4", ".omap")):
             log.info(f"Detected CCP4 map file: {file_path}")
 

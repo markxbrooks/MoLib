@@ -9,6 +9,7 @@ from .helper import (
     load_ccp4_map_optimized,
     load_ccp4_maps,
     load_density_map,
+    load_maps_from_mtz_file_spec,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "load_ccp4_maps",
     "load_ccp4_map_optimized",
     "load_density_map",
+    "load_maps_from_mtz_file_spec",
 ]

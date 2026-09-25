@@ -16,15 +16,21 @@ import os
 import tempfile
 from unittest import TestCase
 
+from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
+from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
 from molib.xtal.map.density import (
     AxisOrder,
     crystallographic_info_from_grid,
     transform_grid_vertices_to_cartesian,
 )
 from molib.xtal.map.helper import (
+    MapType,
     DensityMapData,
     load_ccp4_map,
     load_ccp4_map_optimized,
+    load_density_map_auto_mtz,
+    load_maps_from_mtz_file_spec,
+    _select_map_columns,
 )
 
 
@@ -286,3 +292,153 @@ class TestLoaderConventionalFrame(TestCase):
                 for name, result in self._loaders(path):
                     with self.subTest(loader=name):
                         self._check_loader(result, path)
+
+
+class TestLoadMapsFromMtzFileSpec(TestCase):
+    """load_maps_from_mtz_file_spec loads the map and difference maps."""
+
+    MTZ_PATH = "/home/brooks/projects/ElMo/elmo/test_data/2VUG_final.mtz"
+
+    def _spec(self, file_path=None):
+        return MtzFileSpec(
+            file_path=file_path or self.MTZ_PATH,
+            map_coefficients=MtzColumnPair(
+                f_label="FWT",
+                phi_label="PHWT",
+            ),
+            difference_coefficients=MtzColumnPair(
+                f_label="DELFWT",
+                phi_label="PHDELWT",
+            ),
+        )
+
+    def test_loads_map_and_difference_from_spec(self):
+        if not os.path.exists(self.MTZ_PATH):
+            self.skipTest(f"missing test mtz: {self.MTZ_PATH}")
+
+        map_data, difference_data = load_maps_from_mtz_file_spec(self._spec())
+
+        self.assertIsInstance(map_data, DensityMapData)
+        self.assertIsInstance(difference_data, DensityMapData)
+        self.assertEqual(map_data.volume.shape, difference_data.volume.shape)
+        self.assertEqual(
+            map_data.crystallographic_info.grid.dimensions,
+            difference_data.crystallographic_info.grid.dimensions,
+        )
+        self.assertGreater(np.abs(map_data.volume).max(), 0.0)
+        self.assertFalse(np.array_equal(map_data.volume, difference_data.volume))
+
+    def test_return_none_for_missing_difference_columns(self):
+        if not os.path.exists(self.MTZ_PATH):
+            self.skipTest(f"missing test mtz: {self.MTZ_PATH}")
+
+        spec = MtzFileSpec(
+            file_path=self.MTZ_PATH,
+            map_coefficients=MtzColumnPair(
+                f_label="FWT",
+                phi_label="PHWT",
+            ),
+            difference_coefficients=MtzColumnPair(
+                f_label="NOT_A_COLUMN",
+                phi_label="ALSO_NOT_PHI",
+            ),
+        )
+
+        map_data, difference_data = load_maps_from_mtz_file_spec(spec)
+        self.assertIsInstance(map_data, DensityMapData)
+        self.assertIsNone(difference_data)
+
+    def test_exported_at_package_level(self):
+        from molib.xtal.map import load_maps_from_mtz_file_spec as exported
+
+        self.assertIs(exported, load_maps_from_mtz_file_spec)
+
+
+def _make_mtz_with_columns(mtz_path, columns):
+    """Write a minimal gemmi MTZ with the given (label, type) columns."""
+    mtz = gemmi.Mtz()
+    mtz.cell = gemmi.UnitCell(58.962, 103.257, 150.930, 90, 90, 90)
+    mtz.spacegroup = gemmi.SpaceGroup("P 21 21 21")
+    mtz.add_dataset("synthetic")
+    for label in ("H", "K", "L"):
+        mtz.add_column(label, "H")
+    for label, col_type in columns:
+        mtz.add_column(label, col_type)
+    n = 16
+    array = np.zeros((n, 3 + len(columns)), dtype="f4")
+    array[:, 0] = np.arange(1, n + 1)
+    array[:, 1] = (np.arange(1, n + 1) * 2) % 7 + 1
+    array[:, 2] = (np.arange(1, n + 1) * 3) % 13 + 1
+    for i, (label, _) in enumerate(columns):
+        array[:, 3 + i] = np.arange(1, n + 1) * (i + 1) + 1.5
+    mtz.set_data(array)
+    mtz.write_to_file(str(mtz_path))
+    return mtz_path
+
+
+class TestMapTypeAwareMtzSelection(TestCase):
+    """Map-type-aware deterministic coefficient selection."""
+
+    MTZ_PATH = "/home/brooks/projects/ElMo/elmo/test_data/2VUG_final.mtz"
+
+    def test_selects_2fofc_columns_from_fwt(self):
+        if not os.path.exists(self.MTZ_PATH):
+            self.skipTest(f"missing test mtz: {self.MTZ_PATH}")
+        self.assertEqual(
+            _select_map_columns(self.MTZ_PATH, MapType.TWO_FO_FC),
+            ("FWT", "PHWT"),
+        )
+
+    def test_selects_fofc_columns_from_delfwt(self):
+        if not os.path.exists(self.MTZ_PATH):
+            self.skipTest(f"missing test mtz: {self.MTZ_PATH}")
+        self.assertEqual(
+            _select_map_columns(self.MTZ_PATH, MapType.FO_FC),
+            ("DELFWT", "PHDELWT"),
+        )
+
+    def test_auto_mtz_map_types_produce_distinct_non_constant_maps(self):
+        if not os.path.exists(self.MTZ_PATH):
+            self.skipTest(f"missing test mtz: {self.MTZ_PATH}")
+
+        two = load_density_map_auto_mtz(self.MTZ_PATH, map_type=MapType.TWO_FO_FC)
+        one = load_density_map_auto_mtz(self.MTZ_PATH, map_type=MapType.FO_FC)
+
+        self.assertIsInstance(two, DensityMapData)
+        self.assertIsInstance(one, DensityMapData)
+        self.assertEqual(two.volume.shape, one.volume.shape)
+        # Guard against the constant-volume regression: a gridded 2Fo-Fc map
+        # must contain real electron-density variation.
+        self.assertGreater(np.std(two.volume), 1e-6)
+        self.assertGreater(np.std(one.volume), 1e-6)
+        self.assertFalse(np.array_equal(two.volume, one.volume))
+
+    def test_unrelated_coefficients_fail_explicitly(self):
+        out_dir = tempfile.mkdtemp(prefix="mtz_no_map_columns_")
+        self.addCleanup(self._rmtree, out_dir)
+        mtz_path = _make_mtz_with_columns(
+            os.path.join(out_dir, "observed_only.mtz"),
+            [("FP", "F"), ("PHIC", "P")],
+        )
+
+        with self.assertRaises(ValueError):
+            _select_map_columns(mtz_path, MapType.TWO_FO_FC)
+        with self.assertRaises(ValueError):
+            _select_map_columns(mtz_path, MapType.FO_FC)
+        # The public loader never silently substitutes observed FP/PHIC.
+        self.assertIsNone(
+            load_density_map_auto_mtz(mtz_path, map_type=MapType.TWO_FO_FC)
+        )
+
+    def test_coerce_accepts_strings_and_rejects_unknown(self):
+        self.assertIs(MapType.coerce("2Fo-Fc"), MapType.TWO_FO_FC)
+        self.assertIs(MapType.coerce("Fo-Fc"), MapType.FO_FC)
+        self.assertIs(MapType.coerce(MapType.TWO_FO_FC), MapType.TWO_FO_FC)
+        with self.assertRaises(ValueError):
+            MapType.coerce("unknown")
+
+    @staticmethod
+    def _rmtree(path):
+        import shutil
+
+        shutil.rmtree(path, ignore_errors=True)

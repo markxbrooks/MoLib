@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class MtzFileSpec:
     """Contents of an MTZ file"""
 

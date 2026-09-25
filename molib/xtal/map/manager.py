@@ -10,14 +10,11 @@ from pathlib import Path
 from typing import Optional, Dict, Iterator, List, Tuple
 
 import numpy as np
-from numpy import ndarray
 
 from decologr import LogMixin, Decologr as log
-from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
 
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
 from molib.xtal.map.builder import build_map_info, build_map_information_specs
-from molib.xtal.map.density import load_density_map_with_columns
 # from molib.xtal.map.helper import load_density_map_auto
 from molib.xtal.map.info import MapInfo
 
@@ -27,17 +24,22 @@ def mtz_id_from_file_name(mtz_file_path: str) -> str:
     return Path(mtz_file_path).stem
 
 
+def _extract_volume_and_info(result):
+    """Unpack a load result that may be a (volume, info) tuple or a DensityMapData-like object."""
+    if result is None:
+        return None, None
+    if hasattr(result, "volume"):
+        return result.volume, result.crystallographic_info
+    return result
+
+
 def map_from_coefficients(
     spec: MtzFileSpec,
-) -> tuple[tuple[ndarray, dict] | None, tuple[ndarray, dict] | None]:
-    """map from coefficients"""
-    map_2fofc = load_density_map_with_columns(
-        spec.file_path, spec.map_coefficients.f_label , spec.map_coefficients.phi_label
-    )
-    map_fofc = load_density_map_with_columns(
-        spec.file_path, spec.difference_coefficients.f_label, spec.difference_coefficients.phi_label
-    )
-    return map_2fofc, map_fofc
+):
+    """Load the 2Fo-Fc (map) and Fo-Fc (difference) from an MTZ file spec."""
+    from molib.xtal.map.helper import load_maps_from_mtz_file_spec
+
+    return load_maps_from_mtz_file_spec(spec)
 
 
 class MapManager(LogMixin):
@@ -241,47 +243,29 @@ class MapManager(LogMixin):
         return summary
 
     def load_2fofc_fofc(self, mtz_file_path: str, mtz_id: str):
-        """Load 2Fo-Fc and Fo-Fc from explicit MTZ coefficients when available"""
+        """Load 2Fo-Fc and Fo-Fc using map-type-aware coefficient selection.
 
-        first_choice_coeff = MtzFileSpec(
-            file_path=mtz_file_path,
-            map_coefficients=MtzColumnPair(
-                f_label="2FOFCWT",
-                phi_label="PH2FOFCWT",
-            ),
-            difference_coefficients=MtzColumnPair(
-                f_label="DELFWT",
-                phi_label="PHDELWT",
-            ),
+        Coefficients are chosen deterministically per requested map type
+        (FWT/PH2FOFCWT for 2Fo-Fc, DELFWT/PHDELWT for Fo-Fc). The loader never
+        silently substitutes unrelated coefficients.
+        """
+
+        from molib.xtal.map.helper import (
+            MapType,
+            load_density_map_auto_mtz,
         )
 
-        second_choice_coeff = MtzFileSpec(
-            file_path=mtz_file_path,
-            map_coefficients=MtzColumnPair(
-                f_label="2FOFCWT",
-                phi_label="PH2FOFCWT",
-            ),
-            difference_coefficients=MtzColumnPair(
-                f_label="FOFCWT",
-                phi_label="PHFOFCWT",
-            ),
+        result_2fofc = load_density_map_auto_mtz(
+            mtz_file_path, map_type=MapType.TWO_FO_FC
         )
-
-        result_2fofc, result_fofc = map_from_coefficients(first_choice_coeff)
-
-        # Common alternate naming seen in some MTZs
-        if result_fofc is None:
-            result_2fofc, result_fofc = map_from_coefficients(second_choice_coeff)
-
-        # Last-resort fallback to auto load
-        from molib.xtal.map.helper import load_density_map_auto
-        if result_2fofc is None:
-            result_2fofc = load_density_map_auto(mtz_file_path)
+        result_fofc = load_density_map_auto_mtz(
+            mtz_file_path, map_type=MapType.FO_FC
+        )
 
         if result_2fofc:
-            volume_2fofc, crystallographic_info = result_2fofc
+            volume_2fofc, crystallographic_info = _extract_volume_and_info(result_2fofc)
             if result_fofc:
-                volume_fofc, _ = result_fofc
+                volume_fofc, _ = _extract_volume_and_info(result_fofc)
             else:
                 volume_fofc = volume_2fofc
                 self.log_warning(

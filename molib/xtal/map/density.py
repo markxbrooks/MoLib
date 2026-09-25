@@ -1,6 +1,8 @@
 """
 Utilities for loading and processing electron density maps from MTZ and CCP4 files.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -19,7 +21,7 @@ MAP_NEGATIVE_RATIO_THRESHOLD = 0.7
 
 def load_density_map_with_columns(
     mtz_path: str, f_column: str, phi_column: str, sample_rate=0.0
-) -> tuple[np.ndarray, dict] | None:
+) -> tuple[np.ndarray, CrystallographicInfo] | None:
     """
     Load density map from MTZ file with specific F and PHI column selections.
 
@@ -342,6 +344,17 @@ class CrystallographicInfo:
     grid: MapGrid
     transforms: CoordinateTransforms
     map_type: str = ""
+
+    def log_grid_metadata(self) -> None:
+        """Log the unit-cell and grid metadata of a crystallographic info object."""
+        log.info(
+            f"📐 Unit cell: a={self.unit_cell.a:.2f}, "
+            f"b={self.unit_cell.b:.2f}, "
+            f"c={self.unit_cell.c:.2f} Å"
+        )
+        log.info(f"📐 Grid dimensions: {self.grid.dimensions}")
+        log.info(f"📐 Grid origin: {self.grid.origin}")
+        log.info(f"📐 Axis order: {self.grid.axis_order}")
 
     def log_summary(self) -> None:
         """Log the contents of this crystallographic information."""
