@@ -1,22 +1,24 @@
 """
 Utilities for loading and processing electron density maps from MTZ and CCP4 files.
 """
+from pathlib import Path
+
 from dataclasses import dataclass
-from enum import Enum
 
 import faulthandler
 import os
 import pathlib
 import re
 from numpy import dtype, ndarray
-from typing import Callable, Dict, Optional, Tuple, Any
+from typing import Callable, Optional, Tuple, Any
 
 import gemmi
 import numpy as np
 from decologr import Decologr as log
-from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
+from molib.xtal.ccp4.mtz.filespec import MtzFileSpec, MtzDensitySpec
+from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
+from molib.xtal.ccp4.mtz.errors import MtzColumnNotFoundError
 from molib.xtal.info.resolve import normalize_crystallographic_info_from_dict
-from molib.xtal.uglymol.map import grid_array
 from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
     parse_symmetry_operator_to_matrix,
@@ -24,11 +26,8 @@ from molib.xtal.uglymol.map.helpers import (
 from molib.xtal.map.density import (
     AxisOrder,
     CrystallographicInfo,
-    GridOrigin,
-    GridSpacing,
+    MapType,
     crystallographic_info_from_grid,
-    get_grid_fractional_to_orthogonal_matrix,
-    get_grid_orthogonal_to_fractional_matrix,
 )
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
@@ -36,30 +35,25 @@ faulthandler.enable()
 
 ORIGIN = (0.0, 0.0, 0.0)
 
-class MapType(str, Enum):
-    """Requested electron-density map type used to select MTZ coefficients.
 
-    Values match the canonical ElMo ``MapType`` (``"2Fo-Fc"`` / ``"Fo-Fc"``)
-    so either enum (or the plain string) can be passed to the loaders.
-    """
+@dataclass(slots=True)
+class DensityMapSpec:
+    """Specification for loading and processing a density map."""
 
-    TWO_FO_FC = "2Fo-Fc"
-    FO_FC = "Fo-Fc"
+    map_path: str | pathlib.Path  # mtz or ccp4map path
+    pdb_path: str | pathlib.Path | None = None  # pdb file path
 
-    @classmethod
-    def coerce(cls, map_type: "MapType | str") -> "MapType":
-        """Normalize a map type (str or StrEnum) to this enum; raise on unknown."""
-        if isinstance(map_type, cls):
-            return map_type
-        if not isinstance(map_type, str):
-            raise ValueError(f"Unsupported map type: {map_type!r}")
-        try:
-            return cls(map_type)
-        except ValueError:
-            raise ValueError(
-                f"Unsupported map type: {map_type!r}. "
-                f"Expected one of: {[m.value for m in cls]}"
-            ) from None
+    mtz: MtzDensitySpec | None = None
+    expand_symmetry: bool = True
+
+    carve_density: bool = True
+    carve_cutoff: float = 4.0
+
+    carve_density_centroid: bool = False
+    centroid: tuple[float, float, float] | None = None
+    centroid_cutoff: float = 15.0
+
+    progress_callback: Callable | None = None
 
 
 _TWO_FO_FC_CANDIDATES = (
@@ -136,10 +130,16 @@ def _log_density_statistics(volume: np.ndarray) -> None:
 
 @dataclass
 class DensityMapData:
-    """Loaded electron-density map and its crystallographic metadata."""
+    """Loaded electron-density map and its crystallographic metadata.
+
+    ``volume.shape`` is always kept in lock-step with
+    ``crystallographic_info.grid.dimensions`` (see :func:`_log_grid_consistency`).
+    """
 
     volume: np.ndarray
     crystallographic_info: CrystallographicInfo
+    source: str = ""
+    map_type: MapType | None = None
 
 
 @dataclass
@@ -335,32 +335,6 @@ def _apply_mask_and_finalize(
     return carved_density
 
 
-def _carve_protein_if_requested(
-    np_array: np.ndarray,
-    pdb_path,
-    crystallographic_info,
-    carve_density: bool,
-    carve_cutoff: float,
-    progress_callback,
-) -> np.ndarray:
-    """Carve density around the protein structure when requested."""
-    log.parameter("carve_density", carve_density)
-    if carve_density and pdb_path and os.path.exists(pdb_path):
-        log.info(f"🔪 Carving density within {carve_cutoff}Å of protein structure...")
-        np_array = carve_density_around_protein(
-            np_array,
-            pdb_path,
-            crystallographic_info.grid.origin,
-            crystallographic_info.grid.spacing,
-            carve_cutoff,
-            progress_callback,
-        )
-        log.info(f"✅ Density carving complete - new shape: {np_array.shape}")
-    elif carve_density and not pdb_path:
-        log.warning("⚠️ Density carving requested but no PDB file provided")
-    return np_array
-
-
 def _grid_to_xyz_array(
     grid: gemmi.FloatGrid,
     crystallographic_info: CrystallographicInfo | None = None,
@@ -395,71 +369,83 @@ def _grid_to_xyz_array(
 
 def load_density_map_from_columns(
     mtz_path: str,
-    f_label: str = "2FOFCWT",
-    phi_label: str = "PH2FOFCWT",
+    f_label: str,
+    phi_label: str,
+    *,
+    map_type: MapType | str | None = None,
     sample_rate: float = 0.0,
 ) -> DensityMapData | None:
-    try:
-        mtz = gemmi.read_mtz_file(mtz_path)
-        # Get available column labels
-        f_labels = [col.label for col in mtz.columns if col.type == "F"]
-        phi_labels = [col.label for col in mtz.columns if col.type == "P"]
+    """Grid explicit F/PHI columns into a canonical :class:`DensityMapData`.
 
-        log.info(f"ℹ️ Available F labels: {f_labels}")
-        log.info(f"ℹ️ Available PHI labels: {phi_labels}")
+    The F/PHI labels determine how the MTZ is transformed. ``map_type``
+    records the semantic meaning of those coefficients and is never
+    inferred from the column labels.
 
-        # Check if requested labels exist
-        if f_label not in f_labels:
-            log.error(f"❌ Requested F label '{f_label}' not found in MTZ file")
-            log.error(f"Available F labels: {f_labels}")
-            if f_labels:
-                log.info("💡 Try using one of these F labels instead")
-                # Suggest common alternatives
-                common_f_labels = ["FP", "FWT", "F", "FC"]
-                for common in common_f_labels:
-                    if common in f_labels:
-                        log.info(f"💡 Suggested F label: {common}")
-                        break
-            return None
+    Missing labels raise :exc:`MtzColumnNotFoundError` listing the available
+    F/PHI columns so the caller can decide the fallback behavior.
+    """
+    mtz = gemmi.read_mtz_file(mtz_path)
 
-        if phi_label not in phi_labels:
-            log.error(f"❌ Requested PHI label '{phi_label}' not found in MTZ file")
-            log.error(f"Available PHI labels: {phi_labels}")
-            if phi_labels:
-                log.info("💡 Try using one of these PHI labels instead")
-                # Suggest common alternatives
-                common_phi_labels = ["PHIC", "PHWT", "PHI", "PHIC_ALL"]
-                for common in common_phi_labels:
-                    if common in phi_labels:
-                        log.info(f"💡 Suggested PHI label: {common}")
-                        break
-            return None
+    requested_f = f_label.strip().upper()
+    requested_phi = phi_label.strip().upper()
 
-        # Load the map grid (sample_rate < 1.0 means oversampling)
-        grid = mtz.transform_f_phi_to_map(f_label, phi_label, sample_rate=sample_rate)
+    f_set = {col.label.upper(): col.label for col in mtz.columns if col.type == "F"}
+    p_set = {col.label.upper(): col.label for col in mtz.columns if col.type == "P"}
 
-        # Extract crystallographic information
-        crystallographic_info = crystallographic_info_from_grid(grid)
-
-        crystallographic_info.log_summary()
-
-        # Convert to a NumPy array in the canonical XYZ axis order. The
-        # spacing, origin, and transformations come from
-        # crystallographic_info_from_grid() -- no manual overrides here.
-        np_array = _grid_to_xyz_array(grid, crystallographic_info)
-        log.info(f"ℹ️ Loaded MTZ map shape: {np_array.shape}")
-        _log_density_statistics(np_array)
-
-        return DensityMapData(
-            volume=np_array,
-            crystallographic_info=crystallographic_info,
+    resolved_f = f_set.get(requested_f)
+    if resolved_f is None:
+        raise MtzColumnNotFoundError(
+            f"Requested F label '{requested_f}' not found in {mtz_path}. "
+            f"Available F labels: {sorted(f_set)}"
         )
-    except Exception as e:
-        log.error(f"❌ Could not load map from {mtz_path}: {e}")
-        return None
+
+    resolved_phi = p_set.get(requested_phi)
+    if resolved_phi is None:
+        raise MtzColumnNotFoundError(
+            f"Requested PHI label '{requested_phi}' not found in {mtz_path}. "
+            f"Available PHI labels: {sorted(p_set)}"
+        )
+
+    resolved_map_type = (
+        MapType.coerce(map_type) if map_type is not None else None
+    )
+    xtal_map_type = (
+        resolved_map_type.value if resolved_map_type is not None else "CCP4_MAP"
+    )
+
+    # Fourier boundary: everything up to here only inspects reflection
+    # headers; the volume materializes at this transform.
+    log.info(
+        f"⚙️ Gridding MTZ coefficients: {resolved_f} + {resolved_phi} "
+        f"(map_type={resolved_map_type}, sample_rate={sample_rate}) "
+        f"from {mtz_path}"
+    )
+    grid = mtz.transform_f_phi_to_map(
+        resolved_f, resolved_phi, sample_rate=sample_rate
+    )
+    log.info(f"ℹ️ Gemmi grid nu/nv/nw: {grid.nu}/{grid.nv}/{grid.nw}")
+
+    crystallographic_info = normalize_crystallographic_info_from_dict(
+        crystallographic_info_from_grid(grid, map_type=xtal_map_type)
+    )
+    crystallographic_info.log_summary()
+
+    # Convert to a NumPy array in the canonical XYZ axis order. The
+    # spacing, origin, and transformations come from
+    # crystallographic_info_from_grid() -- no manual overrides here.
+    np_array = _grid_to_xyz_array(grid, crystallographic_info)
+    log.info(f"ℹ️ Loaded MTZ map shape: {np_array.shape}")
+    _log_density_statistics(np_array)
+
+    return DensityMapData(
+        volume=np_array,
+        crystallographic_info=crystallographic_info,
+        source=mtz_path,
+        map_type=resolved_map_type,
+    )
 
 
-def load_maps_from_mtz_file_spec(
+def load_mtz_file(
     spec: MtzFileSpec,
 ) -> tuple[DensityMapData | None, DensityMapData | None]:
     """Load the 2Fo-Fc (map) and Fo-Fc (difference) maps from an MTZ file spec.
@@ -477,15 +463,34 @@ def load_maps_from_mtz_file_spec(
         f"({spec.map_coefficients.f_label}/{spec.map_coefficients.phi_label}, "
         f"{spec.difference_coefficients.f_label}/{spec.difference_coefficients.phi_label})"
     )
-    map_data = load_density_map_from_columns(
-        spec.file_path, spec.map_coefficients.f_label, spec.map_coefficients.phi_label
-    )
-    difference_data = load_density_map_from_columns(
-        spec.file_path,
-        spec.difference_coefficients.f_label,
-        spec.difference_coefficients.phi_label,
-    )
+    map_data = _load_spec_map(spec.file_path, spec.map_coefficients)
+    difference_data = _load_spec_map(spec.file_path, spec.difference_coefficients)
     return map_data, difference_data
+
+
+load_maps_from_mtz_file_spec = load_mtz_file
+
+
+def _load_spec_map(
+    mtz_path: str,
+    coefficients: MtzColumnPair,
+) -> DensityMapData | None:
+    """Grid one map from an :class:`MtzColumnPair`, returning None when absent.
+
+    ``load_density_map_from_columns`` raises :exc:`MtzColumnNotFoundError` for
+    missing labels; the spec-based loader treats that as "column pair not
+    present" (None) so a file with only 2Fo-Fc still yields a usable tuple.
+    Other errors propagate.
+    """
+    try:
+        return load_density_map_from_columns(
+            mtz_path,
+            coefficients.f_label,
+            coefficients.phi_label,
+            map_type=coefficients.map_type,
+        )
+    except MtzColumnNotFoundError:
+        return None
 
 
 def _resolve_centroid(
@@ -494,53 +499,81 @@ def _resolve_centroid(
 ) -> tuple[float, float, float]:
     """Return the caller-provided centroid or fall back to the unit-cell center.
 
-    The centroid is in Cartesian Å orthogonal coordinates.
+    The centroid is in Cartesian Å orthogonal coordinates. The default
+    centroid is the fractional cell center ``(0.5, 0.5, 0.5)`` mapped to
+    orth via ``frac_to_orth`` -- correct for non-orthogonal cells, where
+    ``a/2, b/2, c/2`` would be wrong.
     """
     if centroid is not None:
         return tuple(float(v) for v in centroid)
 
-    unit_cell = crystallographic_info.unit_cell
-    centroid = (
-        unit_cell.a / 2.0,
-        unit_cell.b / 2.0,
-        unit_cell.c / 2.0,
-    )
+    frac_center = crystallographic_info.unit_cell.fractional_center
+    frac_to_orth = crystallographic_info.transforms.frac_to_orth
+    orth = np.asarray(frac_to_orth, dtype=np.float64) @ np.asarray(frac_center)
+    centroid = tuple(float(c) for c in orth)
     log.info(f"🧬 Using unit cell center as default centroid: {centroid}")
     return centroid
 
 
-def _load_mtz_density_map(map_path: pathlib.Path) -> DensityMapData | None:
+def _log_grid_consistency(map_data: DensityMapData, label: str) -> DensityMapData:
+    """Enforce and log the ``volume.shape == grid.dimensions`` invariant.
+
+    The canonical pipeline must keep the metadata grid dimensions in lock-step
+    with the volume array: the renderer computes ``cart = (vertex / dims) @
+    frac_to_orth.T + origin``, so a desync (e.g. after symmetry expansion)
+    silently misplaces the density.
+    """
+    volume_shape = tuple(map_data.volume.shape)
+    grid_dims = tuple(map_data.crystallographic_info.grid.dimensions)
+    if volume_shape != grid_dims:
+        log.info(
+            f"🔗 Grid dims invariant: {label} changed volume shape {grid_dims} -> "
+            f"{volume_shape}; syncing metadata"
+        )
+        map_data.crystallographic_info.grid.dimensions = volume_shape
+    else:
+        log.info(f"🔗 Grid dims invariant: {label} consistent ({volume_shape})")
+    return map_data
+
+
+def _load_mtz_density_map(
+    map_path: pathlib.Path,
+    *,
+    mtz_spec: MtzDensitySpec | None = None,
+) -> DensityMapData | None:
     """Grid an MTZ file into a canonical :class:`DensityMapData`.
 
-    MTZ files hold structure factors rather than a pre-computed density map,
-    so density is gridded from the F/PHI columns via
-    :func:`load_density_map_auto_mtz` (label auto-detection). Symmetry
-    expansion and density carving are CCP4-map operations and do not apply.
+    ``mtz_spec`` selects the coefficients: explicit ``f_label``/``phi_label``
+    when both are given, otherwise deterministic map-type selection. A plain
+    ``map_type`` alone is honored too (``MtzDensitySpec`` defaulting to
+    2Fo-Fc).
     """
     try:
         log.info(
             "MTZ detected — gridding density from reflections "
-            "(not a CCP4 .map; use .map/.ccp4 for pre-computed maps)."
+            "(not a CCP4 pre-computed density map)."
         )
-        mtz_result = load_density_map_auto_mtz(str(map_path))
-        if mtz_result is None:
-            return None
-        if isinstance(mtz_result, DensityMapData):
-            volume = mtz_result.volume
-            crystallographic_info = mtz_result.crystallographic_info
-        else:
-            volume, crystallographic_info = mtz_result
-        crystallographic_info = normalize_crystallographic_info_from_dict(
-            crystallographic_info
+
+        if mtz_spec is None:
+            mtz_spec = MtzDensitySpec()
+
+        if mtz_spec.f_label is not None and mtz_spec.phi_label is not None:
+            return load_density_map_from_columns(
+                str(map_path),
+                mtz_spec.f_label,
+                mtz_spec.phi_label,
+                map_type=mtz_spec.map_type,
+                sample_rate=mtz_spec.sample_rate,
+            )
+
+        return load_density_map_auto_mtz(
+            str(map_path),
+            map_type=mtz_spec.map_type,
+            sample_rate=mtz_spec.sample_rate,
         )
-        crystallographic_info.log_grid_metadata()
-        log.info(f"ℹ️ Loaded MTZ → grid shape: {volume.shape}")
-        return DensityMapData(
-            volume=volume,
-            crystallographic_info=crystallographic_info,
-        )
+
     except Exception as e:
-        log.error(f"❌ Could not load map from {map_path}: {e}")
+        log.error(f"❌ Could not load MTZ density map from {map_path}: {e}")
         return None
 
 
@@ -559,14 +592,18 @@ def _load_ccp4_density_map(
 ) -> DensityMapData | None:
     """Load a CCP4 map (``.map``/``.ccp4``) into a canonical :class:`DensityMapData`.
 
+    Pipeline (each stage operates on the object, never unpacked):
+        read -> :func:`_density_map_data_from_ccp4` -> [symmetry expansion]
+        -> :func:`_carve_protein_density` -> :func:`_carve_centroid_density`.
+
     Coordinate semantics:
         Carving is a grid operation measured in Cartesian Å. Each grid point
         (i, j, k) has Cartesian position ``origin + index * spacing``, and
         ``centroid`` is in the same Cartesian Å frame. ``pdb_path``, when the
         corresponding structure exists, is used for coordinate-based symmetry
-        expansion and protein carving. ``convert_to_cartesian`` is a metadata
-        guarantee: the canonical pipeline keeps the native-cell volume and
-        applies ``frac_to_orth`` at render time, so it does not resample.
+        expansion and protein carving. ``convert_to_cartesian`` is deprecated
+        and currently a no-op: the canonical pipeline keeps the native-cell
+        volume and applies ``frac_to_orth`` at render time.
     """
     try:
         log.info(f"Loading CCP4 map: {map_path}")
@@ -581,74 +618,40 @@ def _load_ccp4_density_map(
             log.warning(f"⚠️ Corresponding PDB file not found: {pdb_path}")
 
         ccp4_map = gemmi.read_ccp4_map(str(map_path))
-        grid = ccp4_map.grid
 
-        crystallographic_info = crystallographic_info_from_grid(grid)
-        crystallographic_info = normalize_crystallographic_info_from_dict(
-            crystallographic_info
-        )
-
-        crystallographic_info.log_grid_metadata()
-
-        volume = _grid_to_xyz_array(grid, crystallographic_info)
-        log.info(f"ℹ️ Loaded CCP4 map shape: {volume.shape}")
-        _log_density_statistics(volume)
+        map_data = _density_map_data_from_ccp4(ccp4_map, str(map_path))
 
         if expand_symmetry:
-            header = _build_header_from_ccp4_map(ccp4_map)
-
-            if header.nsymbt > 0:
-                log.info(f"🔄 Expanding symmetry operations (NSYMBT: {header.nsymbt})")
-                volume = expand_ccp4_symmetry_optimized(
-                    volume,
-                    str(map_path),
-                    header,
-                    str(pdb_path),
-                )
-                log.info(f"✅ Symmetry expanded - new shape: {volume.shape}")
-            else:
-                log.info("ℹ️ No symmetry operations found in map header")
-
-        map_data = DensityMapData(
-            volume=volume,
-            crystallographic_info=crystallographic_info,
-        )
+            map_data = _expand_ccp4_symmetry_op(
+                map_data,
+                str(map_path),
+                str(pdb_path),
+                _build_header_from_ccp4_map(ccp4_map),
+            )
 
         if convert_to_cartesian:
-            log.info("🔄 Converting to cartesian coordinates...")
-            map_data = _convert_to_cartesian_coordinates(map_data)
-            volume = map_data.volume
-            crystallographic_info = map_data.crystallographic_info
-            log.info(f"✅ Converted to cartesian - new shape: {volume.shape}")
+            log.warning(
+                "⚠️ convert_to_cartesian is deprecated; density maps remain in "
+                "canonical grid coordinates (frac_to_orth is applied at render time)"
+            )
 
-        volume = _carve_protein_if_requested(
-            volume,
-            str(pdb_path),
-            crystallographic_info,
+        map_data = _carve_protein_density(
+            map_data,
+            pdb_path,
             carve_density,
             carve_cutoff,
             progress_callback,
         )
 
         if carve_density_centroid:
-            centroid = _resolve_centroid(centroid, crystallographic_info)
-            log.info(
-                f"🔪 Carving density within {centroid_cutoff}Å of centroid {centroid}..."
-            )
-            volume = carve_density_around_position(
-                volume,
+            map_data = _carve_centroid_density(
+                map_data,
                 centroid,
-                crystallographic_info.grid.origin,
-                crystallographic_info.grid.spacing,
                 centroid_cutoff,
                 progress_callback,
             )
-            log.info(f"✅ Centroid carving complete - new shape: {volume.shape}")
 
-        return DensityMapData(
-            volume=volume,
-            crystallographic_info=crystallographic_info,
-        )
+        return map_data
 
     except FileNotFoundError:
         log.error(f"❌ File not found: {map_path}")
@@ -658,54 +661,151 @@ def _load_ccp4_density_map(
         return None
 
 
-def load_density_map(
-    map_path: str | pathlib.Path,
-    *,
-    pdb_path: str | pathlib.Path | None = None,
-    expand_symmetry: bool = True,
-    convert_to_cartesian: bool = False,
-    carve_density: bool = True,
-    carve_cutoff: float = 4.0,
-    carve_density_centroid: bool = False,
-    centroid: tuple[float, float, float] | None = None,
-    centroid_cutoff: float = 15.0,
-    progress_callback: Callable | None = None,
-) -> DensityMapData | None:
-    """Canonical density-map loader: dispatches on file type.
+def _density_map_data_from_ccp4(
+    ccp4_map: gemmi.Ccp4Map,
+    source: str,
+) -> DensityMapData:
+    """Build the canonical :class:`DensityMapData` from a CCP4 grid."""
+    grid = ccp4_map.grid
 
-    CCP4 maps (``.map``/``.ccp4``/``.omap``) are loaded via
-    :func:`_load_ccp4_density_map`; MTZ files are gridded from reflections via
-    :func:`_load_mtz_density_map`.
+    crystallographic_info = crystallographic_info_from_grid(grid)
+    crystallographic_info = normalize_crystallographic_info_from_dict(
+        crystallographic_info
+    )
+
+    crystallographic_info.log_grid_metadata()
+
+    volume = _grid_to_xyz_array(grid, crystallographic_info)
+    log.info(f"ℹ️ Loaded CCP4 map shape: {volume.shape}")
+    _log_density_statistics(volume)
+
+    return DensityMapData(
+        volume=volume,
+        crystallographic_info=crystallographic_info,
+        source=source,
+    )
+
+
+def _expand_ccp4_symmetry_op(
+    map_data: DensityMapData,
+    map_path: str,
+    pdb_path: str,
+    header,
+) -> DensityMapData:
+    """Apply symmetry expansion to the map object when operations exist."""
+    if header.nsymbt <= 0:
+        log.info("ℹ️ No symmetry operations found in map header")
+        return map_data
+
+    log.info(f"🔄 Expanding symmetry operations (NSYMBT: {header.nsymbt})")
+    expanded = expand_ccp4_symmetry_optimized(
+        map_data.volume,
+        map_path,
+        header,
+        pdb_path,
+    )
+    map_data.volume = expanded
+    log.info(f"✅ Symmetry expanded - new shape: {expanded.shape}")
+    return _log_grid_consistency(map_data, "symmetry expansion")
+
+
+def _carve_protein_density(
+    map_data: DensityMapData,
+    pdb_path,
+    carve_density: bool,
+    carve_cutoff: float,
+    progress_callback,
+) -> DensityMapData:
+    """Carve density around the protein structure when requested."""
+    log.parameter("carve_density", carve_density)
+    if carve_density and pdb_path and os.path.exists(pdb_path):
+        log.info(f"🔪 Carving density within {carve_cutoff}Å of protein structure...")
+        map_data.volume = carve_density_around_protein(
+            map_data.volume,
+            pdb_path,
+            map_data.crystallographic_info.grid.origin,
+            map_data.crystallographic_info.grid.spacing,
+            carve_cutoff,
+            progress_callback,
+        )
+        log.info(
+            f"✅ Density carving complete - new shape: {map_data.volume.shape}"
+        )
+    elif carve_density and not pdb_path:
+        log.warning("⚠️ Density carving requested but no PDB file provided")
+    return map_data
+
+
+def _carve_centroid_density(
+    map_data: DensityMapData,
+    centroid: tuple[float, float, float] | None,
+    centroid_cutoff: float,
+    progress_callback,
+) -> DensityMapData:
+    """Carve density around the (resolved) centroid."""
+    centroid = _resolve_centroid(centroid, map_data.crystallographic_info)
+    log.info(
+        f"🔪 Carving density within {centroid_cutoff}Å of centroid {centroid}..."
+    )
+    map_data.volume = carve_density_around_position(
+        map_data.volume,
+        centroid,
+        map_data.crystallographic_info.grid.origin,
+        map_data.crystallographic_info.grid.spacing,
+        centroid_cutoff,
+        progress_callback,
+    )
+    log.info(f"✅ Centroid carving complete - new shape: {map_data.volume.shape}")
+    return map_data
+
+
+def load_density_map(spec: DensityMapSpec) -> DensityMapData | None:
+    """Canonical density-map loader: dispatch on ``spec.map_path`` suffix.
+
+    - ``.mtz`` grids reflections via :func:`_load_mtz_density_map` using
+      ``spec.mtz`` (:class:`MtzDensitySpec`).
+    - ``.map`` / ``.ccp4`` / ``.omap`` load via :func:`_load_ccp4_density_map`
+      using the CCP4-relevant spec fields.
 
     ``pdb_path`` defaults to the map path with a ``.pdb`` suffix. The returned
-    volume is always in canonical XYZ axis order (``array[i, j, k]`` is the
-    density at (X, Y, Z)); ``centroid`` is in Cartesian Å. Symmetry expansion
-    and carving apply to CCP4 maps.
+    volume is always in canonical XYZ axis order; ``centroid`` is in Cartesian
+    Å. Symmetry expansion and carving apply to CCP4 maps.
 
     Returns:
         DensityMapData (volume + crystallographic_info) or None if loading fails
     """
-    map_path = pathlib.Path(map_path)
+    map_path = pathlib.Path(spec.map_path)
+    suffix = map_path.suffix.lower()
+
+    if suffix == ".mtz":
+        return _load_mtz_density_map(map_path, mtz_spec=spec.mtz)
+
+    if suffix in (".map", ".ccp4", ".omap"):
+        return _load_ccp4_density_map(
+            map_path,
+            pdb_path=resolve_pdb_path(map_path, spec.pdb_path),
+            expand_symmetry=spec.expand_symmetry,
+            convert_to_cartesian=False,
+            carve_density=spec.carve_density,
+            carve_cutoff=spec.carve_cutoff,
+            carve_density_centroid=spec.carve_density_centroid,
+            centroid=spec.centroid,
+            centroid_cutoff=spec.centroid_cutoff,
+            progress_callback=spec.progress_callback,
+        )
+
+    raise ValueError(
+        f"Unsupported density map format: {spec.map_path!r} "
+        f"(suffix {suffix!r})"
+    )
+
+
+def resolve_pdb_path(map_path: Path, pdb_path: str | Path | None) -> Path:
     if pdb_path is None:
         pdb_path = map_path.with_suffix(".pdb")
     else:
         pdb_path = pathlib.Path(pdb_path)
-
-    if map_path.suffix.lower() == ".mtz":
-        return _load_mtz_density_map(map_path)
-
-    return _load_ccp4_density_map(
-        map_path,
-        pdb_path=pdb_path,
-        expand_symmetry=expand_symmetry,
-        convert_to_cartesian=convert_to_cartesian,
-        carve_density=carve_density,
-        carve_cutoff=carve_cutoff,
-        carve_density_centroid=carve_density_centroid,
-        centroid=centroid,
-        centroid_cutoff=centroid_cutoff,
-        progress_callback=progress_callback,
-    )
+    return pdb_path
 
 
 def load_ccp4_map_optimized(
@@ -717,7 +817,7 @@ def load_ccp4_map_optimized(
     carve_cutoff: float = 4.0,
     progress_callback: Callable = None,
     carve_density_centroid: bool = False,
-    centroid: Tuple[float, float, float] = None,
+    centroid: tuple[float, float, float] | None = None,
     centroid_cutoff: float = 15.0,
 ) -> DensityMapData | None:
     """
@@ -741,16 +841,17 @@ def load_ccp4_map_optimized(
         DensityMapData (volume + crystallographic_info) or None if loading fails
     """
     return load_density_map(
-        map_path,
-        pdb_path=pdb_path,
-        expand_symmetry=expand_symmetry,
-        convert_to_cartesian=convert_to_cartesian,
-        carve_density=carve_density,
-        carve_cutoff=carve_cutoff,
-        carve_density_centroid=carve_density_centroid,
-        centroid=centroid,
-        centroid_cutoff=centroid_cutoff,
-        progress_callback=progress_callback,
+        DensityMapSpec(
+            map_path=map_path,
+            pdb_path=pdb_path,
+            expand_symmetry=expand_symmetry,
+            carve_density=carve_density,
+            carve_cutoff=carve_cutoff,
+            carve_density_centroid=carve_density_centroid,
+            centroid=centroid,
+            centroid_cutoff=centroid_cutoff,
+            progress_callback=progress_callback,
+        )
     )
 
 
@@ -915,7 +1016,7 @@ def load_ccp4_map(
     carve_cutoff: float = 4.0,
     progress_callback=None,
     carve_density_centroid: bool = False,
-    pdb_centroid_or_clicked_position: Tuple[float, float, float] = None,
+    pdb_centroid_or_clicked_position: tuple[float, float, float] | None = None,
     centroid_cutoff: float = 15.0,
 ) -> DensityMapData | None:
     """
@@ -942,24 +1043,25 @@ def load_ccp4_map(
         DensityMapData (volume + crystallographic_info) or None if loading fails
     """
     return load_density_map(
-        map_path,
-        pdb_path=None,
-        expand_symmetry=expand_symmetry,
-        convert_to_cartesian=convert_to_cartesian,
-        carve_density=carve_density,
-        carve_cutoff=carve_cutoff,
-        carve_density_centroid=carve_density_centroid,
-        centroid=pdb_centroid_or_clicked_position,
-        centroid_cutoff=centroid_cutoff,
-        progress_callback=progress_callback,
+        DensityMapSpec(
+            map_path=map_path,
+            pdb_path=None,
+            expand_symmetry=expand_symmetry,
+            carve_density=carve_density,
+            carve_cutoff=carve_cutoff,
+            carve_density_centroid=carve_density_centroid,
+            centroid=pdb_centroid_or_clicked_position,
+            centroid_cutoff=centroid_cutoff,
+            progress_callback=progress_callback,
+        )
     )
 
 
 def load_ccp4_maps(
     *map_paths: str,
     expand_symmetry: bool = False,
-    pdb_paths: Optional[list[str]] = None,
-) -> Optional[list["DensityMapData"]]:
+    pdb_paths: list[str] | None = None,
+) -> list["DensityMapData"] | None:
     """
     Load multiple CCP4 map files at once with optimized symmetry expansion.
 
@@ -1075,115 +1177,6 @@ def load_mtz_maps(
         return None
 
 
-def get_mtz_info(mtz_path: str) -> dict | None:
-    """
-    Get detailed information about an MTZ file without loading the full map.
-
-    Args:
-        mtz_path: Path to MTZ file
-
-    Returns:
-        Dictionary with MTZ file information or None if loading fails
-    """
-    try:
-        log.info(f"Getting MTZ file info: {mtz_path}")
-
-        # Load MTZ file using Gemmi
-        mtz = gemmi.read_mtz_file(mtz_path)
-
-        # Extract column information
-        columns_info = []
-        for col in mtz.columns:
-            col_info = {
-                "label": col.label,
-                "type": col.type,
-                "dataset": col.dataset,
-            }
-
-            # Safely get min/max values if available
-            try:
-                if hasattr(col, "min_value") and col.min_value is not None:
-                    col_info["min_value"] = float(col.min_value)
-                if hasattr(col, "max_value") and col.max_value is not None:
-                    col_info["max_value"] = float(col.max_value)
-            except (ValueError, TypeError):
-                pass  # Skip if conversion fails
-
-            columns_info.append(col_info)
-
-        # Get crystallographic information
-        unit_cell = mtz.cell
-        space_group = mtz.spacegroup
-
-        # Get dataset information
-        datasets = []
-        for dataset in mtz.datasets:
-            dataset_info = {
-                "name": dataset.dataset_name,
-                "project_name": dataset.project_name,
-                "crystal_name": dataset.crystal_name,
-            }
-
-            # Safely get wavelength if available
-            try:
-                if hasattr(dataset, "wavelength") and dataset.wavelength is not None:
-                    dataset_info["wavelength"] = float(dataset.wavelength)
-            except (ValueError, TypeError):
-                pass
-
-            datasets.append(dataset_info)
-
-        # Get resolution information safely
-        resolution_info = {}
-        try:
-            if hasattr(mtz, "resolution_high") and mtz.resolution_high is not None:
-                resolution_info["d_min"] = float(mtz.resolution_high)
-            if hasattr(mtz, "resolution_low") and mtz.resolution_low is not None:
-                resolution_info["d_max"] = float(mtz.resolution_low)
-        except (ValueError, TypeError):
-            pass
-
-        # Get reflection count safely
-        reflection_count = 0
-        try:
-            if hasattr(mtz, "nreflections"):
-                reflection_count = mtz.nreflections
-            elif hasattr(mtz, "size"):
-                reflection_count = mtz.size
-        except (AttributeError, TypeError):
-            pass
-
-        mtz_info = {
-            "file_path": mtz_path,
-            "columns": columns_info,
-            "unit_cell": {
-                "a": unit_cell.a,
-                "b": unit_cell.b,
-                "c": unit_cell.c,
-                "alpha": unit_cell.alpha,
-                "beta": unit_cell.beta,
-                "gamma": unit_cell.gamma,
-            },
-            "space_group": str(space_group),
-            "datasets": datasets,
-            "resolution": resolution_info,
-            "reflection_count": reflection_count,
-            "column_count": len(mtz.columns),
-            "dataset_count": len(mtz.datasets),
-        }
-
-        log.info("✅ MTZ file info extracted successfully")
-        log.info(f"📊 Columns: {len(columns_info)}")
-        log.info(f"📊 Datasets: {len(datasets)}")
-        log.info(f"📊 Reflections: {reflection_count}")
-
-        return mtz_info
-
-    except Exception as e:
-        log.error(f"❌ Error getting MTZ file info from {mtz_path}: {e}")
-        return None
-
-
 def load_density_map_auto_mtz(
     mtz_path: str,
     *,
@@ -1208,12 +1201,19 @@ def load_density_map_auto_mtz(
         DensityMapData or None if loading fails
     """
     try:
-        f_label, phi_label = _select_map_columns(mtz_path, map_type)
+        resolved_map_type = MapType.coerce(map_type)
+        f_label, phi_label = _select_map_columns(mtz_path, resolved_map_type)
         log.info(
             f"Auto-loading MTZ file: {mtz_path} "
-            f"(map type: {MapType.coerce(map_type).value}, columns: {f_label}/{phi_label})"
+            f"(map type: {resolved_map_type.value}, columns: {f_label}/{phi_label})"
         )
-        return load_density_map_from_columns(mtz_path, f_label, phi_label, sample_rate)
+        return load_density_map_from_columns(
+            mtz_path,
+            f_label,
+            phi_label,
+            map_type=resolved_map_type,
+            sample_rate=sample_rate,
+        )
 
     except Exception as e:
         log.error(f"❌ Error in auto-loading MTZ file {mtz_path}: {e}")
@@ -1221,7 +1221,12 @@ def load_density_map_auto_mtz(
 
 
 def load_density_map_with_columns(
-    mtz_path: str, f_column: str, phi_column: str, sample_rate=0.0
+    mtz_path: str,
+    f_column: str,
+    phi_column: str,
+    sample_rate: float = 0.0,
+    *,
+    map_type: MapType | str | None = None,
 ) -> DensityMapData | None:
     """
     Load density map from MTZ file with specific F and PHI column selections.
@@ -1231,6 +1236,7 @@ def load_density_map_with_columns(
         f_column: F column label
         phi_column: PHI column label
         sample_rate: Sampling rate for map generation (0.0 = full resolution)
+        map_type: Semantic map identity (not inferred from labels)
 
     Returns:
         DensityMapData or None if loading fails
@@ -1239,8 +1245,13 @@ def load_density_map_with_columns(
         log.info(f"Loading MTZ file with specific columns: {mtz_path}")
         log.info(f"📊 F column: {f_column}, PHI column: {phi_column}")
 
-        # Load the density map with specified columns
-        result = load_density_map_from_columns(mtz_path, f_column, phi_column, sample_rate)
+        result = load_density_map_from_columns(
+            mtz_path,
+            f_column,
+            phi_column,
+            map_type=map_type,
+            sample_rate=sample_rate,
+        )
 
         if result is not None:
             log.info(f"✅ Successfully loaded MTZ with {f_column}/{phi_column}")
@@ -1312,131 +1323,6 @@ def _find_corresponding_pdb_file(map_path: str) -> str | None:
 
     except Exception as e:
         log.warning(f"⚠️ Error searching for PDB file: {e}")
-        return None
-
-
-def load_density_map_auto(
-    file_path: str,
-    sample_rate=0.0,
-    pdb_path: str = None,
-    carve_density: bool = False,
-    carve_cutoff: float = 4.0,
-    sphere_filter: bool = False,
-    sphere_radius: float = 13.0,
-    sphere_center: tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> tuple[np.ndarray, dict] | None:
-    """
-    Automatically detect file type and load density map with optimized symmetry expansion and optional filtering.
-
-    Args:
-        file_path: Path to density map file (MTZ, CCP4, etc.)
-        sample_rate: Sampling rate for MTZ files (0.0 = full resolution)
-        pdb_path: Optional path to PDB file for coordinate-based optimization and Gemmi set_extent filtering
-        carve_density: Whether to carve density within cutoff distance of protein (default: False)
-        carve_cutoff: Distance in Ångströms for density carving (default: 4.0)
-        sphere_filter: Whether to use Gemmi set_extent to filter map around structure (default: False)
-        sphere_radius: Margin in Ångströms around structure for set_extent filtering (default: 13.0)
-        sphere_center: Center coordinates (x, y, z) - not used with set_extent (default: origin)
-
-    Returns:
-        tuple of (numpy array, crystallographic_info) or None if loading fails
-
-    Note:
-        When sphere_filter=True and pdb_path is provided, uses Gemmi's set_extent() method
-        for efficient, crash-safe map filtering around the structure.
-    """
-    try:
-        import os
-
-        # Check file extension to determine type
-        if file_path.lower().endswith((".mtz", ".hkl", ".mmcif")):
-            log.info(f"Detected MTZ/MMCIF file: {file_path}")
-            result = load_density_map_auto_mtz(file_path, sample_rate=sample_rate)
-        elif file_path.lower().endswith((".map", ".ccp4", ".omap")):
-            log.info(f"Detected CCP4 map file: {file_path}")
-
-            # Try to find PDB file automatically if not provided
-            if pdb_path is None:
-                pdb_path = _find_corresponding_pdb_file(file_path)
-
-            # Use optimized expansion if PDB file is available
-            if pdb_path and os.path.exists(pdb_path):
-                log.info(f"Using optimized expansion with PDB: {pdb_path}")
-                result = load_ccp4_map_optimized(
-                    file_path,
-                    pdb_path,
-                    expand_symmetry=False,
-                    carve_density=carve_density,
-                    carve_cutoff=carve_cutoff,
-                )
-            else:
-                log.info(f"Using standard expansion (no PDB file found)")
-                result = load_ccp4_map(
-                    file_path, expand_symmetry=True, carve_density=False
-                )
-        else:
-            log.error(f"❌ Unsupported file type: {file_path}")
-            log.error("Supported formats: .mtz, .hkl, .mmcif, .map, .ccp4, .omap")
-            return None
-
-        # Apply Gemmi set_extent filtering if requested and PDB available
-        if (
-            result is not None
-            and sphere_filter
-            and pdb_path
-            and os.path.exists(pdb_path)
-        ):
-            log.info(
-                f"🔮 Applying Gemmi set_extent filtering with {sphere_radius}Å margin around structure"
-            )
-            log.info(f"📁 Using PDB file: {pdb_path}")
-
-            try:
-                # Use the new Gemmi set_extent approach
-                if file_path.lower().endswith((".mtz", ".hkl", ".mmcif")):
-                    # For MTZ files, use the dedicated function
-                    result = load_density_map_with_extent(
-                        file_path, pdb_path, margin=sphere_radius
-                    )
-                else:
-                    # For CCP4 files, we need to implement a similar approach
-                    log.info("🔮 Applying Gemmi set_extent to CCP4 map")
-                    density_map, crystallographic_info = result
-
-                    # Load structure and CCP4 map
-                    structure = gemmi.read_structure(pdb_path)
-                    ccp4_map = gemmi.read_ccp4_map(file_path)
-                    ccp4_map.setup()
-
-                    # Set extent to cover structure with margin
-                    ccp4_map.set_extent(
-                        structure.calculate_fractional_box(margin=sphere_radius)
-                    )
-
-                    # Rebuild crystallographic info from the extent-clipped grid
-                    grid = ccp4_map.grid
-                    crystallographic_info = crystallographic_info_from_grid(grid)
-                    np_array = _grid_to_xyz_array(grid, crystallographic_info)
-                    result = np_array, crystallographic_info
-
-                if result is not None:
-                    density_map, crystallographic_info = result
-                    log.info("✅ Gemmi set_extent filtering successful:")
-                    log.info(f"   Shape: {density_map.shape}")
-                    log.info(f"   Non-zero voxels: {np.count_nonzero(density_map):,}")
-                    log.info(
-                        f"   Memory usage: {density_map.nbytes / 1024 / 1024:.1f} MB"
-                    )
-
-            except Exception as e:
-                log.warning(f"⚠️ Gemmi set_extent filtering failed: {e}")
-                log.warning("   Returning original map without filtering")
-                # result is already set from the original loading
-
-        return result
-
-    except Exception as e:
-        log.error(f"❌ Error in auto-detection: {e}")
         return None
 
 
@@ -2079,32 +1965,6 @@ def carve_density_around_protein(
         log.error(f"❌ Error carving density around protein: {e}")
         log.warning("Returning original density map")
         return density_map
-
-
-def _convert_to_cartesian_coordinates(
-    map_data: DensityMapData,
-) -> DensityMapData:
-    """
-    Return the density map unchanged, in canonical XYZ axes.
-
-    The viewer pipeline keeps the map volume in its native unit cell and
-    applies the fractional-to-orthogonal transformation (frac_to_orth) to
-    isosurface vertices when rendering. Non-orthogonal cells therefore need
-    no resampling, and ``convert_to_cartesian`` only guarantees the volume
-    axes are XYZ-ordered (already ensured at load time by
-    :func:`_grid_to_xyz_array`).
-
-    Args:
-        map_data: Density map and its crystallographic metadata.
-
-    Returns:
-        The same DensityMapData, unchanged.
-    """
-    log.info(
-        "ℹ️ Canonical pipeline keeps native-cell coordinates; "
-        "frac_to_orth is applied at render time - no resampling performed"
-    )
-    return map_data
 
 
 def load_density_map_with_extent(

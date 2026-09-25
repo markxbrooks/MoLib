@@ -17,6 +17,7 @@ import tempfile
 from unittest import TestCase
 
 from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
+from molib.xtal.ccp4.mtz.errors import MtzColumnNotFoundError
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
 from molib.xtal.map.density import (
     AxisOrder,
@@ -29,7 +30,9 @@ from molib.xtal.map.helper import (
     load_ccp4_map,
     load_ccp4_map_optimized,
     load_density_map_auto_mtz,
+    load_density_map_from_columns,
     load_maps_from_mtz_file_spec,
+    _load_spec_map,
     _select_map_columns,
 )
 
@@ -302,11 +305,11 @@ class TestLoadMapsFromMtzFileSpec(TestCase):
     def _spec(self, file_path=None):
         return MtzFileSpec(
             file_path=file_path or self.MTZ_PATH,
-            map_coefficients=MtzColumnPair(
+            map_coefficients=MtzColumnPair.map(
                 f_label="FWT",
                 phi_label="PHWT",
             ),
-            difference_coefficients=MtzColumnPair(
+            difference_coefficients=MtzColumnPair.difference(
                 f_label="DELFWT",
                 phi_label="PHDELWT",
             ),
@@ -320,6 +323,12 @@ class TestLoadMapsFromMtzFileSpec(TestCase):
 
         self.assertIsInstance(map_data, DensityMapData)
         self.assertIsInstance(difference_data, DensityMapData)
+        self.assertEqual(map_data.map_type, MapType.TWO_FO_FC)
+        self.assertEqual(difference_data.map_type, MapType.FO_FC)
+        self.assertEqual(map_data.crystallographic_info.map_type, MapType.TWO_FO_FC.value)
+        self.assertEqual(
+            difference_data.crystallographic_info.map_type, MapType.FO_FC.value
+        )
         self.assertEqual(map_data.volume.shape, difference_data.volume.shape)
         self.assertEqual(
             map_data.crystallographic_info.grid.dimensions,
@@ -334,11 +343,11 @@ class TestLoadMapsFromMtzFileSpec(TestCase):
 
         spec = MtzFileSpec(
             file_path=self.MTZ_PATH,
-            map_coefficients=MtzColumnPair(
+            map_coefficients=MtzColumnPair.map(
                 f_label="FWT",
                 phi_label="PHWT",
             ),
-            difference_coefficients=MtzColumnPair(
+            difference_coefficients=MtzColumnPair.difference(
                 f_label="NOT_A_COLUMN",
                 phi_label="ALSO_NOT_PHI",
             ),
@@ -406,6 +415,10 @@ class TestMapTypeAwareMtzSelection(TestCase):
 
         self.assertIsInstance(two, DensityMapData)
         self.assertIsInstance(one, DensityMapData)
+        self.assertEqual(two.map_type, MapType.TWO_FO_FC)
+        self.assertEqual(one.map_type, MapType.FO_FC)
+        self.assertEqual(two.crystallographic_info.map_type, MapType.TWO_FO_FC.value)
+        self.assertEqual(one.crystallographic_info.map_type, MapType.FO_FC.value)
         self.assertEqual(two.volume.shape, one.volume.shape)
         # Guard against the constant-volume regression: a gridded 2Fo-Fc map
         # must contain real electron-density variation.
@@ -436,6 +449,51 @@ class TestMapTypeAwareMtzSelection(TestCase):
         self.assertIs(MapType.coerce(MapType.TWO_FO_FC), MapType.TWO_FO_FC)
         with self.assertRaises(ValueError):
             MapType.coerce("unknown")
+
+    def test_missing_columns_raise_mtz_column_not_found(self):
+        out_dir = tempfile.mkdtemp(prefix="mtz_missing_cols_")
+        self.addCleanup(self._rmtree, out_dir)
+        mtz_path = _make_mtz_with_columns(
+            os.path.join(out_dir, "fwt_only.mtz"),
+            [("FWT", "F"), ("PHWT", "P")],
+        )
+        with self.assertRaises(MtzColumnNotFoundError):
+            load_density_map_from_columns(
+                mtz_path,
+                "NOT_F",
+                "PHWT",
+                map_type=MapType.TWO_FO_FC,
+            )
+        with self.assertRaises(MtzColumnNotFoundError):
+            load_density_map_from_columns(
+                mtz_path,
+                "FWT",
+                "NOT_PHI",
+                map_type=MapType.TWO_FO_FC,
+            )
+
+    def test_load_spec_map_swallows_only_column_not_found(self):
+        out_dir = tempfile.mkdtemp(prefix="mtz_spec_missing_")
+        self.addCleanup(self._rmtree, out_dir)
+        mtz_path = _make_mtz_with_columns(
+            os.path.join(out_dir, "fwt_only.mtz"),
+            [("FWT", "F"), ("PHWT", "P")],
+        )
+        missing = MtzColumnPair.difference("NOPE", "ALSO_NOPE")
+        self.assertIsNone(_load_spec_map(mtz_path, missing))
+
+        # Non-column ValueErrors must not be treated as absent columns.
+        from unittest.mock import patch
+
+        with patch(
+            "molib.xtal.map.helper.load_density_map_from_columns",
+            side_effect=ValueError("malformed spec"),
+        ):
+            with self.assertRaises(ValueError):
+                _load_spec_map(
+                    mtz_path,
+                    MtzColumnPair.map("FWT", "PHWT"),
+                )
 
     @staticmethod
     def _rmtree(path):

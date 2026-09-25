@@ -19,6 +19,32 @@ from molib.pdb.coordinate.coordinate import Coordinates
 MAP_NEGATIVE_RATIO_THRESHOLD = 0.7
 
 
+class MapType(str, Enum):
+    """Requested electron-density map type used to select MTZ coefficients.
+
+    Values match the canonical ElMo ``MapType`` (``"2Fo-Fc"`` / ``"Fo-Fc"``)
+    so either enum (or the plain string) can be passed to the loaders.
+    """
+
+    TWO_FO_FC = "2Fo-Fc"
+    FO_FC = "Fo-Fc"
+
+    @classmethod
+    def coerce(cls, map_type: "MapType | str") -> "MapType":
+        """Normalize a map type (str or StrEnum) to this enum; raise on unknown."""
+        if isinstance(map_type, cls):
+            return map_type
+        if not isinstance(map_type, str):
+            raise ValueError(f"Unsupported map type: {map_type!r}")
+        try:
+            return cls(map_type)
+        except ValueError:
+            raise ValueError(
+                f"Unsupported map type: {map_type!r}. "
+                f"Expected one of: {[m.value for m in cls]}"
+            ) from None
+
+
 def load_density_map_with_columns(
     mtz_path: str, f_column: str, phi_column: str, sample_rate=0.0
 ) -> tuple[np.ndarray, CrystallographicInfo] | None:
