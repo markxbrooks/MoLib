@@ -75,6 +75,13 @@ def _mtz_f_phi_label_sets(mtz_path: str) -> tuple[dict[str, str], dict[str, str]
     return f_map, p_map
 
 
+class MtzColumnNotFoundError(ValueError):
+    """Raised when the F/PHI column pair for a requested map type is absent.
+
+    Carries the labels that *are* present so callers can decide the
+    fallback instead of the loader silently guessing.
+"""
+
 def _select_map_columns(mtz_path: str, map_type: MapType) -> tuple[str, str]:
     """Deterministically choose the F/PHI columns for a requested map type.
 
