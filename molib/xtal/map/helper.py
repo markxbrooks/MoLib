@@ -10,7 +10,7 @@ import os
 import pathlib
 import re
 from numpy import dtype, ndarray
-from typing import Callable, Optional, Tuple, Any
+from typing import Callable, Any
 
 import gemmi
 import numpy as np
@@ -75,13 +75,6 @@ def _mtz_f_phi_label_sets(mtz_path: str) -> tuple[dict[str, str], dict[str, str]
     return f_map, p_map
 
 
-class MtzColumnNotFoundError(ValueError):
-    """Raised when the F/PHI column pair for a requested map type is absent.
-
-    Carries the labels that *are* present so callers can decide the
-    fallback instead of the loader silently guessing.
-"""
-
 def _select_map_columns(mtz_path: str, map_type: MapType) -> tuple[str, str]:
     """Deterministically choose the F/PHI columns for a requested map type.
 
@@ -98,13 +91,13 @@ def _select_map_columns(mtz_path: str, map_type: MapType) -> tuple[str, str]:
     elif map_type is MapType.FO_FC:
         candidates = _FO_FC_CANDIDATES
     else:
-        raise ValueError(f"Unsupported map type: {map_type!r}")
+        raise MtzColumnNotFoundError(f"Unsupported map type: {map_type!r}")
 
     for f_label, phi_label in candidates:
         if f_label in f_map and phi_label in p_map:
             return f_map[f_label], p_map[phi_label]
 
-    raise ValueError(
+    raise MtzColumnNotFoundError(
         f"No {map_type.value} coefficients found in {mtz_path}. "
         f"Available F columns: {sorted(f_map)}; "
         f"available PHI columns: {sorted(p_map)}"
@@ -1118,7 +1111,7 @@ def load_ccp4_maps(
                     carve_density=True,
                 )
             else:
-                log.info(f"Using standard expansion (no PDB file found)")
+                log.info("Using standard expansion (no PDB file found)")
                 result = load_ccp4_map(map_path, expand_symmetry=expand_symmetry)
 
             if result is None:
@@ -1437,13 +1430,6 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         Expanded volume with symmetry operations applied
     """
     try:
-        import re
-
-        from molib.xtal.uglymol.map.helpers import (
-            extract_symop_text,
-            parse_symmetry_operator_to_matrix,
-        )
-
         log.info(f"🔄 Expanding symmetry for {map_path}")
 
         # Read the raw file to access symmetry operations
@@ -1453,9 +1439,6 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
             return volume
 
         log.info(f"📐 Found {nsymbt} bytes of symmetry operations")
-
-        # Get axis mapping (assuming standard order)
-        ax, ay, az = 0, 1, 2  # Default axis order
 
         # Create expanded volume (2x larger to accommodate symmetry mates)
         expanded_shape = [n * 2 for n in volume.shape]
