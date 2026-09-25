@@ -311,7 +311,6 @@ def load_density_map_from_columns(
 ) -> DensityMapData | None:
     try:
         mtz = gemmi.read_mtz_file(mtz_path)
-        print("xxxxxxxxxxxload_density_map_newxxxxxxxxxxx")
         # Get available column labels
         f_labels = [col.label for col in mtz.columns if col.type == "F"]
         phi_labels = [col.label for col in mtz.columns if col.type == "P"]
