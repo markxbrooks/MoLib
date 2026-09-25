@@ -248,7 +248,15 @@ class MapManager(LogMixin):
         Coefficients are chosen deterministically per requested map type
         (FWT/PH2FOFCWT for 2Fo-Fc, DELFWT/PHDELWT for Fo-Fc). The loader never
         silently substitutes unrelated coefficients.
+
+        CCP4/MAP paths are rejected here; use the CCP4 loader instead.
         """
+        suffix = Path(mtz_file_path).suffix.lower()
+        if suffix in (".map", ".ccp4", ".omap"):
+            self.log_warning(
+                f"Refusing MTZ coefficient load for CCP4/MAP file: {mtz_file_path}"
+            )
+            return
 
         from molib.xtal.map.helper import (
             MapType,

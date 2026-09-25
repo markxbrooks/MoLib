@@ -1208,14 +1208,27 @@ def load_density_map_auto_mtz(
         DensityMapData or None if loading fails
     """
     try:
+        path = pathlib.Path(mtz_path)
+        suffix = path.suffix.lower()
+        if suffix in (".map", ".ccp4", ".omap"):
+            log.error(
+                f"❌ Refusing to read {mtz_path} as MTZ "
+                f"(suffix {suffix!r}); use load_ccp4_map / load_density_map"
+            )
+            return None
+        if suffix and suffix not in (".mtz", ".hkl"):
+            log.warning(
+                f"⚠️ Unexpected suffix {suffix!r} for MTZ auto-load of {mtz_path}"
+            )
+
         resolved_map_type = MapType.coerce(map_type)
-        f_label, phi_label = _select_map_columns(mtz_path, resolved_map_type)
+        f_label, phi_label = _select_map_columns(str(path), resolved_map_type)
         log.info(
             f"Auto-loading MTZ file: {mtz_path} "
             f"(map type: {resolved_map_type.value}, columns: {f_label}/{phi_label})"
         )
         return load_density_map_from_columns(
-            mtz_path,
+            str(path),
             f_label,
             phi_label,
             map_type=resolved_map_type,
