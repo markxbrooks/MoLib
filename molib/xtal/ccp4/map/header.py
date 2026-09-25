@@ -1,4 +1,7 @@
+"""Ccp4MapHeaderLocation"""
+
 class Ccp4MapHeaderLocation:
+    """CCP4 Map Header Location"""
     NC: int = 0
     NR: int = 1
     NS: int = 2

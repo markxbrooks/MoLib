@@ -62,9 +62,9 @@ For reference CCP4 Map header information
 57-256  LABEL(20,10)    10  80 character text labels (ie. A4 format)
 
 """
-
+import dataclasses
 import re
-from typing import Iterable, SupportsBytes, SupportsIndex
+from typing import Iterable, SupportsBytes, SupportsIndex, Any
 
 import numpy as np
 from molib.xtal.ccp4.map.globals import (
@@ -75,6 +75,7 @@ from molib.xtal.ccp4.map.globals import (
 )
 from molib.xtal.ccp4.map.header import Ccp4MapHeaderLocation
 from molib.xtal.ccp4.map.parameters import Ccp4MapParameters
+from molib.xtal.ccp4.map.volume import VolumeStatistics
 from molib.xtal.uglymol.block import Block
 from molib.xtal.uglymol.map.grid_array import GridArray
 from molib.xtal.uglymol.map.helpers import (
@@ -86,6 +87,35 @@ from molib.xtal.uglymol.math.helpers import calculate_stddev
 from molib.xtal.uglymol.unit_cell import UnitCellGeometry
 from typing_extensions import Buffer
 
+_SYMOP_COORDINATE_RE = re.compile(r"^[+-]?([xyz])$")
+_SYMOP_TRANSLATION_RE = re.compile(r"^[+-]?(\d)/(\d)$")
+
+def parse_symop_term(row: list[int], symop, term: str | Any):
+    """parse symop term"""
+    m = _SYMOP_COORDINATE_RE.match(term)
+    if m:
+        pos = {"x": 0, "y": 1, "z": 2}[m["axis"]]
+        row[pos] = sign
+    else:
+        m = _SYMOP_TRANSLATION_RE.match(term)
+        if not m:
+            raise ValueError("What is " + term + " in " + symop)
+
+        row[3] = (
+                sign
+                * int(m["numerator"])
+                / int(m["denominator"])
+        )
+
+@dataclass(slots=True)
+class MapParameters:
+    """Parameters describing a crystallographic density map."""
+
+    n_grid: tuple[int, int, int]
+    unit_cell: UnitCellGeometry
+    map_mode: int
+    map_crs: tuple[int, int, int] = (1, 2, 3) # Axis order
+    start: tuple[int, int, int] = (0, 0, 0)
 
 class ElMap:
     """ElMap"""
@@ -96,6 +126,7 @@ class ElMap:
         self._grid = None
         self._stats = {"mean": 0.0, "rms": 1.0}
         self.block = Block()
+        self.statistics: VolumeStatistics = None
 
     @property
     def unit_cell(self):
@@ -235,7 +266,7 @@ class ElMap:
         )
         idx = (CCP4_HEADER_SIZE + parameters.nsymbt) // bytes_per_voxel
 
-        self._process_stats(
+        self._process_header_stats(
             data_view, parameters.floats, idx, parameters.max_val, parameters.min_val
         )
         self._populate_grid(
@@ -375,18 +406,22 @@ class ElMap:
                         )
                         idx += 1
 
-    def _process_stats(self, data_view, header_floats, idx, max_val, min_val):
-        self.stats["mean"] = header_floats[Ccp4MapHeaderLocation.AMEAN]
-        self.stats["rms"] = header_floats[Ccp4MapHeaderLocation.ARMS]
-        if (
-            self.stats["mean"] < min_val
-            or self.stats["mean"] > max_val
-            or self.stats["rms"] <= 0
-        ):
-            self.stats = calculate_stddev(data_view, idx)
+    def _process_header_stats(self, data_view, header_floats, idx, max_val, min_val):
+        """process CCP4 Header Stats"""
+        mean = header_floats[Ccp4MapHeaderLocation.AMEAN]
+        rms = header_floats[Ccp4MapHeaderLocation.ARMS]
+
+        if mean < min_val or mean > max_val or rms <= 0:
+            calculated = calculate_stddev(data_view, idx)
+            mean = calculated["mean"]
+            rms = calculated["rms"]
+
+        self.stats["mean"] = mean
+        self.stats["rms"] = rms
+        self.statistics = VolumeStatistics(mean=mean, std=rms, min_value=min_val, max_value=max_val)
 
     def _validate_ccp4_map_file_size(self, bytes_per_voxel, map_buffer, n_crs, nsymbt):
-        # Validate file size
+        """Validate file size"""
         expected_size = (
             CCP4_HEADER_SIZE
             + nsymbt
@@ -515,15 +550,6 @@ class ElMap:
             terms = re.split(r"(?=[+-])", ops[i])
             row = [0, 0, 0, 0]
             for term in terms:
-                sign = -1 if term[0] == "-" else 1
-                m = re.match(r"^[+-]?([xyz])$", term)
-                if m:
-                    pos = {"x": 0, "y": 1, "z": 2}[m[1]]
-                    row[pos] = sign
-                else:
-                    m = re.match(r"^[+-]?(\d)/(\d)$", term)
-                    if not m:
-                        raise ValueError("What is " + term + " in " + symop)
-                    row[3] = sign * int(m[1]) / int(m[2])
+                parse_symop_term(row, symop, term)
             mat.append(row)
         return mat

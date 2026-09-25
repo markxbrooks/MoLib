@@ -1,4 +1,5 @@
 import re
+from typing import Any
 
 import numpy as np
 from molib.xtal.ccp4.map.globals import (
@@ -6,6 +7,7 @@ from molib.xtal.ccp4.map.globals import (
     CCP4_SYMOP_CHUNK_SIZE,
     CCP4_SYMOP_REGEX_MATCH,
 )
+from molib.xtal.uglymol.map.elmap import parse_symop_term
 
 
 def vectorized_apply_symmetry(
@@ -16,14 +18,12 @@ def vectorized_apply_symmetry(
     data_view,
     start,
     end,
-    ax,
-    ay,
-    az,
     b0,
     b1,
     n_grid,
     grid,
 ):
+    """deprecated"""
     if not (expand_symmetry and nsymbt > 0):
         return
 
@@ -110,16 +110,7 @@ def parse_symmetry_operator_to_matrix(symmetry_operator: str) -> list:
         for term in terms:
             if not term:  # Skip empty terms
                 continue
-            sign = -1 if term[0] == "-" else 1
-            m = re.match(r"^[+-]?([xyz])$", term)
-            if m:
-                pos = {"x": 0, "y": 1, "z": 2}[m[1]]
-                row[pos] = sign
-            else:
-                m = re.match(r"^[+-]?(\d)/(\d)$", term)
-                if not m:
-                    raise ValueError("What is " + term + " in " + symmetry_operator)
-                row[3] = sign * int(m[1]) / int(m[2])
+            parse_symop_term(row, symmetry_operator, term)
         mat.append(row)
     return mat
 
