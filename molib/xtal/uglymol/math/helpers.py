@@ -27,7 +27,7 @@ def modulo(a, b):
     return reminder if reminder >= 0 else reminder + b
 
 
-def calculate_stddev(a, offset):
+def calculate_stddev(a, offset) -> tuple[float, float]:
     """calculate standard deviation"""
     sum_val = 0
     sq_sum = 0
@@ -37,7 +37,7 @@ def calculate_stddev(a, offset):
         sq_sum += a[i] * a[i]
     mean = sum_val / (alen - offset)
     variance = sq_sum / (alen - offset) - mean * mean
-    return {"mean": mean, "rms": variance**0.5}
+    return mean, variance**0.5
 
 
 def clamp(value, min_value, max_value):

@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 from decologr import Decologr as log
-from molib.xtal.uglymol.map.elmap import ElMap
+from molib.xtal.uglymol.map.ccp4_loader import Ccp4MapLoader
 from molib.xtal.uglymol.map.helpers import parse_symmetry_operator_to_matrix
 
 
@@ -19,7 +19,7 @@ class SymmetryConverter:
     """
 
     def __init__(self):
-        self.elmap = ElMap()
+        self.elmap = None
 
     def apply_symmetry_operation(
         self,
@@ -53,7 +53,7 @@ class SymmetryConverter:
             with open(input_map_path, "rb") as f:
                 map_buffer = f.read()
 
-            self.elmap.from_ccp4(map_buffer, expand_symmetry=False)
+            self.elmap = Ccp4MapLoader().load(map_buffer, expand_symmetry=False)
 
             log.info("✅ Original map loaded:")
             log.info(f"   - Grid dimensions: {self.elmap.grid.dim}")

@@ -2,10 +2,12 @@
 Block
 """
 
+import numpy as np
 from molib.xtal.uglymol.math.marching_cubes import marching_cubes
 
 
 class Block:
+    """Block"""
     def __init__(self):
         self._points = None
         self._values = None
@@ -31,4 +33,5 @@ class Block:
 
     def isosurface(self, iso_level: int, method: str = "marching_cubes"):
         """isosurface"""
-        return marching_cubes(self._size, self._values, self._points, iso_level, method)
+        values = np.asarray(self._values, dtype=np.float64)
+        return marching_cubes(self._size, values, self._points, iso_level, method)
