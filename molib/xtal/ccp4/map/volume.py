@@ -15,6 +15,20 @@ class VolumeStatistics:
     min_value: float
     max_value: float
 
+    @classmethod
+    def from_array(cls, volume: np.ndarray) -> "VolumeStatistics":
+        """Compute statistics for *volume*.
+
+        :param volume: Density array
+        :return: Cached-friendly statistics snapshot
+        """
+        return cls(
+            mean=float(np.mean(volume)),
+            std=float(np.std(volume)),
+            min_value=float(np.min(volume)),
+            max_value=float(np.max(volume)),
+        )
+
     @property
     def mean_threshold(self) -> float:
         """Threshold used to determine whether the mean is near zero."""
@@ -57,26 +71,23 @@ class VolumeStatistics:
 
 @dataclass(slots=True)
 class VolumeData:
-    """volume data"""
+    """Volume array plus derived :class:`VolumeStatistics`."""
+
     volume: np.ndarray
     statistics: VolumeStatistics = field(init=False)
 
     def __post_init__(self) -> None:
-        self.statistics = VolumeStatistics(
-            mean=float(np.mean(self.volume)),
-            std=float(np.std(self.volume)),
-            min=float(np.min(self.volume)),
-            max=float(np.max(self.volume)),
-        )
+        self.statistics = VolumeStatistics.from_array(self.volume)
 
     @property
     def mean_threshold(self) -> float:
-        """mean threshold"""
-        return 2.0 * self.statistics.std
+        """Mean-near-zero threshold (two standard deviations)."""
+        return self.statistics.mean_threshold
 
     @property
     def is_mean_near_zero(self) -> bool:
-        return abs(self.statistics.mean) < self.mean_threshold
+        """Whether the volume mean is near zero."""
+        return self.statistics.is_mean_near_zero
 
     def detect_type(self) -> MapType:
         """Infer the map type from volume statistics."""
@@ -84,10 +95,10 @@ class VolumeData:
         stats = self.statistics
 
         if not (
-                stats.is_mean_near_zero
-                and stats.has_positive_values
-                and stats.has_negative_values
-                and stats.is_symmetric
+            stats.is_mean_near_zero
+            and stats.has_positive_values
+            and stats.has_negative_values
+            and stats.is_symmetric
         ):
             return MapType.UNKNOWN
 
