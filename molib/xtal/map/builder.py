@@ -8,7 +8,7 @@ from typing import Any
 
 from numpy import ndarray
 
-from molib.xtal.map.density import CrystallographicInfo
+from molib.xtal.map.density import CrystallographicInfo, MapType
 from molib.xtal.map.info import MapInfo
 
 DEFAULT_2FOFC_SIGMA_LEVEL = 0.2

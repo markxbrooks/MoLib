@@ -15,6 +15,7 @@ from decologr import LogMixin, Decologr as log
 
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
 from molib.xtal.map.builder import build_map_info, build_map_information_specs
+from molib.xtal.map.density import MapType
 from molib.xtal.map.info import MapInfo
 
 
