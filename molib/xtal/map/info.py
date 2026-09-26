@@ -5,7 +5,7 @@ Info for electron density maps.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 import numpy as np
 
@@ -18,7 +18,7 @@ class MapInfo:
     """Information about an electron density map"""
 
     map_id: str
-    map_type: MapType  # e.g., "2Fo-Fc", "Fo-Fc", "FWT", "DELFWT"
+    map_type: Union[str, "MapType"]  # e.g., "2Fo-Fc", "Fo-Fc", "FWT", "DELFWT"
     f_label: str  # F column label (e.g., "2FOFCWT", "FWT")
     phi_label: str  # PHI column label (e.g., "PH2FOFCWT", "PHWT")
     volume: np.ndarray

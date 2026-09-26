@@ -71,24 +71,66 @@ class MapManager(LogMixin):
         self.log_message(f"   Maps: {list(self.maps.keys())}")
         self.log_message(f"   Default map: {self.default_map}")
 
-    def add_map_if_exists(self, mtz_file_path: str) -> str:
-        """add a map if it exists"""
-        # Create a map ID from the MTZ file path
-        mtz_id = mtz_id_from_file_name(mtz_file_path)
+    def add_map_if_exists(self, map_file_path: str) -> str:
+        """Add maps from an MTZ or CCP4/MAP path if not already present.
 
-        # Check if this map already exists
-        if mtz_id not in self.maps:
-            # Add the map to the manager
-            # We'll need to get the volume data and other info from GLMol
-            # For now, create a placeholder - this will be enhanced later
+        :param map_file_path: Path to an MTZ or CCP4/MAP density file
+        :return: Stem-based map id used for registration
+        """
+        map_id = mtz_id_from_file_name(map_file_path)
+        suffix = Path(map_file_path).suffix.lower()
+
+        # Check if this map already exists (map ids are "{map_id}_2Fo-Fc" etc.)
+        if map_id not in self.maps and f"{map_id}_2Fo-Fc" not in self.maps:
             try:
-                self.load_2fofc_fofc(mtz_file_path, mtz_id)
+                if suffix in (".map", ".ccp4", ".omap"):
+                    self.load_ccp4_file(map_file_path, map_id)
+                else:
+                    self.load_2fofc_fofc(map_file_path, map_id)
             except Exception as ex:
                 self.log_error("Error loading density map", ex)
-                self.create_placeholder_map(mtz_id)
+                self.create_placeholder_map(map_id)
         else:
-            self.log_message(f"Map {mtz_id} already exists in Map Manager")
-        return mtz_id
+            self.log_message(f"Map {map_id} already exists in Map Manager")
+        return map_id
+
+    def load_ccp4_file(self, map_file_path: str, map_id: str) -> None:
+        """Load a single CCP4/MAP volume into the map manager.
+
+        :param map_file_path: Path to a ``.map`` / ``.ccp4`` / ``.omap`` file
+        :param map_id: Base id (usually the file stem)
+        :return: None
+        """
+        from molib.xtal.map.helper import load_ccp4_map
+
+        result = load_ccp4_map(
+            map_file_path,
+            expand_symmetry=False,
+            carve_density=False,
+        )
+        volume, crystallographic_info = _extract_volume_and_info(result)
+        if volume is None:
+            self.log_warning(f"Could not load CCP4 map from {map_file_path}")
+            return
+
+        stem_lower = Path(map_file_path).stem.lower()
+        if stem_lower.endswith("_diff") or stem_lower.endswith("-diff"):
+            map_type = "Fo-Fc"
+            full_id = map_id
+        else:
+            map_type = "2Fo-Fc"
+            full_id = f"{map_id}_2Fo-Fc"
+
+        map_info = build_map_info(
+            map_id=full_id,
+            map_type=map_type,
+            f_label="CCP4_DATA",
+            phi_label="CCP4_DATA",
+            volume=volume,
+            crystallographic_info=crystallographic_info,
+        )
+        self.add_map_from_map_info(map_info, overwrite=True)
+        self.log_message(f"Added CCP4 map to Map Manager: {full_id}")
 
     def create_placeholder_map(self, mtz_id: str):
         """Create placeholder maps anyway"""
@@ -130,6 +172,13 @@ class MapManager(LogMixin):
         map_type_norm = str(map_info.map_type).strip().lower()
         is_difference_map = map_type_norm in {"fo-fc", "fofc", "delfwt", "difference"}
         map_info.is_difference_map = is_difference_map
+        from molib.xtal.map.builder import default_sigma_level_for_map
+
+        # Prefer type-aware defaults when still at the generic MapInfo default.
+        if abs(float(getattr(map_info, "sigma_level", 1.0)) - 1.0) < 1e-9:
+            map_info.sigma_level = default_sigma_level_for_map(
+                map_info.map_type, is_difference_map=is_difference_map
+            )
 
         self.maps[map_info.map_id] = map_info
 
