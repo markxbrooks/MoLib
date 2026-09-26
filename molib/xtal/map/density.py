@@ -14,7 +14,6 @@ from numpy import ndarray, dtype
 
 from picogl.core.mixin.vec3 import Vec3Mixin
 from decologr import Decologr as log
-from molib.pdb.coordinate.coordinate import Coordinates
 
 MAP_NEGATIVE_RATIO_THRESHOLD = 0.7
 
