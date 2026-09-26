@@ -11,12 +11,11 @@ import numpy as np
 
 from molib.xtal.map.density import CrystallographicInfo, MapType
 from molib.xtal.map.render.mode import MapRenderMode
+from picogl.core.rgbcolor import RGBTuple, RGB
 
-RGBTuple = Tuple[float, float, float]
-
-DEFAULT_MAP_COLOR: RGBTuple = (0.0, 0.0, 0.8)
-DEFAULT_POSITIVE_COLOR: RGBTuple = (0.0, 1.0, 0.0)
-DEFAULT_NEGATIVE_COLOR: RGBTuple = (1.0, 0.0, 0.0)
+DEFAULT_MAP_COLOR: RGB = RGBTuple.BLUE
+DEFAULT_POSITIVE_COLOR: RGB = RGBTuple.GREEN
+DEFAULT_NEGATIVE_COLOR: RGB = RGBTuple.RED
 
 
 @dataclass
