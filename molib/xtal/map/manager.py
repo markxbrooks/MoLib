@@ -115,10 +115,10 @@ class MapManager(LogMixin):
 
         stem_lower = Path(map_file_path).stem.lower()
         if stem_lower.endswith("_diff") or stem_lower.endswith("-diff"):
-            map_type = "Fo-Fc"
+            map_type = MapType.FO_FC
             full_id = map_id
         else:
-            map_type = "2Fo-Fc"
+            map_type = MapType.TWO_FO_FC
             full_id = f"{map_id}_2Fo-Fc"
 
         map_info = build_map_info(
@@ -158,8 +158,20 @@ class MapManager(LogMixin):
         except Exception as ex:
             log.warning(f"Could not clear map manager: {ex}")
 
-    def add_map_from_map_info(self, map_info: MapInfo, overwrite: bool = False) -> None:
-        """Add a map from a MapInfo object."""
+    def add_map_from_map_info(
+        self,
+        map_info: MapInfo,
+        overwrite: bool = False,
+        *,
+        render_mode: "MapRenderMode | str | None" = None,
+    ) -> None:
+        """Add a map from a MapInfo object.
+
+        :param map_info: map to register
+        :param overwrite: replace an existing map with the same id
+        :param render_mode: optional session mode applied to ``map_info.render.mode``
+        """
+        from molib.xtal.map.render.mode import MapRenderMode
 
         if map_info.map_id in self.maps and not overwrite:
             raise ValueError(f"Map ID '{map_info.map_id}' already exists.")
@@ -168,17 +180,23 @@ class MapManager(LogMixin):
         if overwrite and map_info.map_id in self.maps:
             del self.maps[map_info.map_id]
 
-        # Create new map info
-        map_type_norm = str(map_info.map_type).strip().lower()
-        is_difference_map = map_type_norm in {"fo-fc", "fofc", "delfwt", "difference"}
-        map_info.is_difference_map = is_difference_map
+        # Ensure map_type is a MapType enum
+        if not isinstance(map_info.map_type, MapType):
+            map_info.map_type = MapType.coerce(map_info.map_type)
+
+        if map_info.render is None:
+            from molib.xtal.map.info import MapRenderSettings
+
+            map_info.render = MapRenderSettings()
+
+        if render_mode is not None:
+            map_info.render.mode = MapRenderMode.coerce(render_mode)
+
         from molib.xtal.map.builder import default_sigma_level_for_map
 
         # Prefer type-aware defaults when still at the generic MapInfo default.
-        if abs(float(getattr(map_info, "sigma_level", 1.0)) - 1.0) < 1e-9:
-            map_info.sigma_level = default_sigma_level_for_map(
-                map_info.map_type, is_difference_map=is_difference_map
-            )
+        if abs(float(map_info.render.sigma_level) - 1.0) < 1e-9:
+            map_info.render.sigma_level = default_sigma_level_for_map(map_info.map_type)
 
         self.maps[map_info.map_id] = map_info
 
@@ -189,6 +207,15 @@ class MapManager(LogMixin):
         log.message(
             f"Added map: {map_info.map_id} ({map_info.map_type}) with {map_info.volume.shape} volume"
         )
+
+    def set_all_render_modes(self, mode: "MapRenderMode | str") -> None:
+        """Set :attr:`MapRenderSettings.mode` on every managed map."""
+        from molib.xtal.map.render.mode import MapRenderMode
+
+        resolved = MapRenderMode.coerce(mode)
+        for map_info in self.maps.values():
+            map_info.render.mode = resolved
+        log.message(f"Set all map render modes to: {resolved.value}")
 
     def get_map(self, map_id: str) -> Optional[MapInfo]:
         """Get a map by ID."""
@@ -243,19 +270,19 @@ class MapManager(LogMixin):
     def update_map_visibility(self, map_id: str, is_visible: bool) -> None:
         """Update map visibility."""
         if map_id in self.maps:
-            self.maps[map_id].is_visible = is_visible
+            self.maps[map_id].render.is_visible = is_visible
             log.message(f"Map {map_id} visibility: {is_visible}")
 
     def update_map_sigma_level(self, map_id: str, sigma_level: float) -> None:
         """Update map sigma level."""
         if map_id in self.maps:
-            self.maps[map_id].sigma_level = sigma_level
+            self.maps[map_id].render.sigma_level = float(sigma_level)
             log.message(f"Map {map_id} sigma level: {sigma_level}")
 
     def update_map_color(self, map_id: str, color: Tuple[float, float, float]) -> None:
         """Update map colour."""
         if map_id in self.maps:
-            self.maps[map_id].color = color
+            self.maps[map_id].render.color = color
             log.message(f"Map {map_id} colour: {color}")
 
     def update_difference_visibility(
@@ -268,9 +295,9 @@ class MapManager(LogMixin):
         if map_id in self.maps:
             map_info = self.maps[map_id]
             if positive_visible is not None:
-                map_info.positive_visible = bool(positive_visible)
+                map_info.render.positive_visible = bool(positive_visible)
             if negative_visible is not None:
-                map_info.negative_visible = bool(negative_visible)
+                map_info.render.negative_visible = bool(negative_visible)
 
     def get_visible_maps(self) -> List[MapInfo]:
         """Get all currently visible maps."""
