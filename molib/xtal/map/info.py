@@ -32,6 +32,12 @@ class MapRenderSettings:
     negative_color: RGBTuple = DEFAULT_NEGATIVE_COLOR
     positive_sigma_level: Optional[float] = None
     negative_sigma_level: Optional[float] = None
+    # Per-map load / carve options (not session-global)
+    carve_density: bool = False
+    carve_density_centroid: bool = False
+    carve_cutoff: float = 4.0
+    centroid_cutoff: float = 15.0
+    convert_to_cartesian: bool = True
 
 
 @dataclass
@@ -133,3 +139,35 @@ class MapInfo:
     @negative_sigma_level.setter
     def negative_sigma_level(self, value: Optional[float]) -> None:
         self.render.negative_sigma_level = value
+
+    @property
+    def carve_density(self) -> bool:
+        return self.render.carve_density
+
+    @carve_density.setter
+    def carve_density(self, value: bool) -> None:
+        self.render.carve_density = bool(value)
+
+    @property
+    def carve_density_centroid(self) -> bool:
+        return self.render.carve_density_centroid
+
+    @carve_density_centroid.setter
+    def carve_density_centroid(self, value: bool) -> None:
+        self.render.carve_density_centroid = bool(value)
+
+    @property
+    def carve_cutoff(self) -> float:
+        return self.render.carve_cutoff
+
+    @carve_cutoff.setter
+    def carve_cutoff(self, value: float) -> None:
+        self.render.carve_cutoff = float(value)
+
+    @property
+    def centroid_cutoff(self) -> float:
+        return self.render.centroid_cutoff
+
+    @centroid_cutoff.setter
+    def centroid_cutoff(self, value: float) -> None:
+        self.render.centroid_cutoff = float(value)

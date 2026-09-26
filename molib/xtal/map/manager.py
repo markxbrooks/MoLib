@@ -94,24 +94,34 @@ class MapManager(LogMixin):
             self.log_message(f"Map {map_id} already exists in Map Manager")
         return map_id
 
-    def load_ccp4_file(self, map_file_path: str, map_id: str) -> None:
+    def load_ccp4_file(
+        self,
+        map_file_path: str,
+        map_id: str,
+        *,
+        render: Optional["MapRenderSettings"] = None,
+        carve_density: bool | None = None,
+        carve_density_centroid: bool | None = None,
+        carve_cutoff: float | None = None,
+        centroid_cutoff: float | None = None,
+        convert_to_cartesian: bool | None = None,
+        expand_symmetry: bool = False,
+        pdb_path: str | None = None,
+        pdb_centroid_or_clicked_position: tuple[float, float, float] | None = None,
+        progress_callback=None,
+    ) -> Optional[MapInfo]:
         """Load a single CCP4/MAP volume into the map manager.
+
+        Carve / cartesian options are **per-map**: taken from ``render`` (or an
+        existing managed map's settings), with explicit kwargs overriding.
 
         :param map_file_path: Path to a ``.map`` / ``.ccp4`` / ``.omap`` file
         :param map_id: Base id (usually the file stem)
-        :return: None
+        :param render: Optional settings to store on the resulting :class:`MapInfo`
+        :return: Registered :class:`MapInfo`, or ``None`` on failure
         """
         from molib.xtal.map.helper import load_ccp4_map
-
-        result = load_ccp4_map(
-            map_file_path,
-            expand_symmetry=False,
-            carve_density=False,
-        )
-        volume, crystallographic_info = _extract_volume_and_info(result)
-        if volume is None:
-            self.log_warning(f"Could not load CCP4 map from {map_file_path}")
-            return
+        from molib.xtal.map.info import MapRenderSettings
 
         stem_lower = Path(map_file_path).stem.lower()
         if stem_lower.endswith("_diff") or stem_lower.endswith("-diff"):
@@ -121,6 +131,80 @@ class MapManager(LogMixin):
             map_type = MapType.TWO_FO_FC
             full_id = f"{map_id}_2Fo-Fc"
 
+        # Prefer explicit render, then existing map, then defaults
+        settings = render
+        if settings is None:
+            existing = self.get_map(full_id) or self.get_map(map_id)
+            if existing is not None and existing.render is not None:
+                settings = existing.render
+            else:
+                settings = MapRenderSettings()
+
+        carve = (
+            bool(carve_density)
+            if carve_density is not None
+            else bool(settings.carve_density)
+        )
+        carve_centroid = (
+            bool(carve_density_centroid)
+            if carve_density_centroid is not None
+            else bool(settings.carve_density_centroid)
+        )
+        cutoff = (
+            float(carve_cutoff)
+            if carve_cutoff is not None
+            else float(settings.carve_cutoff)
+        )
+        c_cutoff = (
+            float(centroid_cutoff)
+            if centroid_cutoff is not None
+            else float(settings.centroid_cutoff)
+        )
+        to_cart = (
+            bool(convert_to_cartesian)
+            if convert_to_cartesian is not None
+            else bool(settings.convert_to_cartesian)
+        )
+
+        # Persist resolved options on the settings bag
+        settings.carve_density = carve
+        settings.carve_density_centroid = carve_centroid
+        settings.carve_cutoff = cutoff
+        settings.centroid_cutoff = c_cutoff
+        settings.convert_to_cartesian = to_cart
+
+        if carve and pdb_path and not carve_centroid:
+            from molib.xtal.map.helper import DensityMapSpec, load_density_map
+
+            result = load_density_map(
+                DensityMapSpec(
+                    map_path=map_file_path,
+                    pdb_path=pdb_path,
+                    expand_symmetry=expand_symmetry,
+                    carve_density=True,
+                    carve_cutoff=cutoff,
+                    carve_density_centroid=False,
+                    progress_callback=progress_callback,
+                )
+            )
+        else:
+            result = load_ccp4_map(
+                map_file_path,
+                expand_symmetry=expand_symmetry,
+                convert_to_cartesian=to_cart,
+                carve_density=carve,
+                carve_cutoff=cutoff,
+                progress_callback=progress_callback,
+                carve_density_centroid=carve_centroid,
+                pdb_centroid_or_clicked_position=pdb_centroid_or_clicked_position,
+                centroid_cutoff=c_cutoff,
+            )
+
+        volume, crystallographic_info = _extract_volume_and_info(result)
+        if volume is None:
+            self.log_warning(f"Could not load CCP4 map from {map_file_path}")
+            return None
+
         map_info = build_map_info(
             map_id=full_id,
             map_type=map_type,
@@ -129,8 +213,10 @@ class MapManager(LogMixin):
             volume=volume,
             crystallographic_info=crystallographic_info,
         )
+        map_info.render = settings
         self.add_map_from_map_info(map_info, overwrite=True)
         self.log_message(f"Added CCP4 map to Map Manager: {full_id}")
+        return map_info
 
     def create_placeholder_map(self, mtz_id: str):
         """Create placeholder maps anyway"""
