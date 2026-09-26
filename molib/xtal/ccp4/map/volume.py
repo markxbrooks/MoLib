@@ -29,6 +29,14 @@ class VolumeStatistics:
             max_value=float(np.max(volume)),
         )
 
+    def log_stats(self):
+        self.log_info(
+            f"Auto-detected density map (treating as 2Fo-Fc): "
+            f"mean={self.mean:.3f}, "
+            f"range=[{self.min_value:.3f}, {self.max_value:.3f}], "
+            f"std={self.std:.3f}",
+        )
+
     @property
     def mean_threshold(self) -> float:
         """Threshold used to determine whether the mean is near zero."""
