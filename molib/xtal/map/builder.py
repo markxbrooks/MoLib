@@ -71,7 +71,7 @@ def build_map_information_specs(
     map_information_specs: dict[str, MapInfo] = {
         "map_2fofc_info": build_map_info(
             map_id=f"{mtz_id}_2Fo-Fc",
-            map_type="2Fo-Fc",
+            map_type=MapType.TWO_FO_FC,
             f_label="2FOFCWT",
             phi_label="PH2FOFCWT",
             volume=volume_2fofc,

@@ -28,6 +28,7 @@ class MapType(str, Enum):
 
     TWO_FO_FC = "2Fo-Fc"
     FO_FC = "Fo-Fc"
+    UNKNOWN = "unknown"
 
     @classmethod
     def coerce(cls, map_type: "MapType | str") -> "MapType":

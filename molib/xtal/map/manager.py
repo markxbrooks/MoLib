@@ -94,7 +94,7 @@ class MapManager(LogMixin):
         """Create placeholder maps anyway"""
         map_info = build_map_info(
             map_id=f"{mtz_id}_2Fo-Fc",
-            map_type="2Fo-Fc",
+            map_type=MapType.TWO_FO_FC,
             f_label="2FOFCWT",
             phi_label="PH2FOFCWT",
             volume=np.zeros((10, 10, 10)),  # Placeholder
