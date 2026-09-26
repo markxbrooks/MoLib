@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 import numpy as np
 
 if TYPE_CHECKING:
-    from molib.xtal.map.density import CrystallographicInfo
+    from molib.xtal.map.density import CrystallographicInfo, MapType
 
 
 @dataclass
@@ -18,7 +18,7 @@ class MapInfo:
     """Information about an electron density map"""
 
     map_id: str
-    map_type: str  # e.g., "2Fo-Fc", "Fo-Fc", "FWT", "DELFWT"
+    map_type: MapType  # e.g., "2Fo-Fc", "Fo-Fc", "FWT", "DELFWT"
     f_label: str  # F column label (e.g., "2FOFCWT", "FWT")
     phi_label: str  # PHI column label (e.g., "PH2FOFCWT", "PHWT")
     volume: np.ndarray
