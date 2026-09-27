@@ -52,7 +52,7 @@ class MapInfo:
     map_type: MapType
     f_label: str
     phi_label: str
-    volume: np.ndarray
+    volume: np.ndarray # AKA the map density data
     crystallographic_info: Optional[CrystallographicInfo] = None
     description: str = ""
     render: MapRenderSettings = field(default_factory=MapRenderSettings)

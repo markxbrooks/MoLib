@@ -1709,7 +1709,6 @@ def carve_density_around_position(
             return density_map
 
         # Convert centroid to numpy array
-        # position = (-46.82485, 38.996235, 55.17638)  # @@@
         centroid_coords = np.array([position])
         log.info(f"Centroid coordinates: {position}")
 
