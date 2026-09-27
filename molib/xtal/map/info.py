@@ -68,15 +68,6 @@ class MapProcessingSettings:
             ),
         )
 
-@dataclass
-class MapProcessingSettingsOld:
-    """Map Processing Settings"""
-    carve_density: bool = False
-    carve_density_centroid: bool = False
-    carve_cutoff: float = 4.0
-    centroid_cutoff: float = 15.0
-    convert_to_cartesian: bool = True
-
 
 @dataclass
 class MapContourSettings:
