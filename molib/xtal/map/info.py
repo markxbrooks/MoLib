@@ -193,43 +193,43 @@ class MapInfo:
 
     @property
     def sigma_level(self) -> float:
-        return self.render.sigma_level
+        return self.render.bundle.twofofc.sigma_level
 
     @sigma_level.setter
     def sigma_level(self, value: float) -> None:
-        self.render.sigma_level = float(value)
+        self.render.bundle.twofofc.sigma_level = float(value)
 
     @property
     def is_visible(self) -> bool:
-        return self.render.is_visible
+        return self.render.bundle.twofofc.is_visible
 
     @is_visible.setter
     def is_visible(self, value: bool) -> None:
-        self.render.is_visible = bool(value)
+        self.render.bundle.twofofc.is_visible = bool(value)
 
     @property
     def color(self) -> RGBTuple:
-        return self.render.color
+        return self.render.bundle.twofofc.color
 
     @color.setter
     def color(self, value: RGBTuple) -> None:
-        self.render.color = value
+        self.render.bundle.twofofc.color = value
 
     @property
     def positive_visible(self) -> bool:
-        return self.render.positive_visible
+        return self.render.bundle.fofc_positive.is_visible
 
     @positive_visible.setter
     def positive_visible(self, value: bool) -> None:
-        self.render.positive_visible = bool(value)
+        self.render.bundle.fofc_positive.is_visible = bool(value)
 
     @property
     def negative_visible(self) -> bool:
-        return self.render.negative_visible
+        return self.render.bundle.fofc_negative.is_visible
 
     @negative_visible.setter
     def negative_visible(self, value: bool) -> None:
-        self.render.negative_visible = bool(value)
+        self.render.bundle.fofc_negative.is_visible = bool(value)
 
     @property
     def positive_color(self) -> RGBTuple:
@@ -241,56 +241,58 @@ class MapInfo:
 
     @property
     def negative_color(self) -> RGBTuple:
-        return self.render.negative_color
+        return self.render.bundle.fofc_negative.color
 
     @negative_color.setter
     def negative_color(self, value: RGBTuple) -> None:
-        self.render.negative_color = value
+        self.render.bundle.fofc_negative.color = value
 
     @property
     def positive_sigma_level(self) -> Optional[float]:
-        return self.render.positive_sigma_level
+        return self.render.bundle.fofc_positive.sigma_level
 
     @positive_sigma_level.setter
     def positive_sigma_level(self, value: Optional[float]) -> None:
-        self.render.positive_sigma_level = value
+        self.render.bundle.fofc_positive.sigma_level = value
 
     @property
     def negative_sigma_level(self) -> Optional[float]:
-        return self.render.negative_sigma_level
+        return self.render.bundle.fofc_negative.sigma_level
 
     @negative_sigma_level.setter
     def negative_sigma_level(self, value: Optional[float]) -> None:
-        self.render.negative_sigma_level = value
+        if not value:
+            return
+        self.render.bundle.fofc_negative.sigma_level = value
 
     @property
     def carve_density(self) -> bool:
-        return self.render.carve_density
+        return self.render.processing.carve_density
 
     @carve_density.setter
     def carve_density(self, value: bool) -> None:
-        self.render.carve_density = bool(value)
+        self.render.processing.carve_density = bool(value)
 
     @property
     def carve_density_centroid(self) -> bool:
-        return self.render.carve_density_centroid
+        return self.render.processing.carve_density_centroid
 
     @carve_density_centroid.setter
     def carve_density_centroid(self, value: bool) -> None:
-        self.render.carve_density_centroid = bool(value)
+        self.render.processing.carve_density_centroid = bool(value)
 
     @property
     def carve_cutoff(self) -> float:
-        return self.render.carve_cutoff
+        return self.render.processing.carve_cutoff
 
     @carve_cutoff.setter
     def carve_cutoff(self, value: float) -> None:
-        self.render.carve_cutoff = float(value)
+        self.render.processing.carve_cutoff = float(value)
 
     @property
     def centroid_cutoff(self) -> float:
-        return self.render.centroid_cutoff
+        return self.render.processing.centroid_cutoff
 
     @centroid_cutoff.setter
     def centroid_cutoff(self, value: float) -> None:
-        self.render.centroid_cutoff = float(value)
+        self.render.processing.centroid_cutoff = float(value)
