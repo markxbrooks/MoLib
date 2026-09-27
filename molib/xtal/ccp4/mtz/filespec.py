@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
-from molib.xtal.map.density import MapType
+from molib.xtal.map.map_type import MapType
 
 
 @dataclass(frozen=True, slots=True)

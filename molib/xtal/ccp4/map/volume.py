@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from molib.xtal.map.density import MapType
+from molib.xtal.map.map_type import MapType
 from molib.xtal.map.density import MAP_NEGATIVE_RATIO_THRESHOLD
 
 

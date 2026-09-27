@@ -8,8 +8,11 @@ from typing import Any
 
 from numpy import ndarray
 
-from molib.xtal.map.density import CrystallographicInfo, MapType
-from molib.xtal.map.info import MapInfo, MapRenderSettings
+from molib.xtal.map.builders.processing import build_map_processing_settings
+from molib.xtal.map.density import CrystallographicInfo
+from molib.xtal.map.map_type import MapType
+from molib.xtal.map.spec import DensityMapSpec
+from molib.xtal.map.info import MapInfo, MapRenderSettings, MapBundleContourSettings, MapProcessingSettings
 from molib.xtal.map.render.mode import MapRenderMode
 
 DEFAULT_2FOFC_SIGMA_LEVEL = 0.2
@@ -58,23 +61,27 @@ def build_map_info(
     sigma_level: float | None = None,
     render_mode: MapRenderMode | str | None = None,
 ) -> MapInfo:
-    """Build a :class:`MapInfo` with coerced :class:`MapType`.
+    """Build a :class:`MapInfo` with coerced :class:`MapType`."""
 
-    ``is_difference_map`` is kept for call-site compatibility. When ``True`` and
-    ``map_type`` still resolves to 2Fo-Fc, the type is forced to Fo-Fc. Difference
-    status on the result is always derived from ``map_type``.
-    """
     resolved_type = MapType.coerce(map_type)
+
     if is_difference_map is True and resolved_type is not MapType.FO_FC:
         resolved_type = MapType.FO_FC
+
     if sigma_level is None:
         sigma_level = default_sigma_level_for_map(resolved_type)
+
     mode = (
         MapRenderMode.coerce(render_mode)
         if render_mode is not None
         else MapRenderMode.ISOSURFACE
     )
     type_label = resolved_type.value
+    bundle = MapBundleContourSettings.for_map(
+        resolved_type,
+        float(sigma_level),
+    )
+
     return MapInfo(
         map_id=map_id,
         map_type=resolved_type,
@@ -83,7 +90,10 @@ def build_map_info(
         volume=volume,
         crystallographic_info=crystallographic_info,
         description=f"{type_label} map ({f_label}/{phi_label})",
-        render=MapRenderSettings(mode=mode, sigma_level=float(sigma_level)),
+        render=MapRenderSettings(
+            mode=mode,
+            bundle=bundle,
+        ),
     )
 
 
@@ -112,3 +122,46 @@ def build_map_information_specs(
         ),
     }
     return map_information_specs
+
+
+def build_density_map_spec_old(
+    *,
+    cutoff: float,
+    expand_symmetry: bool,
+    map_file_path: str,
+    pdb_path: str,
+    progress_callback=None,
+) -> DensityMapSpec:
+    """Build a density-map loading specification."""
+
+    return DensityMapSpec(
+        map_path=map_file_path,
+        pdb_path=pdb_path,
+        expand_symmetry=expand_symmetry,
+        processing=MapProcessingSettings(
+            carve_density=True,
+            carve_cutoff=cutoff,
+        ),
+        progress_callback=progress_callback,
+    )
+
+
+def build_density_map_spec2(carve_cutoff: float | int, carve_density: bool, carve_density_centroid: bool,
+                            centroid_cutoff: float | int, convert_to_cartesian: bool, expand_symmetry: bool,
+                            map_path: str,
+                            pdb_centroid_or_clicked_position: tuple[float | int, float | int, float | int] | None,
+                            progress_callback) -> DensityMapSpec:
+    processing = build_map_processing_settings(carve_cutoff, carve_density, carve_density_centroid, centroid_cutoff,
+                                               convert_to_cartesian)
+
+    spec = DensityMapSpec(
+        map_path=map_path,
+        pdb_path=None,
+        expand_symmetry=expand_symmetry,
+        processing=processing,
+        centroid=pdb_centroid_or_clicked_position,
+        progress_callback=progress_callback,
+    )
+    return spec
+
+

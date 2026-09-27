@@ -25,7 +25,6 @@ from molib.xtal.map.density import (
     transform_grid_vertices_to_cartesian,
 )
 from molib.xtal.map.helper import (
-    MapType,
     DensityMapData,
     load_ccp4_map,
     load_ccp4_map_optimized,
@@ -35,6 +34,7 @@ from molib.xtal.map.helper import (
     _load_spec_map,
     _select_map_columns,
 )
+from molib.xtal.map.map_type import MapType
 
 
 def _make_grid(a, b, c, alpha, beta, gamma, nx, ny, nz):

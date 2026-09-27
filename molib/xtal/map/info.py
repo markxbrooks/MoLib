@@ -9,7 +9,8 @@ from typing import Optional
 
 import numpy as np
 
-from molib.xtal.map.density import CrystallographicInfo, MapType
+from molib.xtal.map.density import CrystallographicInfo
+from molib.xtal.map.map_type import MapType
 from molib.xtal.map.render.mode import MapRenderMode
 from picogl.core.rgbcolor import RGBTuple, RGB
 
@@ -59,6 +60,21 @@ class MapBundleContourSettings:
         )
     )
 
+    @classmethod
+    def for_map(
+        cls,
+        map_type: MapType,
+        sigma_level: float,
+    ) -> "MapBundleContourSettings":
+        settings = cls()
+
+        if map_type is MapType.TWO_FO_FC:
+            settings.twofofc.sigma_level = sigma_level
+        elif map_type is MapType.FO_FC:
+            settings.fofc_positive.sigma_level = sigma_level
+
+        return settings
+
 
 @dataclass
 class MapRenderSettings:
@@ -96,13 +112,21 @@ class MapRenderSettings:
 
     @property
     def negative_color(self):
-        return self.bundle.fofc_positive.color
+        return self.bundle.fofc_negativeositive.color
 
     @negative_color.setter
     def negative_color(self, value):
         self.bundle.fofc_negative.color = value
 
     # ========= Sigma Levels - now deprecated - please use map contour info ===== #
+
+    @property
+    def sigma_level(self):
+        return self.bundle.twofofc.sigma_level
+
+    @sigma_level.setter
+    def sigma_level(self, value):
+        self.bundle.twofofc.sigma_level = value
 
     @property
     def positive_sigma_level(self):
@@ -179,6 +203,9 @@ class MapInfo:
     crystallographic_info: Optional[CrystallographicInfo] = None
     description: str = ""
     render: MapRenderSettings = field(default_factory=MapRenderSettings)
+    processing: MapProcessingSettings = field(
+        default_factory=MapProcessingSettings
+    )
 
     def __post_init__(self) -> None:
         if self.render is None:

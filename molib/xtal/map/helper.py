@@ -19,6 +19,9 @@ from molib.xtal.ccp4.mtz.filespec import MtzFileSpec, MtzDensitySpec
 from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
 from molib.xtal.ccp4.mtz.errors import MtzColumnNotFoundError
 from molib.xtal.info.resolve import normalize_crystallographic_info_from_dict
+from molib.xtal.map.builders.processing import build_map_processing_settings
+from molib.xtal.map.builders.density import build_density_map_spec
+from molib.xtal.map.spec import DensityMapSpec
 from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
     parse_symmetry_operator_to_matrix,
@@ -26,35 +29,14 @@ from molib.xtal.uglymol.map.helpers import (
 from molib.xtal.map.density import (
     AxisOrder,
     CrystallographicInfo,
-    MapType,
     crystallographic_info_from_grid,
 )
+from molib.xtal.map.map_type import MapType
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
 faulthandler.enable()
 
 ORIGIN = (0.0, 0.0, 0.0)
-
-
-@dataclass(slots=True)
-class DensityMapSpec:
-    """Specification for loading and processing a density map."""
-
-    map_path: str | pathlib.Path  # mtz or ccp4map path
-    pdb_path: str | pathlib.Path | None = None  # pdb file path
-
-    mtz: MtzDensitySpec | None = None
-    expand_symmetry: bool = True
-
-    carve_density: bool = True
-    carve_cutoff: float = 4.0
-
-    carve_density_centroid: bool = False
-    centroid: tuple[float, float, float] | None = None
-    centroid_cutoff: float = 15.0
-
-    progress_callback: Callable | None = None
-
 
 _TWO_FO_FC_CANDIDATES = (
     ("FWT", "PHWT"),
@@ -786,8 +768,8 @@ def load_density_map(spec: DensityMapSpec) -> DensityMapData | None:
             pdb_path=resolve_pdb_path(map_path, spec.pdb_path),
             expand_symmetry=spec.expand_symmetry,
             convert_to_cartesian=False,
-            carve_density=spec.carve_density,
-            carve_cutoff=spec.carve_cutoff,
+            carve_density=spec.processing.carve_density,
+            carve_cutoff=spec.processing.carve_cutoff,
             carve_density_centroid=spec.carve_density_centroid,
             centroid=spec.centroid,
             centroid_cutoff=spec.centroid_cutoff,
@@ -1007,7 +989,6 @@ def carve_density_with_gemmi(
         log.warning("Returning original map without carving")
         return ccp4_map
 
-
 def load_ccp4_map(
     map_path: str,
     expand_symmetry: bool = True,
@@ -1019,42 +1000,22 @@ def load_ccp4_map(
     pdb_centroid_or_clicked_position: tuple[float, float, float] | None = None,
     centroid_cutoff: float = 15.0,
 ) -> DensityMapData | None:
+    """Load a CCP4 map using Gemmi.
+
+    Backward-compatible wrapper around :func:`load_density_map`.
     """
-    Load a CCP4 map using Gemmi.
+    processing = build_map_processing_settings(carve_cutoff=carve_cutoff,
+                                               carve_density=carve_density,
+                                               carve_density_centroid=carve_density_centroid,
+                                               centroid_cutoff=centroid_cutoff,
+                                               convert_to_cartesian=convert_to_cartesian)
+    spec = build_density_map_spec(expand_symmetry=expand_symmetry,
+                                  map_path=map_path,
+                                  progress_callback=progress_callback,
+                                  processing=processing,
+                                  centroid=pdb_centroid_or_clicked_position)
 
-    Backward-compatible wrapper around :func:`load_density_map` (CCP4 branch).
-    The centroid argument keeps its historical name
-    ``pdb_centroid_or_clicked_position``; the loader itself only needs the
-    Cartesian-Å coordinate, and the caller decides whether it came from a PDB
-    centroid, a mouse click, or the unit-cell center.
-
-    Args:
-        map_path: Path to a CCP4 map (``.map``, ``.ccp4``, …).
-        expand_symmetry: Whether to expand symmetry operations (default: True)
-        convert_to_cartesian: Whether to convert from fractional to cartesian coordinates (default: False)
-        carve_density: Whether to carve density around protein structure (default: True)
-        carve_cutoff: Distance cutoff for protein carving in Å (default: 4.0)
-        progress_callback: Callback function for progress updates
-        carve_density_centroid: Whether to carve density around centroid (default: False)
-        pdb_centroid_or_clicked_position: Tuple of (x, y, z) Cartesian Å coordinates for centroid carving (default: None — falls back to unit-cell center)
-        centroid_cutoff: Distance cutoff for centroid carving in Å (default: 15.0)
-
-    Returns:
-        DensityMapData (volume + crystallographic_info) or None if loading fails
-    """
-    return load_density_map(
-        DensityMapSpec(
-            map_path=map_path,
-            pdb_path=None,
-            expand_symmetry=expand_symmetry,
-            carve_density=carve_density,
-            carve_cutoff=carve_cutoff,
-            carve_density_centroid=carve_density_centroid,
-            centroid=pdb_centroid_or_clicked_position,
-            centroid_cutoff=centroid_cutoff,
-            progress_callback=progress_callback,
-        )
-    )
+    return load_density_map(spec)
 
 
 def load_ccp4_maps(
