@@ -5,7 +5,7 @@ Info for electron density maps.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
@@ -19,25 +19,148 @@ DEFAULT_NEGATIVE_COLOR: RGB = RGBTuple.RED
 
 
 @dataclass
-class MapRenderSettings:
-    """How the user wants a map displayed (strategy + contour/colour state)."""
-
-    mode: MapRenderMode = MapRenderMode.ISOSURFACE
-    sigma_level: float = 1.0
-    is_visible: bool = True
-    color: RGBTuple = DEFAULT_MAP_COLOR
-    positive_visible: bool = True
-    negative_visible: bool = True
-    positive_color: RGBTuple = DEFAULT_POSITIVE_COLOR
-    negative_color: RGBTuple = DEFAULT_NEGATIVE_COLOR
-    positive_sigma_level: Optional[float] = None
-    negative_sigma_level: Optional[float] = None
-    # Per-map load / carve options (not session-global)
+class MapProcessingSettings:
+    """Map Processing Settings"""
     carve_density: bool = False
     carve_density_centroid: bool = False
     carve_cutoff: float = 4.0
     centroid_cutoff: float = 15.0
     convert_to_cartesian: bool = True
+
+
+@dataclass
+class MapContourSettings:
+    """Map Contour Settings"""
+    is_visible: bool = True
+    sigma_level: float = 1.0
+    color: RGBTuple = DEFAULT_MAP_COLOR
+
+
+@dataclass
+class MapBundleContourSettings:
+    """Contour settings for the standard map bundle."""
+
+    twofofc: MapContourSettings = field(
+        default_factory=lambda: MapContourSettings(
+            sigma_level=1.0,
+            color=DEFAULT_MAP_COLOR,
+        )
+    )
+    fofc_positive: MapContourSettings = field(
+        default_factory=lambda: MapContourSettings(
+            sigma_level=3.0,
+            color=DEFAULT_POSITIVE_COLOR,
+        )
+    )
+    fofc_negative: MapContourSettings = field(
+        default_factory=lambda: MapContourSettings(
+            sigma_level=-3.0,
+            color=DEFAULT_NEGATIVE_COLOR,
+        )
+    )
+
+
+@dataclass
+class MapRenderSettings:
+    """How the user wants a map displayed (strategy + contour/colour state)."""
+
+    mode: MapRenderMode = MapRenderMode.ISOSURFACE
+    bundle: MapBundleContourSettings = field(
+        default_factory=MapBundleContourSettings
+    )
+    processing: MapProcessingSettings = field(
+        default_factory=MapProcessingSettings
+    )
+
+    ####  ========== Migration shims ==================== ############
+
+    # ========= Visibility - now deprecated - please use map contour info ===== #
+
+    @property
+    def is_visible(self):
+        return self.bundle.twofofc.is_visible
+
+    @is_visible.setter
+    def is_visible(self, value):
+        self.bundle.twofofc.is_visible = value
+
+    # ========= Map Colors - now deprecated - please use map contour info ===== #
+
+    @property
+    def positive_color(self):
+        return self.bundle.fofc_positive.color
+
+    @positive_color.setter
+    def positive_color(self, value):
+        self.bundle.fofc_positive.color = value
+
+    @property
+    def negative_color(self):
+        return self.bundle.fofc_positive.color
+
+    @negative_color.setter
+    def negative_color(self, value):
+        self.bundle.fofc_negative.color = value
+
+    # ========= Sigma Levels - now deprecated - please use map contour info ===== #
+
+    @property
+    def positive_sigma_level(self):
+        return self.bundle.fofc_positive.sigma_level
+
+    @positive_sigma_level.setter
+    def positive_sigma_level(self, value):
+        self.bundle.fofc_positive.sigma_level = value
+
+    @property
+    def negative_sigma_level(self):
+        return self.bundle.fofc_negative.sigma_level
+
+    @negative_sigma_level.setter
+    def negative_sigma_level(self, value):
+        self.bundle.fofc_negative.sigma_level = value
+
+    # =========    Carving settings - now deprecated - please use map processing info ===== #
+
+    @property
+    def carve_density(self):
+        return self.processing.carve_density
+
+    @carve_density.setter
+    def carve_density(self, value):
+        self.processing.carve_density = value
+
+    @property
+    def carve_density_centroid(self):
+        return self.processing.carve_density_centroid
+
+    @carve_density_centroid.setter
+    def carve_density_centroid(self, value):
+        self.processing.carve_density_centroid = value
+
+    @property
+    def carve_cutoff(self):
+        return self.processing.carve_cutoff
+
+    @carve_cutoff.setter
+    def carve_cutoff(self, value):
+        self.processing.carve_cutoff = value
+
+    @property
+    def centroid_cutoff(self):
+        return self.processing.centroid_cutoff
+
+    @centroid_cutoff.setter
+    def centroid_cutoff(self, value):
+        self.processing.centroid_cutoff = value
+
+    @property
+    def convert_to_cartesian(self):
+        return self.processing.convert_to_cartesian
+
+    @convert_to_cartesian.setter
+    def convert_to_cartesian(self, value):
+        self.processing.convert_to_cartesian = value
 
 
 @dataclass

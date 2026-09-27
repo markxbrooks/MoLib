@@ -16,7 +16,7 @@ from decologr import LogMixin, Decologr as log
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
 from molib.xtal.map.builder import build_map_info, build_map_information_specs
 from molib.xtal.map.density import MapType
-from molib.xtal.map.info import MapInfo
+from molib.xtal.map.info import MapInfo, MapProcessingSettings
 
 
 def mtz_id_from_file_name(mtz_file_path: str) -> str:
@@ -121,7 +121,6 @@ class MapManager(LogMixin):
         :return: Registered :class:`MapInfo`, or ``None`` on failure
         """
         from molib.xtal.map.helper import load_ccp4_map
-        from molib.xtal.map.info import MapRenderSettings
 
         stem_lower = Path(map_file_path).stem.lower()
         if stem_lower.endswith("_diff") or stem_lower.endswith("-diff"):
@@ -132,13 +131,13 @@ class MapManager(LogMixin):
             full_id = f"{map_id}_2Fo-Fc"
 
         # Prefer explicit render, then existing map, then defaults
-        settings = render
+        settings = render.processing if hasattr(render, "processing") else None
         if settings is None:
             existing = self.get_map(full_id) or self.get_map(map_id)
             if existing is not None and existing.render is not None:
-                settings = existing.render
+                settings = existing.render.processing
             else:
-                settings = MapRenderSettings()
+                settings = MapProcessingSettings()
 
         carve = (
             bool(carve_density)
@@ -213,7 +212,7 @@ class MapManager(LogMixin):
             volume=volume,
             crystallographic_info=crystallographic_info,
         )
-        map_info.render = settings
+        map_info.render.processing = settings
         self.add_map_from_map_info(map_info, overwrite=True)
         self.log_message(f"Added CCP4 map to Map Manager: {full_id}")
         return map_info
