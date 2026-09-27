@@ -124,6 +124,7 @@ class DensityMapData:
     map_type: MapType | None = None
 
 
+
 @dataclass
 class SimpleHeader:
     """Minimal CCP4 header view used by the symmetry-expansion helpers."""

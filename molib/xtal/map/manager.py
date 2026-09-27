@@ -100,17 +100,6 @@ class MapManager(LogMixin):
         self,
         map_file_path: str,
         map_id: str,
-        *,
-        map_processing_settings: Optional["MapProcessingSettings"] = None,
-        carve_density: bool | None = None,
-        carve_density_centroid: bool | None = None,
-        carve_cutoff: float | None = None,
-        centroid_cutoff: float | None = None,
-        convert_to_cartesian: bool | None = None,
-        expand_symmetry: bool = False,
-        pdb_path: str | None = None,
-        pdb_centroid_or_clicked_position: tuple[float, float, float] | None = None,
-        progress_callback=None,
     ) -> Optional[MapInfo]:
         """Load a single CCP4/MAP volume into the map manager.
 
@@ -132,66 +121,16 @@ class MapManager(LogMixin):
             map_type = MapType.TWO_FO_FC
             full_id = f"{map_id}_2Fo-Fc"
 
-        map_processing_settings = self.resolve_map_processing_setting(full_id, map_id, map_processing_settings)
-
-        carve = (
-            bool(carve_density)
-            if carve_density is not None
-            else bool(map_processing_settings.carve_density)
+        from molib.xtal.map.helper import load_density_map
+        processing = MapProcessingSettings()
+        spec = build_density_map_spec(
+            map_path=map_file_path,
+            pdb_path=None,
+            expand_symmetry=False,
+            processing=processing,
+            progress_callback=None,
         )
-        carve_centroid = (
-            bool(carve_density_centroid)
-            if carve_density_centroid is not None
-            else bool(map_processing_settings.carve_density_centroid)
-        )
-        cutoff = (
-            float(carve_cutoff)
-            if carve_cutoff is not None
-            else float(map_processing_settings.carve_cutoff)
-        )
-        c_cutoff = (
-            float(centroid_cutoff)
-            if centroid_cutoff is not None
-            else float(map_processing_settings.centroid_cutoff)
-        )
-        to_cart = (
-            bool(convert_to_cartesian)
-            if convert_to_cartesian is not None
-            else bool(map_processing_settings.convert_to_cartesian)
-        )
-
-        # Persist resolved options on the settings bag
-        map_processing_settings.carve_density = carve
-        map_processing_settings.carve_density_centroid = carve_centroid
-        map_processing_settings.carve_cutoff = cutoff
-        map_processing_settings.centroid_cutoff = c_cutoff
-        map_processing_settings.convert_to_cartesian = to_cart
-
-        if carve and pdb_path and not carve_centroid:
-            from molib.xtal.map.helper import load_density_map
-            processing = build_map_processing_settings(carve_cutoff=cutoff,
-                                                       carve_density=carve,
-                                                       carve_density_centroid=carve_centroid,
-                                                       centroid_cutoff=c_cutoff,
-                                                       convert_to_cartesian=to_cart)
-            spec = build_density_map_spec(expand_symmetry=expand_symmetry,
-                                          map_path=map_file_path,
-                                          pdb_path=pdb_path,
-                                          processing=processing,
-                                          progress_callback=progress_callback)
-            result = load_density_map(spec)
-        else:
-            result = load_ccp4_map(
-                map_file_path,
-                expand_symmetry=expand_symmetry,
-                convert_to_cartesian=to_cart,
-                carve_density=carve,
-                carve_cutoff=cutoff,
-                progress_callback=progress_callback,
-                carve_density_centroid=carve_centroid,
-                pdb_centroid_or_clicked_position=pdb_centroid_or_clicked_position,
-                centroid_cutoff=c_cutoff,
-            )
+        result = load_density_map(spec)
 
         volume, crystallographic_info = _extract_volume_and_info(result)
         if volume is None:
@@ -206,7 +145,7 @@ class MapManager(LogMixin):
             volume=volume,
             crystallographic_info=crystallographic_info,
         )
-        map_info.render.processing = map_processing_settings
+        map_info.processing = spec.processing
         self.add_map_from_map_info(map_info, overwrite=True)
         self.log_message(f"Added CCP4 map to Map Manager: {full_id}")
         return map_info

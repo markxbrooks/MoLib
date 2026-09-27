@@ -19,8 +19,57 @@ DEFAULT_POSITIVE_COLOR: RGB = RGBTuple.GREEN
 DEFAULT_NEGATIVE_COLOR: RGB = RGBTuple.RED
 
 
-@dataclass
+@dataclass(slots=True)
 class MapProcessingSettings:
+    """Settings controlling density-map processing."""
+
+    carve_density: bool = True
+    carve_cutoff: float = 4.0
+    carve_density_centroid: bool = False
+    centroid_cutoff: float = 15.0
+    convert_to_cartesian: bool = False
+
+    def with_overrides(
+        self,
+        *,
+        carve_density: bool | None = None,
+        carve_density_centroid: bool | None = None,
+        carve_cutoff: float | None = None,
+        centroid_cutoff: float | None = None,
+        convert_to_cartesian: bool | None = None,
+    ) -> "MapProcessingSettings":
+        """Return a copy with non-None values overridden."""
+
+        return MapProcessingSettings(
+            carve_density=(
+                self.carve_density
+                if carve_density is None
+                else carve_density
+            ),
+            carve_density_centroid=(
+                self.carve_density_centroid
+                if carve_density_centroid is None
+                else carve_density_centroid
+            ),
+            carve_cutoff=(
+                self.carve_cutoff
+                if carve_cutoff is None
+                else float(carve_cutoff)
+            ),
+            centroid_cutoff=(
+                self.centroid_cutoff
+                if centroid_cutoff is None
+                else float(centroid_cutoff)
+            ),
+            convert_to_cartesian=(
+                self.convert_to_cartesian
+                if convert_to_cartesian is None
+                else convert_to_cartesian
+            ),
+        )
+
+@dataclass
+class MapProcessingSettingsOld:
     """Map Processing Settings"""
     carve_density: bool = False
     carve_density_centroid: bool = False
@@ -84,9 +133,6 @@ class MapRenderSettings:
     bundle: MapBundleContourSettings = field(
         default_factory=MapBundleContourSettings
     )
-    processing: MapProcessingSettings = field(
-        default_factory=MapProcessingSettings
-    )
 
     ####  ========== Migration shims ==================== ############
 
@@ -112,7 +158,7 @@ class MapRenderSettings:
 
     @property
     def negative_color(self):
-        return self.bundle.fofc_negativeositive.color
+        return self.bundle.fofc_negative.color
 
     @negative_color.setter
     def negative_color(self, value):
