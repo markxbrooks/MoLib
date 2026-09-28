@@ -244,6 +244,19 @@ class MapInfo:
         default_factory=MapProcessingSettings
     )
 
+    @property
+    def is_visible(self) -> bool:
+        """Return whether any contour of this map is currently visible."""
+
+        if self.map_type is MapType.FO_FC:
+            bundle = self.render.bundle
+            return (
+                    bundle.fofc_positive.is_visible
+                    or bundle.fofc_negative.is_visible
+            )
+
+        return self.render.bundle.twofofc.is_visible
+
     def __post_init__(self) -> None:
         if self.render is None:
             self.render = MapRenderSettings()

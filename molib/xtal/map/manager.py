@@ -333,9 +333,13 @@ class MapManager(LogMixin):
             if negative_visible is not None:
                 map_info.render.bundle.fofc_negative.is_visible = bool(negative_visible)
 
-    def get_visible_maps(self) -> List[MapInfo]:
+    def get_visible_maps(self) -> list[MapInfo]:
         """Get all currently visible maps."""
-        return [map_info for map_info in self.maps.values() if map_info.is_visible]
+        return [
+            map_info
+            for map_info in self.maps.values()
+            if map_info.is_visible
+        ]
 
     def get_map_summary(self) -> Dict[str, Dict]:
         """Get summary information for all maps."""
