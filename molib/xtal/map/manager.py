@@ -15,7 +15,7 @@ from decologr import LogMixin, Decologr as log
 
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
 from molib.xtal.map.builder import build_map_info, build_map_information_specs
-from molib.xtal.map.builders.processing import build_map_processing_settings
+from molib.xtal.map.helper import load_density_map
 from molib.xtal.map.builders.density import build_density_map_spec
 from molib.xtal.map.map_type import MapType
 from molib.xtal.map.info import MapInfo, MapProcessingSettings
@@ -42,6 +42,27 @@ def map_from_coefficients(
     from molib.xtal.map.helper import load_maps_from_mtz_file_spec
 
     return load_maps_from_mtz_file_spec(spec)
+
+
+def resolve_map_type(map_file_path: str, map_id: str) -> tuple[str, MapType]:
+    stem_lower = Path(map_file_path).stem.lower()
+    if stem_lower.endswith("_diff") or stem_lower.endswith("-diff"):
+        map_type = MapType.FO_FC
+        full_id = map_id
+    else:
+        map_type = MapType.TWO_FO_FC
+        full_id = f"{map_id}_2Fo-Fc"
+    return full_id, map_type
+
+
+def resolve_map_processing_setting(settings: MapProcessingSettings | None, existing: str) -> MapProcessingSettings:
+    """Prefer explicit render, then existing map, then defaults"""
+    if settings is None:
+        if existing is not None and hasattr(existing, "processing"):
+            settings = existing.processing
+        else:
+            settings = MapProcessingSettings()
+    return settings
 
 
 class MapManager(LogMixin):
@@ -111,17 +132,8 @@ class MapManager(LogMixin):
         :param render: Optional settings to store on the resulting :class:`MapInfo`
         :return: Registered :class:`MapInfo`, or ``None`` on failure
         """
-        from molib.xtal.map.helper import load_ccp4_map
+        full_id, map_type = resolve_map_type(map_file_path, map_id)
 
-        stem_lower = Path(map_file_path).stem.lower()
-        if stem_lower.endswith("_diff") or stem_lower.endswith("-diff"):
-            map_type = MapType.FO_FC
-            full_id = map_id
-        else:
-            map_type = MapType.TWO_FO_FC
-            full_id = f"{map_id}_2Fo-Fc"
-
-        from molib.xtal.map.helper import load_density_map
         processing = MapProcessingSettings()
         spec = build_density_map_spec(
             map_path=map_file_path,
@@ -150,15 +162,9 @@ class MapManager(LogMixin):
         self.log_message(f"Added CCP4 map to Map Manager: {full_id}")
         return map_info
 
-    def resolve_map_processing_setting(self, full_id: str, map_id: str, settings: MapProcessingSettings | None) -> MapProcessingSettings:
-        # Prefer explicit render, then existing map, then defaults
-        if settings is None:
-            existing = self.get_map(full_id) or self.get_map(map_id)
-            if existing is not None and hasattr(existing, "processing"):
-                settings = existing.processing
-            else:
-                settings = MapProcessingSettings()
-        return settings
+    def resolve_map_id(self, full_id: str, map_id: str) -> MapInfo | None:
+        """resolve the map id"""
+        return self.get_map(full_id) or self.get_map(map_id)
 
     def create_placeholder_map(self, mtz_id: str):
         """Create placeholder maps anyway"""
@@ -323,9 +329,9 @@ class MapManager(LogMixin):
         if map_id in self.maps:
             map_info = self.maps[map_id]
             if positive_visible is not None:
-                map_info.render.positive_visible = bool(positive_visible)
+                map_info.render.bundle.fofc_positive.is_visible = bool(positive_visible)
             if negative_visible is not None:
-                map_info.render.negative_visible = bool(negative_visible)
+                map_info.render.bundle.fofc_negative.is_visible = bool(negative_visible)
 
     def get_visible_maps(self) -> List[MapInfo]:
         """Get all currently visible maps."""
