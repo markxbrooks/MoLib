@@ -2,12 +2,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from decologr import LogMixin
 from molib.xtal.map.map_type import MapType
 from molib.xtal.map.density import MAP_NEGATIVE_RATIO_THRESHOLD
 
 
 @dataclass(frozen=True, slots=True)
-class VolumeStatistics:
+class VolumeStatistics(LogMixin):
     """Statistical properties of a volume."""
 
     mean: float
