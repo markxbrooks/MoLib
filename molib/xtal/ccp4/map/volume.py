@@ -1,3 +1,10 @@
+"""
+VolumeStatistics and VolumeData
+
+For the analysis of Electron Density data
+"""
+
+
 from dataclasses import dataclass, field
 
 import numpy as np
