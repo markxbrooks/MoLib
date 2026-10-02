@@ -3,8 +3,7 @@ VolumeStatistics and VolumeData
 
 For the analysis of Electron Density data
 """
-
-
+import json
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -36,6 +35,21 @@ class VolumeStatistics(LogMixin):
             min_value=float(np.min(volume)),
             max_value=float(np.max(volume)),
         )
+
+    @property
+    def as_json(self) -> str:
+        """as json"""
+        return json.dumps(self.as_dict)
+
+    @property
+    def as_dict(self) -> dict[str, float]:
+        """to dict"""
+        return {
+            "mean": self.mean,
+            "std": self.std,
+            "min_value": self.min_value,
+            "max_value": self.max_value,
+        }
 
     def log_stats(self):
         self.log_info(
