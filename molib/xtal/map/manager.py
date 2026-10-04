@@ -205,7 +205,7 @@ class MapManager(LogMixin):
         :param overwrite: replace an existing map with the same id
         :param render_mode: optional session mode applied to ``map_info.render.mode``
         """
-        from molib.xtal.map.render.mode import MapRenderMode
+        from molib.xtal.map.render.mode import IsosurfaceMapRenderMode
 
         if map_info.map_id in self.maps and not overwrite:
             raise ValueError(f"Map ID '{map_info.map_id}' already exists.")
@@ -224,7 +224,7 @@ class MapManager(LogMixin):
             map_info.render = MapRenderSettings()
 
         if render_mode is not None:
-            map_info.render.mode = MapRenderMode.coerce(render_mode)
+            map_info.render.mode = IsosurfaceMapRenderMode.coerce(render_mode)
 
         from molib.xtal.map.builder import default_sigma_level_for_map
 
@@ -244,9 +244,9 @@ class MapManager(LogMixin):
 
     def set_all_render_modes(self, mode: "MapRenderMode | str") -> None:
         """Set :attr:`MapRenderSettings.mode` on every managed map."""
-        from molib.xtal.map.render.mode import MapRenderMode
+        from molib.xtal.map.render.mode import IsosurfaceMapRenderMode
 
-        resolved = MapRenderMode.coerce(mode)
+        resolved = IsosurfaceMapRenderMode.coerce(mode)
         for map_info in self.maps.values():
             map_info.render.mode = resolved
         log.message(f"Set all map render modes to: {resolved.value}")

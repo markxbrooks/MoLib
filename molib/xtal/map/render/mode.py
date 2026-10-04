@@ -10,24 +10,24 @@ from __future__ import annotations
 from enum import Enum
 
 
-class MapRenderMode(str, Enum):
+class IsosurfaceMapRenderMode(str, Enum):
     """Rendering strategy for electron-density maps."""
 
-    ISOSURFACE = "isosurface"
+    UNIT_CELL = "isosurface"
     CONTINUOUS_LOCAL = "continuous_local"
 
     @property
     def requires_mesh(self) -> bool:
         """Whether this mode draws from full-volume isosurface meshes."""
-        return self is MapRenderMode.ISOSURFACE
+        return self is IsosurfaceMapRenderMode.UNIT_CELL
 
     @property
     def supports_density_coloring(self) -> bool:
         """Whether this mode samples local density continuously."""
-        return self is MapRenderMode.CONTINUOUS_LOCAL
+        return self is IsosurfaceMapRenderMode.CONTINUOUS_LOCAL
 
     @classmethod
-    def coerce(cls, value: "MapRenderMode | str") -> "MapRenderMode":
+    def coerce(cls, value: "IsosurfaceMapRenderMode | str") -> "IsosurfaceMapRenderMode":
         """Normalize a mode string or enum member."""
         if isinstance(value, cls):
             return value
@@ -40,7 +40,7 @@ class MapRenderMode(str, Enum):
             ) from exc
 
 
-MAP_RENDER_MODES: tuple[MapRenderMode, ...] = (
-    MapRenderMode.ISOSURFACE,
-    MapRenderMode.CONTINUOUS_LOCAL,
+MAP_RENDER_MODES: tuple[IsosurfaceMapRenderMode, ...] = (
+    IsosurfaceMapRenderMode.UNIT_CELL,
+    IsosurfaceMapRenderMode.CONTINUOUS_LOCAL,
 )

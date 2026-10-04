@@ -13,7 +13,7 @@ from molib.xtal.map.density import CrystallographicInfo
 from molib.xtal.map.map_type import MapType
 from molib.xtal.map.spec import DensityMapSpec
 from molib.xtal.map.info import MapInfo, MapRenderSettings, MapBundleContourSettings, MapProcessingSettings
-from molib.xtal.map.render.mode import MapRenderMode
+from molib.xtal.map.render.mode import IsosurfaceMapRenderMode
 
 DEFAULT_2FOFC_SIGMA_LEVEL = 0.2
 DEFAULT_FOFC_SIGMA_LEVEL = 1.0
@@ -59,7 +59,7 @@ def build_map_info(
     phi_label: str = "PH2FOFCWT",
     volume: ndarray = None,
     sigma_level: float | None = None,
-    render_mode: MapRenderMode | str | None = None,
+    render_mode: IsosurfaceMapRenderMode | str | None = None,
 ) -> MapInfo:
     """Build a :class:`MapInfo` with coerced :class:`MapType`."""
 
@@ -72,9 +72,9 @@ def build_map_info(
         sigma_level = default_sigma_level_for_map(resolved_type)
 
     mode = (
-        MapRenderMode.coerce(render_mode)
+        IsosurfaceMapRenderMode.coerce(render_mode)
         if render_mode is not None
-        else MapRenderMode.ISOSURFACE
+        else IsosurfaceMapRenderMode.UNIT_CELL
     )
     type_label = resolved_type.value
     bundle = MapBundleContourSettings.for_map(

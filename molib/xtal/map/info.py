@@ -11,7 +11,7 @@ import numpy as np
 
 from molib.xtal.map.density import CrystallographicInfo
 from molib.xtal.map.map_type import MapType
-from molib.xtal.map.render.mode import MapRenderMode
+from molib.xtal.map.render.mode import IsosurfaceMapRenderMode
 from picogl.core.rgbcolor import RGBTuple, RGB
 
 DEFAULT_MAP_COLOR: RGB = RGBTuple.BLUE
@@ -120,7 +120,7 @@ class MapBundleContourSettings:
 class MapRenderSettings:
     """How the user wants a map displayed (strategy + contour/colour state)."""
 
-    mode: MapRenderMode = MapRenderMode.ISOSURFACE
+    mode: IsosurfaceMapRenderMode = IsosurfaceMapRenderMode.UNIT_CELL
     bundle: MapBundleContourSettings = field(
         default_factory=MapBundleContourSettings
     )
