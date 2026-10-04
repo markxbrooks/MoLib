@@ -16,6 +16,8 @@ from molib.calc.math.numpy_util import generate_colors_from_positions
 from numpy import dtype, floating, generic, ndarray
 from skimage import measure  # skimage.measure.marching_cubes
 
+from picogl.core.rgbcolor import RGBTuple
+
 # Global cache for Connolly surface calculations to prevent race conditions
 _connolly_surface_cache = {}
 _connolly_resource_cache = OrderedDict()
@@ -686,7 +688,7 @@ def create_connolly_surface_colors(vertices: np.ndarray, *args, **kwargs) -> np.
     # Handle different calling patterns
     if len(args) == 0:
         # No arguments - use uniform color
-        uniform_color = kwargs.get("uniform_color", (0.2, 0.6, 1.0))
+        uniform_color = kwargs.get("uniform_color", RGBTuple.CONNOLLY_SURFACE)
         return generate_colors_from_positions(
             vertices, uniform_color[0], uniform_color[1], uniform_color[2]
         )
@@ -694,7 +696,7 @@ def create_connolly_surface_colors(vertices: np.ndarray, *args, **kwargs) -> np.
     if len(args) == 1 and isinstance(args[0], str):
         # Pattern: create_connolly_surface_colors(vertices, "uniform")
         if args[0] == "uniform":
-            uniform_color = kwargs.get("uniform_color", (0.2, 0.6, 1.0))
+            uniform_color = kwargs.get("uniform_color", RGBTuple.CONNOLLY_SURFACE)
             return generate_colors_from_positions(
                 vertices, uniform_color[0], uniform_color[1], uniform_color[2]
             )
@@ -742,7 +744,7 @@ def create_connolly_surface_colors(vertices: np.ndarray, *args, **kwargs) -> np.
             return colors
         else:
             # Unknown string - fallback to uniform
-            uniform_color = (0.2, 0.6, 1.0)
+            uniform_color = RGBTuple.CONNOLLY_SURFACE
             return generate_colors_from_positions(
                 vertices, uniform_color[0], uniform_color[1], uniform_color[2]
             )
