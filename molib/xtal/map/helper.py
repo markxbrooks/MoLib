@@ -652,6 +652,8 @@ def _density_map_data_from_ccp4(
     grid = ccp4_map.grid
 
     crystallographic_info = crystallographic_info_from_grid(grid)
+    if not isinstance(crystallographic_info, CrystallographicInfo):
+        raise TypeError(f"Invalid crystallographic info: {type(crystallographic_info)}")
     crystallographic_info = normalize_crystallographic_info_from_dict(
         crystallographic_info
     )
@@ -2007,7 +2009,8 @@ def load_density_map_with_extent(
 
         # Extract crystallographic information
         crystallographic_info = crystallographic_info_from_grid(grid)
-
+        if not isinstance(crystallographic_info, CrystallographicInfo):
+            raise TypeError(f"Invalid crystallographic info: {type(crystallographic_info)}")
         # Convert to NumPy array
         np_array = _grid_to_xyz_array(grid, crystallographic_info)
 
