@@ -13,7 +13,7 @@ from enum import Enum
 class IsosurfaceMapRenderMode(str, Enum):
     """Rendering strategy for electron-density maps."""
 
-    UNIT_CELL = "isosurface"
+    UNIT_CELL = "unit_cell"
     CONTINUOUS_LOCAL = "continuous_local"
 
     @property
