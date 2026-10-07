@@ -15,7 +15,7 @@ from molib.core.entity import MolEntityType
 
 
 def mol_calculate_atoms_only_centroid(
-    pdb_pandas: PandasPdb, chain_id: str | None = None
+    pdb_pandas: PandasPdb | None, chain_id: str | None = None
 ) -> Optional[np.ndarray]:
     """
     Calculate the centroid of ATOM records in a PDB.
