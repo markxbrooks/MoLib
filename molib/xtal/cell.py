@@ -40,7 +40,7 @@ def _optional_string(value: object) -> str | None:
 
 
 @dataclass(frozen=True, slots=True)
-class UnitCell:
+class UglyMolUnitCell:
     """Crystallographic unit-cell parameters."""
 
     a: float
@@ -93,7 +93,7 @@ class UnitCell:
         return unit_cell_volume(*self.parameters)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping) -> UnitCell:
+    def from_mapping(cls, mapping: Mapping) -> UglyMolUnitCell:
         """Build a unit cell from a Gemmi-style parameter mapping.
 
         Accepts a ``Mapping`` (dict-like) or any object with ``a``/``b``/``c``/

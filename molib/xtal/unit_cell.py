@@ -11,7 +11,7 @@ from decologr import Decologr as log
 from molib.xtal.map.density import UnitCell
 
 
-def extract_unit_cell_from_pdb(pdb_data) -> Optional[Dict[str, Any]]:
+def extract_unit_cell_dict_from_pdb(pdb_data) -> Optional[Dict[str, Any]]:
     """
     Extract unit cell information from a PDB file.
 

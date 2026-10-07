@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from molib.xtal.cell import UnitCell
+from molib.xtal.cell import UglyMolUnitCell
 from molib.xtal.uglymol.math.helpers import multiply
 
 
@@ -16,7 +16,7 @@ class UnitCellGeometry:
     Matrices use the row-vector convention employed by ``multiply``.
     """
 
-    cell: UnitCell
+    cell: UglyMolUnitCell
     fractional_to_orthogonal: tuple[float, ...] = field(init=False)
     orthogonal_to_fractional: tuple[float, ...] = field(init=False)
 
@@ -43,7 +43,7 @@ class UnitCellGeometry:
         gamma: float,
     ) -> UnitCellGeometry:
         """Build geometry from six crystallographic parameters."""
-        return cls(UnitCell(a=a, b=b, c=c, alpha=alpha, beta=beta, gamma=gamma))
+        return cls(UglyMolUnitCell(a=a, b=b, c=c, alpha=alpha, beta=beta, gamma=gamma))
 
     @property
     def orth(self) -> tuple[float, ...]:
@@ -70,7 +70,7 @@ class UnitCellGeometry:
 
     @staticmethod
     def _calculate_orthogonalization_matrix(
-        cell: UnitCell,
+        cell: UglyMolUnitCell,
     ) -> tuple[float, ...]:
         a, b, c, alpha, beta, gamma = cell.parameters
         deg2rad = math.pi / 180.0
@@ -96,7 +96,7 @@ class UnitCellGeometry:
 
     @staticmethod
     def _calculate_fractionalization_matrix(
-        cell: UnitCell,
+        cell: UglyMolUnitCell,
     ) -> tuple[float, ...]:
         a, b, c, alpha, beta, gamma = cell.parameters
         deg2rad = math.pi / 180.0

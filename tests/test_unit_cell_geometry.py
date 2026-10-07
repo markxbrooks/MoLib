@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from molib.xtal.cell import UnitCell
+from molib.xtal.cell import UglyMolUnitCell
 from molib.xtal.uglymol.unit_cell import UnitCellGeometry, UnitCellTransform
 
 
@@ -15,7 +15,7 @@ def test_unit_cell_transform_alias() -> None:
 
 
 def test_orthogonal_cell_volume() -> None:
-    cell = UnitCell(a=10.0, b=20.0, c=30.0, alpha=90.0, beta=90.0, gamma=90.0)
+    cell = UglyMolUnitCell(a=10.0, b=20.0, c=30.0, alpha=90.0, beta=90.0, gamma=90.0)
     assert cell.volume == pytest.approx(6000.0)
     assert cell.parameters == (10.0, 20.0, 30.0, 90.0, 90.0, 90.0)
 
@@ -34,24 +34,24 @@ def test_orthogonalize_fractionalize_round_trip() -> None:
 
 def test_rejects_non_positive_length() -> None:
     with pytest.raises(ValueError, match="lengths must be positive"):
-        UnitCell(a=0.0, b=10.0, c=10.0, alpha=90.0, beta=90.0, gamma=90.0)
+        UglyMolUnitCell(a=0.0, b=10.0, c=10.0, alpha=90.0, beta=90.0, gamma=90.0)
 
 
 def test_rejects_invalid_angle() -> None:
     with pytest.raises(ValueError, match="between 0 and 180"):
-        UnitCell(a=10.0, b=10.0, c=10.0, alpha=0.0, beta=90.0, gamma=90.0)
+        UglyMolUnitCell(a=10.0, b=10.0, c=10.0, alpha=0.0, beta=90.0, gamma=90.0)
     with pytest.raises(ValueError, match="between 0 and 180"):
-        UnitCell(a=10.0, b=10.0, c=10.0, alpha=180.0, beta=90.0, gamma=90.0)
+        UglyMolUnitCell(a=10.0, b=10.0, c=10.0, alpha=180.0, beta=90.0, gamma=90.0)
 
 
 def test_rejects_non_positive_definite_metric() -> None:
     # Angles that make the volume radicand negative.
     with pytest.raises(ValueError, match="positive definite"):
-        UnitCell(a=10.0, b=10.0, c=10.0, alpha=5.0, beta=5.0, gamma=170.0)
+        UglyMolUnitCell(a=10.0, b=10.0, c=10.0, alpha=5.0, beta=5.0, gamma=170.0)
 
 
 def test_from_mapping() -> None:
-    cell = UnitCell.from_mapping(
+    cell = UglyMolUnitCell.from_mapping(
         {
             "a": 63.1,
             "b": 50.17,
