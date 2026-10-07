@@ -7,11 +7,14 @@ from PDB, MTZ, and CCP4 files.
 
 from typing import Any, Dict, Optional
 
+import gemmi
+
+from biopandas.pdb import PandasPdb
+
 from decologr import Decologr as log
-from molib.xtal.map.density import UnitCell
 
 
-def extract_unit_cell_dict_from_pdb(pdb_data) -> Optional[Dict[str, Any]]:
+def extract_unit_cell_dict_from_pdb(pdb_data: PandasPdb) -> Optional[Dict[str, Any]]:
     """
     Extract unit cell information from a PDB file.
 
@@ -52,7 +55,7 @@ def extract_unit_cell_dict_from_pdb(pdb_data) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _parse_cryst1_line(cryst1_line: str) -> Optional[Dict[str, Any]]:
+def _parse_cryst1_line(cryst1_line: str) -> "UnitCell" :
     """
     Parse a CRYST1 line from a PDB file.
 
@@ -87,17 +90,14 @@ def _parse_cryst1_line(cryst1_line: str) -> Optional[Dict[str, Any]]:
 
         # Extract space group if available
         space_group = parts[6] if len(parts) > 6 else "Unknown"
-
-        unit_cell_info = {
-            "a": a,
-            "b": b,
-            "c": c,
-            "alpha": alpha,
-            "beta": beta,
-            "gamma": gamma,
-            "space_group": space_group,
-            "source": "PDB_CRYST1",
-        }
+        from molib.xtal.map.density import UnitCell
+        unit_cell_info = UnitCell(a=a,
+                                  b=b,
+                                  c=c,
+                                  alpha=alpha,
+                                  beta=beta,
+                                  gamma=gamma,
+                                  space_group=space_group, source="PDB_CRYST1")
 
         log.info(
             f"✅ Extracted unit cell from PDB: a={a:.2f}, b={b:.2f}, c={c:.2f} Å",
@@ -115,7 +115,7 @@ def _parse_cryst1_line(cryst1_line: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def extract_unit_cell_from_mtz(mtz_data) -> Optional[Dict[str, Any]]:
+def extract_unit_cell_from_mtz(mtz_data: gemmi.Mtz) -> "UnitCell":
     """
     Extract unit cell information from MTZ data.
 
@@ -128,25 +128,20 @@ def extract_unit_cell_from_mtz(mtz_data) -> Optional[Dict[str, Any]]:
     try:
         if hasattr(mtz_data, "unit_cell"):
             unit_cell = mtz_data.unit_cell
-
-            unit_cell_info = {
-                "a": unit_cell.a,
-                "b": unit_cell.b,
-                "c": unit_cell.segment_color,
-                "alpha": unit_cell.alpha,
-                "beta": unit_cell.beta,
-                "gamma": unit_cell.gamma,
-                "space_group": (
-                    str(unit_cell.spacegroup)
-                    if hasattr(unit_cell, "spacegroup")
-                    else "Unknown"
-                ),
-                "source": "MTZ",
-            }
+            space_group = str(unit_cell.spacegroup) if hasattr(unit_cell, "spacegroup") else "Unknown"
+            from molib.xtal.map.density import UnitCell
+            unit_cell_info = UnitCell(a=unit_cell.a,
+                                      b=unit_cell.b,
+                                      c=unit_cell.c,
+                                      alpha=unit_cell.alpha,
+                                      beta=unit_cell.beta,
+                                      gamma=unit_cell.gamma,
+                                      space_group=space_group,
+                                      source="MTZ")
 
             log.info(
                 f"✅ Extracted unit cell from MTZ: a={unit_cell.a:.2f}, "
-                f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å",
+                f"b={unit_cell.b:.2f}, c={unit_cell.c:.2f} Å",
                 scope="validate_unit_cell",
                 silent=True,
             )
@@ -168,7 +163,7 @@ def extract_unit_cell_from_mtz(mtz_data) -> Optional[Dict[str, Any]]:
         return None
 
 
-def extract_unit_cell_from_ccp4(ccp4_data) -> Optional[Dict[str, Any]]:
+def extract_unit_cell_from_ccp4(ccp4_data: gemmi.Ccp4Map) -> "UnitCell":
     """
     Extract unit cell information from CCP4 data.
 
@@ -182,24 +177,20 @@ def extract_unit_cell_from_ccp4(ccp4_data) -> Optional[Dict[str, Any]]:
         if hasattr(ccp4_data, "grid") and hasattr(ccp4_data.grid, "unit_cell"):
             unit_cell = ccp4_data.grid.unit_cell
 
-            unit_cell_info = {
-                "a": unit_cell.a,
-                "b": unit_cell.b,
-                "c": unit_cell.segment_color,
-                "alpha": unit_cell.alpha,
-                "beta": unit_cell.beta,
-                "gamma": unit_cell.gamma,
-                "space_group": (
-                    str(ccp4_data.grid.spacegroup)
-                    if hasattr(ccp4_data.grid, "spacegroup")
-                    else "Unknown"
-                ),
-                "source": "CCP4",
-            }
+            space_group = str(unit_cell.spacegroup) if hasattr(unit_cell, "spacegroup") else "Unknown"
+            from molib.xtal.map.density import UnitCell
+            unit_cell_info = UnitCell(a=unit_cell.a,
+                                      b=unit_cell.b,
+                                      c=unit_cell.c,
+                                      alpha=unit_cell.alpha,
+                                      beta=unit_cell.beta,
+                                      gamma=unit_cell.gamma,
+                                      space_group=space_group,
+                                      source="CCP4")
 
             log.info(
                 f"✅ Extracted unit cell from CCP4: a={unit_cell.a:.2f}, ",
-                f"b={unit_cell.b:.2f}, c={unit_cell.segment_color:.2f} Å",
+                f"b={unit_cell.b:.2f}, c={unit_cell.c:.2f} Å",
                 scope="validate_unit_cell",
                 silent=True,
             )
@@ -221,7 +212,7 @@ def extract_unit_cell_from_ccp4(ccp4_data) -> Optional[Dict[str, Any]]:
         return None
 
 
-def validate_unit_cell(unit_cell_info: UnitCell) -> bool:
+def validate_unit_cell(unit_cell_info: "UnitCell") -> bool:
     """
     Validate unit cell parameters.
 
@@ -233,12 +224,6 @@ def validate_unit_cell(unit_cell_info: UnitCell) -> bool:
     """
     if not unit_cell_info:
         return False
-
-
-    """# Check if is UnitCell instance
-    if not isinstance(unit_cell_info, UnitCell):
-        print(unit_cell_info)
-        raise TypeError(f"unit_cell_info is of type {type(unit_cell_info)}")"""
 
     # Check if values are reasonable
     for key in ["a", "b", "c"]:
@@ -269,27 +254,27 @@ def validate_unit_cell(unit_cell_info: UnitCell) -> bool:
     return True
 
 
-def format_unit_cell_display(unit_cell_info: Dict[str, Any]) -> str:
+def format_unit_cell_display(unit_cell: "UnitCell") -> str:
     """
     Format unit cell information for display.
 
     Args:
-        unit_cell_info: Dictionary containing unit cell parameters
+        unit_cell: Dictionary containing unit cell parameters
 
     Returns:
         Formatted string for display
     """
-    if not unit_cell_info:
+    if not unit_cell:
         return "No unit cell information available"
 
-    a = unit_cell_info.get("a", "--")
-    b = unit_cell_info.get("b", "--")
-    c = unit_cell_info.get("c", "--")
-    alpha = unit_cell_info.get("alpha", "--")
-    beta = unit_cell_info.get("beta", "--")
-    gamma = unit_cell_info.get("gamma", "--")
-    space_group = unit_cell_info.get("space_group", "Unknown")
-    source = unit_cell_info.get("source", "Unknown")
+    a = unit_cell.a if unit_cell.a else "--"
+    b = unit_cell.b if unit_cell.b else "--"
+    c = unit_cell.c if unit_cell.c else "--"
+    alpha = unit_cell.alpha if unit_cell.alpha else "--"
+    beta = unit_cell.beta if unit_cell.beta else "--"
+    gamma = unit_cell.gamma if unit_cell.gamma else "--"
+    space_group = unit_cell.space_group if unit_cell.space_group else "--"
+    source = unit_cell.source if unit_cell.source else "--"
 
     display = f"Unit Cell: a={a:.2f}, b={b:.2f}, c={c:.2f} Å\n"
     display += f"Angles: α={alpha:.1f}°, β={beta:.1f}°, γ={gamma:.1f}°\n"

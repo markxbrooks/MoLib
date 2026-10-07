@@ -11,7 +11,7 @@ import numpy as np
 from gemmi import FloatGrid, Mtz
 from numpy import ndarray, dtype
 
-
+from molib.xtal.unit_cell import format_unit_cell_display
 from picogl.core.mixin.vec3 import Vec3Mixin
 from decologr import Decologr as log
 
@@ -303,6 +303,20 @@ class UnitCell:
         return (abs(self.beta - 90.0) > 0.1
                 or abs(self.alpha - 90.0) > 0.1
                 or abs(self.gamma - 90.0) > 0.1)
+
+    def format_display(self) -> str:
+        """
+        Format unit cell information for display.
+
+        Args:
+            unit_cell: Dictionary containing unit cell parameters
+
+        Returns:
+            Formatted string for display
+        """
+        display = format_unit_cell_display(self)
+
+        return display
 
 
 @dataclass(slots=True)
