@@ -73,6 +73,14 @@ class MapManager(LogMixin):
 
     default_map: Optional[str] = None
 
+    # maps: dict[uuid, MapInfo]
+
+    """
+    def get_map_by_uuid(self, uuid: UUID):
+        ""get map by uuid""
+        return self.maps.get(uuid, None)
+    """
+
     def __init__(self):
         self.maps: Dict[str, MapInfo] = {}
 
@@ -87,6 +95,10 @@ class MapManager(LogMixin):
 
     def __getitem__(self, map_id: str) -> MapInfo:
         return self.maps[map_id]
+
+    def get_map_by_id(self, map_id: str) -> MapInfo | None:
+        """get map by id"""
+        return self.maps.get(map_id, None)
 
     def log_maps(self):
         """Debug: Check what's in the map manager"""
