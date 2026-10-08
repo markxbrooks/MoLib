@@ -23,11 +23,11 @@ DEFAULT_NEGATIVE_COLOR: RGB = RGBTuple.RED
 class MapProcessingSettings:
     """Settings controlling density-map processing."""
 
-    carve_density: bool = True
-    carve_cutoff: float = 4.0
-    carve_density_centroid: bool = False
-    centroid_cutoff: float = 15.0
-    convert_to_cartesian: bool = False
+    carve_density: bool | None = True
+    carve_cutoff: float | None = 4.0
+    carve_density_centroid: bool | None = False
+    centroid_cutoff: float | None = 15.0
+    convert_to_cartesian: bool | None = False
 
     def with_overrides(
         self,
@@ -74,26 +74,26 @@ class MapContourSettings:
     """Map Contour Settings"""
     is_visible: bool = True
     sigma_level: float = 1.0
-    color: RGBTuple = DEFAULT_MAP_COLOR
+    color: RGB = DEFAULT_MAP_COLOR
 
 
 @dataclass
-class MapBundleContourSettings:
-    """Contour settings for the standard map bundle."""
+class MapPolaritySettings:
+    """Contour settings for the standard map polarities."""
 
-    twofofc: MapContourSettings = field(
+    normal: MapContourSettings = field(
         default_factory=lambda: MapContourSettings(
             sigma_level=1.0,
             color=DEFAULT_MAP_COLOR,
         )
     )
-    fofc_positive: MapContourSettings = field(
+    positive: MapContourSettings = field(
         default_factory=lambda: MapContourSettings(
             sigma_level=3.0,
             color=DEFAULT_POSITIVE_COLOR,
         )
     )
-    fofc_negative: MapContourSettings = field(
+    negative: MapContourSettings = field(
         default_factory=lambda: MapContourSettings(
             sigma_level=-3.0,
             color=DEFAULT_NEGATIVE_COLOR,
@@ -105,13 +105,13 @@ class MapBundleContourSettings:
         cls,
         map_type: MapType,
         sigma_level: float,
-    ) -> "MapBundleContourSettings":
+    ) -> "MapPolaritySettings":
         settings = cls()
 
-        if map_type is MapType.TWO_FO_FC:
-            settings.twofofc.sigma_level = sigma_level
-        elif map_type is MapType.FO_FC:
-            settings.fofc_positive.sigma_level = sigma_level
+        if map_type is MapType.NORMAL:
+            settings.normal.sigma_level = sigma_level
+        elif map_type is MapType.DIFFERENCE:
+            settings.positive.sigma_level = sigma_level
 
         return settings
 
@@ -121,8 +121,8 @@ class MapRenderSettings:
     """How the user wants a map displayed (strategy + contour/colour state)."""
 
     mode: IsosurfaceMapRenderMode = IsosurfaceMapRenderMode.UNIT_CELL
-    bundle: MapBundleContourSettings = field(
-        default_factory=MapBundleContourSettings
+    settings: MapPolaritySettings = field(
+        default_factory=MapPolaritySettings
     )
 
     ####  ========== Migration shims ==================== ############
@@ -131,55 +131,55 @@ class MapRenderSettings:
 
     @property
     def is_visible(self):
-        return self.bundle.twofofc.is_visible
+        return self.settings.normal.is_visible
 
     @is_visible.setter
     def is_visible(self, value):
-        self.bundle.twofofc.is_visible = value
+        self.settings.normal.is_visible = value
 
     # ========= Map Colors - now deprecated - please use map contour info ===== #
 
     @property
     def positive_color(self):
-        return self.bundle.fofc_positive.color
+        return self.settings.positive.color
 
     @positive_color.setter
     def positive_color(self, value):
-        self.bundle.fofc_positive.color = value
+        self.settings.positive.color = value
 
     @property
     def negative_color(self):
-        return self.bundle.fofc_negative.color
+        return self.settings.negative.color
 
     @negative_color.setter
     def negative_color(self, value):
-        self.bundle.fofc_negative.color = value
+        self.settings.negative.color = value
 
     # ========= Sigma Levels - now deprecated - please use map contour info ===== #
 
     @property
     def sigma_level(self):
-        return self.bundle.twofofc.sigma_level
+        return self.settings.normal.sigma_level
 
     @sigma_level.setter
     def sigma_level(self, value):
-        self.bundle.twofofc.sigma_level = value
+        self.settings.normal.sigma_level = value
 
     @property
     def positive_sigma_level(self):
-        return self.bundle.fofc_positive.sigma_level
+        return self.settings.positive.sigma_level
 
     @positive_sigma_level.setter
     def positive_sigma_level(self, value):
-        self.bundle.fofc_positive.sigma_level = value
+        self.settings.positive.sigma_level = value
 
     @property
     def negative_sigma_level(self):
-        return self.bundle.fofc_negative.sigma_level
+        return self.settings.negative.sigma_level
 
     @negative_sigma_level.setter
     def negative_sigma_level(self, value):
-        self.bundle.fofc_negative.sigma_level = value
+        self.settings.negative.sigma_level = value
 
     # =========    Carving settings - now deprecated - please use map processing info ===== #
 
@@ -244,6 +244,19 @@ class MapInfo:
         default_factory=MapProcessingSettings
     )
 
+    @property
+    def is_visible(self) -> bool:
+        """Return whether any contour of this map is currently visible."""
+
+        if self.map_type is MapType.DIFFERENCE:
+            settings = self.render.settings
+            return (
+                    settings.positive.is_visible
+                    or settings.negative.is_visible
+            )
+
+        return self.render.settings.normal.is_visible
+
     def __post_init__(self) -> None:
         if self.render is None:
             self.render = MapRenderSettings()
@@ -251,66 +264,45 @@ class MapInfo:
     @property
     def is_difference_map(self) -> bool:
         """Whether this map is a Fo-Fc (difference) map."""
-        return self.map_type is MapType.FO_FC
+        return self.map_type is MapType.DIFFERENCE
 
     # --- display shims (delegate to render) ---
 
     @property
-    def is_visible(self) -> bool:
-        """Return whether any contour of this map is currently visible."""
-        if self.map_type is MapType.FO_FC:
-            bundle = self.render.bundle
-            return (
-                bundle.fofc_positive.is_visible or bundle.fofc_negative.is_visible
-            )
-        return self.render.bundle.twofofc.is_visible
-
-    @is_visible.setter
-    def is_visible(self, value: bool) -> None:
-        """Set visibility for the map's display contour(s).
-
-        For Fo-Fc maps, both positive and negative lobes are toggled together.
-        For 2Fo-Fc (and other) maps, the primary twofofc contour is toggled.
-        """
-        flag = bool(value)
-        if self.map_type is MapType.FO_FC:
-            bundle = self.render.bundle
-            bundle.fofc_positive.is_visible = flag
-            bundle.fofc_negative.is_visible = flag
-            return
-        self.render.bundle.twofofc.is_visible = flag
-
-    @property
     def sigma_level(self) -> float:
-        return self.render.bundle.twofofc.sigma_level
+        return self.render.settings.normal.sigma_level
 
     @sigma_level.setter
     def sigma_level(self, value: float) -> None:
-        self.render.bundle.twofofc.sigma_level = float(value)
+        self.render.settings.normal.sigma_level = float(value)
+
+    @is_visible.setter
+    def is_visible(self, value: bool) -> None:
+        self.render.settings.normal.is_visible = bool(value)
 
     @property
     def color(self) -> RGBTuple:
-        return self.render.bundle.twofofc.color
+        return self.render.settings.normal.color
 
     @color.setter
     def color(self, value: RGBTuple) -> None:
-        self.render.bundle.twofofc.color = value
+        self.render.settings.normal.color = value
 
     @property
     def positive_visible(self) -> bool:
-        return self.render.bundle.fofc_positive.is_visible
+        return self.render.settings.positive.is_visible
 
     @positive_visible.setter
     def positive_visible(self, value: bool) -> None:
-        self.render.bundle.fofc_positive.is_visible = bool(value)
+        self.render.settings.positive.is_visible = bool(value)
 
     @property
     def negative_visible(self) -> bool:
-        return self.render.bundle.fofc_negative.is_visible
+        return self.render.settings.negative.is_visible
 
     @negative_visible.setter
     def negative_visible(self, value: bool) -> None:
-        self.render.bundle.fofc_negative.is_visible = bool(value)
+        self.render.settings.negative.is_visible = bool(value)
 
     @property
     def positive_color(self) -> RGBTuple:
@@ -322,29 +314,29 @@ class MapInfo:
 
     @property
     def negative_color(self) -> RGBTuple:
-        return self.render.bundle.fofc_negative.color
+        return self.render.settings.negative.color
 
     @negative_color.setter
     def negative_color(self, value: RGBTuple) -> None:
-        self.render.bundle.fofc_negative.color = value
+        self.render.settings.negative.color = value
 
     @property
     def positive_sigma_level(self) -> Optional[float]:
-        return self.render.bundle.fofc_positive.sigma_level
+        return self.render.settings.positive.sigma_level
 
     @positive_sigma_level.setter
     def positive_sigma_level(self, value: Optional[float]) -> None:
-        self.render.bundle.fofc_positive.sigma_level = value
+        self.render.settings.positive.sigma_level = value
 
     @property
     def negative_sigma_level(self) -> Optional[float]:
-        return self.render.bundle.fofc_negative.sigma_level
+        return self.render.settings.negative.sigma_level
 
     @negative_sigma_level.setter
     def negative_sigma_level(self, value: Optional[float]) -> None:
         if not value:
             return
-        self.render.bundle.fofc_negative.sigma_level = value
+        self.render.settings.negative.sigma_level = value
 
     @property
     def carve_density(self) -> bool:

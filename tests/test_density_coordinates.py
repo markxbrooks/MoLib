@@ -323,11 +323,11 @@ class TestLoadMapsFromMtzFileSpec(TestCase):
 
         self.assertIsInstance(map_data, DensityMapData)
         self.assertIsInstance(difference_data, DensityMapData)
-        self.assertEqual(map_data.map_type, MapType.TWO_FO_FC)
-        self.assertEqual(difference_data.map_type, MapType.FO_FC)
-        self.assertEqual(map_data.crystallographic_info.map_type, MapType.TWO_FO_FC.value)
+        self.assertEqual(map_data.map_type, MapType.NORMAL)
+        self.assertEqual(difference_data.map_type, MapType.DIFFERENCE)
+        self.assertEqual(map_data.crystallographic_info.map_type, MapType.NORMAL.value)
         self.assertEqual(
-            difference_data.crystallographic_info.map_type, MapType.FO_FC.value
+            difference_data.crystallographic_info.map_type, MapType.DIFFERENCE.value
         )
         self.assertEqual(map_data.volume.shape, difference_data.volume.shape)
         self.assertEqual(
@@ -394,7 +394,7 @@ class TestMapTypeAwareMtzSelection(TestCase):
         if not os.path.exists(self.MTZ_PATH):
             self.skipTest(f"missing test mtz: {self.MTZ_PATH}")
         self.assertEqual(
-            _select_map_columns(self.MTZ_PATH, MapType.TWO_FO_FC),
+            _select_map_columns(self.MTZ_PATH, MapType.NORMAL),
             ("FWT", "PHWT"),
         )
 
@@ -402,7 +402,7 @@ class TestMapTypeAwareMtzSelection(TestCase):
         if not os.path.exists(self.MTZ_PATH):
             self.skipTest(f"missing test mtz: {self.MTZ_PATH}")
         self.assertEqual(
-            _select_map_columns(self.MTZ_PATH, MapType.FO_FC),
+            _select_map_columns(self.MTZ_PATH, MapType.DIFFERENCE),
             ("DELFWT", "PHDELWT"),
         )
 
@@ -410,15 +410,15 @@ class TestMapTypeAwareMtzSelection(TestCase):
         if not os.path.exists(self.MTZ_PATH):
             self.skipTest(f"missing test mtz: {self.MTZ_PATH}")
 
-        two = load_density_map_auto_mtz(self.MTZ_PATH, map_type=MapType.TWO_FO_FC)
-        one = load_density_map_auto_mtz(self.MTZ_PATH, map_type=MapType.FO_FC)
+        two = load_density_map_auto_mtz(self.MTZ_PATH, map_type=MapType.NORMAL)
+        one = load_density_map_auto_mtz(self.MTZ_PATH, map_type=MapType.DIFFERENCE)
 
         self.assertIsInstance(two, DensityMapData)
         self.assertIsInstance(one, DensityMapData)
-        self.assertEqual(two.map_type, MapType.TWO_FO_FC)
-        self.assertEqual(one.map_type, MapType.FO_FC)
-        self.assertEqual(two.crystallographic_info.map_type, MapType.TWO_FO_FC.value)
-        self.assertEqual(one.crystallographic_info.map_type, MapType.FO_FC.value)
+        self.assertEqual(two.map_type, MapType.NORMAL)
+        self.assertEqual(one.map_type, MapType.DIFFERENCE)
+        self.assertEqual(two.crystallographic_info.map_type, MapType.NORMAL.value)
+        self.assertEqual(one.crystallographic_info.map_type, MapType.DIFFERENCE.value)
         self.assertEqual(two.volume.shape, one.volume.shape)
         # Guard against the constant-volume regression: a gridded 2Fo-Fc map
         # must contain real electron-density variation.
@@ -435,18 +435,18 @@ class TestMapTypeAwareMtzSelection(TestCase):
         )
 
         with self.assertRaises(ValueError):
-            _select_map_columns(mtz_path, MapType.TWO_FO_FC)
+            _select_map_columns(mtz_path, MapType.NORMAL)
         with self.assertRaises(ValueError):
-            _select_map_columns(mtz_path, MapType.FO_FC)
+            _select_map_columns(mtz_path, MapType.DIFFERENCE)
         # The public loader never silently substitutes observed FP/PHIC.
         self.assertIsNone(
-            load_density_map_auto_mtz(mtz_path, map_type=MapType.TWO_FO_FC)
+            load_density_map_auto_mtz(mtz_path, map_type=MapType.NORMAL)
         )
 
     def test_coerce_accepts_strings_and_rejects_unknown(self):
-        self.assertIs(MapType.coerce("2Fo-Fc"), MapType.TWO_FO_FC)
-        self.assertIs(MapType.coerce("Fo-Fc"), MapType.FO_FC)
-        self.assertIs(MapType.coerce(MapType.TWO_FO_FC), MapType.TWO_FO_FC)
+        self.assertIs(MapType.coerce("2Fo-Fc"), MapType.NORMAL)
+        self.assertIs(MapType.coerce("Fo-Fc"), MapType.DIFFERENCE)
+        self.assertIs(MapType.coerce(MapType.NORMAL), MapType.NORMAL)
         with self.assertRaises(ValueError):
             MapType.coerce("unknown")
 
@@ -462,14 +462,14 @@ class TestMapTypeAwareMtzSelection(TestCase):
                 mtz_path,
                 "NOT_F",
                 "PHWT",
-                map_type=MapType.TWO_FO_FC,
+                map_type=MapType.NORMAL,
             )
         with self.assertRaises(MtzColumnNotFoundError):
             load_density_map_from_columns(
                 mtz_path,
                 "FWT",
                 "NOT_PHI",
-                map_type=MapType.TWO_FO_FC,
+                map_type=MapType.NORMAL,
             )
 
     def test_load_spec_map_swallows_only_column_not_found(self):

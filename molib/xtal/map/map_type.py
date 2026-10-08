@@ -10,8 +10,8 @@ class MapType(str, Enum):
     so either enum (or the plain string) can be passed to the loaders.
     """
 
-    TWO_FO_FC = "2Fo-Fc"
-    FO_FC = "Fo-Fc"
+    NORMAL = "2Fo-Fc"
+    DIFFERENCE = "Fo-Fc"
     UNKNOWN = "unknown"
 
     @classmethod
@@ -36,9 +36,9 @@ class MapType(str, Enum):
             or normalized.startswith("2mfo")
             or normalized in {"2fofc", "fwt"}
         ):
-            return cls.TWO_FO_FC
+            return cls.NORMAL
         if normalized in {"fo-fc", "fofc", "delfwt", "difference"}:
-            return cls.FO_FC
+            return cls.DIFFERENCE
         if normalized in {"unknown", ""}:
             return cls.UNKNOWN
         raise ValueError(

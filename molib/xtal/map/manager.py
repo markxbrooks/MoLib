@@ -12,6 +12,7 @@ from typing import Optional, Dict, Iterator, List, Tuple
 import numpy as np
 
 from decologr import LogMixin, Decologr as log
+from molib.core.constants import MoLibConstant
 
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
 from molib.xtal.map.builder import build_map_info, build_map_information_specs
@@ -47,10 +48,10 @@ def map_from_coefficients(
 def resolve_map_type(map_file_path: str, map_id: str) -> tuple[str, MapType]:
     stem_lower = Path(map_file_path).stem.lower()
     if stem_lower.endswith("_diff") or stem_lower.endswith("-diff"):
-        map_type = MapType.FO_FC
+        map_type = MapType.DIFFERENCE
         full_id = map_id
     else:
-        map_type = MapType.TWO_FO_FC
+        map_type = MapType.NORMAL
         full_id = f"{map_id}_2Fo-Fc"
     return full_id, map_type
 
@@ -182,7 +183,7 @@ class MapManager(LogMixin):
         """Create placeholder maps anyway"""
         map_info = build_map_info(
             map_id=f"{mtz_id}_2Fo-Fc",
-            map_type=MapType.TWO_FO_FC,
+            map_type=MapType.NORMAL,
             f_label="2FOFCWT",
             phi_label="PH2FOFCWT",
             volume=np.zeros((10, 10, 10)),  # Placeholder
@@ -241,7 +242,7 @@ class MapManager(LogMixin):
         from molib.xtal.map.builder import default_sigma_level_for_map
 
         # Prefer type-aware defaults when still at the generic MapInfo default.
-        if abs(float(map_info.render.sigma_level) - 1.0) < 1e-9:
+        if abs(float(map_info.render.sigma_level) - 1.0) < MoLibConstant.EPSILON:
             map_info.render.sigma_level = default_sigma_level_for_map(map_info.map_type)
 
         self.maps[map_info.map_id] = map_info
@@ -341,9 +342,9 @@ class MapManager(LogMixin):
         if map_id in self.maps:
             map_info = self.maps[map_id]
             if positive_visible is not None:
-                map_info.render.bundle.fofc_positive.is_visible = bool(positive_visible)
+                map_info.render.settings.positive.is_visible = bool(positive_visible)
             if negative_visible is not None:
-                map_info.render.bundle.fofc_negative.is_visible = bool(negative_visible)
+                map_info.render.settings.negative.is_visible = bool(negative_visible)
 
     def get_visible_maps(self) -> list[MapInfo]:
         """Get all currently visible maps."""
@@ -390,10 +391,10 @@ class MapManager(LogMixin):
         )
 
         result_2fofc = load_density_map_auto_mtz(
-            mtz_file_path, map_type=MapType.TWO_FO_FC
+            mtz_file_path, map_type=MapType.NORMAL
         )
         result_fofc = load_density_map_auto_mtz(
-            mtz_file_path, map_type=MapType.FO_FC
+            mtz_file_path, map_type=MapType.DIFFERENCE
         )
 
         if result_2fofc:

@@ -12,7 +12,7 @@ from molib.xtal.map.builders.processing import build_map_processing_settings
 from molib.xtal.map.density import CrystallographicInfo
 from molib.xtal.map.map_type import MapType
 from molib.xtal.map.spec import DensityMapSpec
-from molib.xtal.map.info import MapInfo, MapRenderSettings, MapBundleContourSettings, MapProcessingSettings
+from molib.xtal.map.info import MapInfo, MapRenderSettings, MapPolaritySettings, MapProcessingSettings
 from molib.xtal.map.render.mode import IsosurfaceMapRenderMode
 
 DEFAULT_2FOFC_SIGMA_LEVEL = 0.2
@@ -33,10 +33,10 @@ def default_sigma_level_for_map(
     except ValueError:
         resolved = None
     if is_difference_map is None and resolved is not None:
-        is_difference_map = resolved is MapType.FO_FC
+        is_difference_map = resolved is MapType.DIFFERENCE
     if is_difference_map:
         return DEFAULT_FOFC_SIGMA_LEVEL
-    if resolved is MapType.TWO_FO_FC:
+    if resolved is MapType.NORMAL:
         return DEFAULT_2FOFC_SIGMA_LEVEL
     normalized = str(getattr(map_type, "value", map_type)).strip().lower().replace(
         "_", "-"
@@ -55,7 +55,7 @@ def build_map_info(
     f_label: str = "2FOFCWT",
     is_difference_map: bool | None = None,
     map_id: str = "map",
-    map_type: MapType | str = MapType.TWO_FO_FC,
+    map_type: MapType | str = MapType.NORMAL,
     phi_label: str = "PH2FOFCWT",
     volume: ndarray = None,
     sigma_level: float | None = None,
@@ -65,8 +65,8 @@ def build_map_info(
 
     resolved_type = MapType.coerce(map_type)
 
-    if is_difference_map is True and resolved_type is not MapType.FO_FC:
-        resolved_type = MapType.FO_FC
+    if is_difference_map is True and resolved_type is not MapType.DIFFERENCE:
+        resolved_type = MapType.DIFFERENCE
 
     if sigma_level is None:
         sigma_level = default_sigma_level_for_map(resolved_type)
@@ -77,7 +77,7 @@ def build_map_info(
         else IsosurfaceMapRenderMode.UNIT_CELL
     )
     type_label = resolved_type.value
-    bundle = MapBundleContourSettings.for_map(
+    settings = MapPolaritySettings.for_map(
         resolved_type,
         float(sigma_level),
     )
@@ -92,7 +92,7 @@ def build_map_info(
         description=f"{type_label} map ({f_label}/{phi_label})",
         render=MapRenderSettings(
             mode=mode,
-            bundle=bundle,
+            settings=settings,
         ),
     )
 
@@ -104,7 +104,7 @@ def build_map_information_specs(
     map_information_specs: dict[str, MapInfo] = {
         "map_2fofc_info": build_map_info(
             map_id=f"{mtz_id}_2Fo-Fc",
-            map_type=MapType.TWO_FO_FC,
+            map_type=MapType.NORMAL,
             f_label="2FOFCWT",
             phi_label="PH2FOFCWT",
             volume=volume_2fofc,
@@ -113,7 +113,7 @@ def build_map_information_specs(
         ),
         "map_fofc_info": build_map_info(
             map_id=f"{mtz_id}_Fo-Fc",
-            map_type=MapType.FO_FC,
+            map_type=MapType.DIFFERENCE,
             f_label="DELFWT",
             phi_label="PHDELWT",
             volume=volume_fofc,

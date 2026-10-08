@@ -135,6 +135,6 @@ class VolumeData:
         negative_ratio = abs(stats.min_value) / stats.max_value
 
         if negative_ratio > MAP_NEGATIVE_RATIO_THRESHOLD:
-            return MapType.FO_FC
+            return MapType.DIFFERENCE
 
-        return MapType.TWO_FO_FC
+        return MapType.NORMAL

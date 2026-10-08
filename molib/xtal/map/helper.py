@@ -68,9 +68,9 @@ def _select_map_columns(mtz_path: str, map_type: MapType) -> tuple[str, str]:
     map_type = MapType.coerce(map_type)
     f_map, p_map = _mtz_f_phi_label_sets(mtz_path)
 
-    if map_type is MapType.TWO_FO_FC:
+    if map_type is MapType.NORMAL:
         candidates = _TWO_FO_FC_CANDIDATES
-    elif map_type is MapType.FO_FC:
+    elif map_type is MapType.DIFFERENCE:
         candidates = _FO_FC_CANDIDATES
     else:
         raise MtzColumnNotFoundError(f"Unsupported map type: {map_type!r}")
@@ -1144,7 +1144,7 @@ def load_mtz_maps(
 def load_density_map_auto_mtz(
     mtz_path: str,
     *,
-    map_type: MapType | str = MapType.TWO_FO_FC,
+    map_type: MapType | str = MapType.NORMAL,
     sample_rate: float = 0.0,
 ) -> DensityMapData | None:
     """

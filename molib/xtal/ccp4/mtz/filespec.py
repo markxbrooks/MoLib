@@ -19,7 +19,7 @@ class MtzFileSpec:
 class MtzDensitySpec:
     """Which MTZ coefficients to grid and at what sampling rate."""
 
-    map_type: MapType = MapType.TWO_FO_FC
+    map_type: MapType = MapType.NORMAL
     f_label: str | None = None
     phi_label: str | None = None
     sample_rate: float = 0.0

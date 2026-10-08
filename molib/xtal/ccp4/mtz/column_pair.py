@@ -23,7 +23,7 @@ class MtzColumnPair:
         return cls(
             f_label=f_label,
             phi_label=phi_label,
-            map_type=MapType.TWO_FO_FC,
+            map_type=MapType.NORMAL,
         )
 
     @classmethod
@@ -36,5 +36,5 @@ class MtzColumnPair:
         return cls(
             f_label=f_label,
             phi_label=phi_label,
-            map_type=MapType.FO_FC,
+            map_type=MapType.DIFFERENCE,
         )
