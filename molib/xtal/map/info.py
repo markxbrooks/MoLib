@@ -244,19 +244,6 @@ class MapInfo:
         default_factory=MapProcessingSettings
     )
 
-    @property
-    def is_visible(self) -> bool:
-        """Return whether any contour of this map is currently visible."""
-
-        if self.map_type is MapType.FO_FC:
-            bundle = self.render.bundle
-            return (
-                    bundle.fofc_positive.is_visible
-                    or bundle.fofc_negative.is_visible
-            )
-
-        return self.render.bundle.twofofc.is_visible
-
     def __post_init__(self) -> None:
         if self.render is None:
             self.render = MapRenderSettings()
@@ -269,20 +256,37 @@ class MapInfo:
     # --- display shims (delegate to render) ---
 
     @property
+    def is_visible(self) -> bool:
+        """Return whether any contour of this map is currently visible."""
+        if self.map_type is MapType.FO_FC:
+            bundle = self.render.bundle
+            return (
+                bundle.fofc_positive.is_visible or bundle.fofc_negative.is_visible
+            )
+        return self.render.bundle.twofofc.is_visible
+
+    @is_visible.setter
+    def is_visible(self, value: bool) -> None:
+        """Set visibility for the map's display contour(s).
+
+        For Fo-Fc maps, both positive and negative lobes are toggled together.
+        For 2Fo-Fc (and other) maps, the primary twofofc contour is toggled.
+        """
+        flag = bool(value)
+        if self.map_type is MapType.FO_FC:
+            bundle = self.render.bundle
+            bundle.fofc_positive.is_visible = flag
+            bundle.fofc_negative.is_visible = flag
+            return
+        self.render.bundle.twofofc.is_visible = flag
+
+    @property
     def sigma_level(self) -> float:
         return self.render.bundle.twofofc.sigma_level
 
     @sigma_level.setter
     def sigma_level(self, value: float) -> None:
         self.render.bundle.twofofc.sigma_level = float(value)
-
-    @property
-    def is_visible(self) -> bool:
-        return self.render.bundle.twofofc.is_visible
-
-    @is_visible.setter
-    def is_visible(self, value: bool) -> None:
-        self.render.bundle.twofofc.is_visible = bool(value)
 
     @property
     def color(self) -> RGBTuple:
