@@ -288,11 +288,24 @@ class MapInfo:
 
     @property
     def sigma_level(self) -> float:
+        """Primary contour σ (normal map, or magnitude for difference maps)."""
         return self.render.settings.normal.sigma_level
 
     @sigma_level.setter
     def sigma_level(self, value: float) -> None:
-        self.render.settings.normal.sigma_level = float(value)
+        """Set contour σ, keeping Fo-Fc ± lobes in sync for difference maps.
+
+        For :attr:`MapType.DIFFERENCE`, writes ``normal``, ``positive = +|σ|``,
+        and ``negative = -|σ|`` so extraction and UI spinboxes stay aligned.
+        """
+        level = float(value)
+        settings = self.render.settings
+        settings.normal.sigma_level = level
+        if self.map_type is MapType.DIFFERENCE:
+            magnitude = abs(level)
+            settings.positive.sigma_level = magnitude
+            settings.negative.sigma_level = -magnitude
+            settings.normal.sigma_level = magnitude
 
     @is_visible.setter
     def is_visible(self, value: bool) -> None:

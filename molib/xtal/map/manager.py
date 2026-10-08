@@ -315,9 +315,12 @@ class MapManager(LogMixin):
             log.message(f"Map {map_id} visibility: {is_visible}")
 
     def update_map_sigma_level(self, map_id: str, sigma_level: float) -> None:
-        """Update map sigma level."""
+        """Update map contour σ via the type-aware :attr:`MapInfo.sigma_level` facade.
+
+        Difference maps also update positive/negative lobe levels.
+        """
         if map_id in self.maps:
-            self.maps[map_id].render.sigma_level = float(sigma_level)
+            self.maps[map_id].sigma_level = float(sigma_level)
             log.message(f"Map {map_id} sigma level: {sigma_level}")
 
     def update_map_color(self, map_id: str, color: Tuple[float, float, float]) -> None:
