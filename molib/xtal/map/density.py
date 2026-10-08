@@ -255,6 +255,10 @@ class UnitCell:
             self.c / 2,
         )
 
+    def validate(self) -> bool:
+        from molib.xtal.unit_cell import validate_unit_cell
+        return validate_unit_cell(self)
+
     @classmethod
     def from_dict(cls, data: dict) -> "UnitCell":
         """Create a UnitCell from a dictionary."""
