@@ -89,16 +89,28 @@ class MapPolaritySettings:
     )
     positive: MapContourSettings = field(
         default_factory=lambda: MapContourSettings(
-            sigma_level=3.0,
+            sigma_level=2.5,
             color=DEFAULT_POSITIVE_COLOR,
         )
     )
     negative: MapContourSettings = field(
         default_factory=lambda: MapContourSettings(
-            sigma_level=-3.0,
+            sigma_level=-2.5,
             color=DEFAULT_NEGATIVE_COLOR,
         )
     )
+
+    @property
+    def twofofc(self) -> MapContourSettings:
+        return self.normal
+
+    @property
+    def fofc_positive(self) -> MapContourSettings:
+        return self.positive
+
+    @property
+    def fofc_negative(self) -> MapContourSettings:
+        return self.negative
 
     @classmethod
     def for_map(
@@ -111,7 +123,9 @@ class MapPolaritySettings:
         if map_type is MapType.NORMAL:
             settings.normal.sigma_level = sigma_level
         elif map_type is MapType.DIFFERENCE:
-            settings.positive.sigma_level = sigma_level
+            settings.normal.sigma_level = abs(sigma_level)
+            settings.positive.sigma_level = abs(sigma_level)
+            settings.negative.sigma_level = -abs(sigma_level)
 
         return settings
 
@@ -124,6 +138,10 @@ class MapRenderSettings:
     settings: MapPolaritySettings = field(
         default_factory=MapPolaritySettings
     )
+
+    @property
+    def bundle(self) -> MapPolaritySettings:
+        return self.settings
 
     ####  ========== Migration shims ==================== ############
 
@@ -278,7 +296,12 @@ class MapInfo:
 
     @is_visible.setter
     def is_visible(self, value: bool) -> None:
-        self.render.settings.normal.is_visible = bool(value)
+        b = bool(value)
+        if self.map_type is MapType.DIFFERENCE:
+            self.render.settings.positive.is_visible = b
+            self.render.settings.negative.is_visible = b
+        else:
+            self.render.settings.normal.is_visible = b
 
     @property
     def color(self) -> RGBTuple:

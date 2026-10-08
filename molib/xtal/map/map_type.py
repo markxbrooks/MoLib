@@ -14,6 +14,10 @@ class MapType(str, Enum):
     DIFFERENCE = "Fo-Fc"
     UNKNOWN = "unknown"
 
+    # Aliases
+    TWO_FO_FC = "2Fo-Fc"
+    FO_FC = "Fo-Fc"
+
     @classmethod
     def coerce(cls, map_type: "MapType | str") -> "MapType":
         """Normalize a map type (str or StrEnum) to this enum; raise on unknown.

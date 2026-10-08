@@ -8,7 +8,25 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from decologr import LogMixin
+try:
+    from decologr import LogMixin
+except ImportError:
+    from decologr import Decologr as log
+    class LogMixin:
+        def log_message(self, message, *args, **kwargs):
+            log.message(message)
+
+        def log_info(self, message, *args, **kwargs):
+            log.info(message)
+
+        def log_error(self, message, *args, **kwargs):
+            log.error(message)
+
+        def log_warning(self, message, *args, **kwargs):
+            log.warning(message)
+
+        def log_debug(self, message, *args, **kwargs):
+            log.debug(message)
 from molib.xtal.map.map_type import MapType
 from molib.xtal.map.density import MAP_NEGATIVE_RATIO_THRESHOLD
 

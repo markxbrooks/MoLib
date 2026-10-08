@@ -239,12 +239,6 @@ class MapManager(LogMixin):
         if render_mode is not None:
             map_info.render.mode = IsosurfaceMapRenderMode.coerce(render_mode)
 
-        from molib.xtal.map.builder import default_sigma_level_for_map
-
-        # Prefer type-aware defaults when still at the generic MapInfo default.
-        if abs(float(map_info.render.sigma_level) - 1.0) < MoLibConstant.EPSILON:
-            map_info.render.sigma_level = default_sigma_level_for_map(map_info.map_type)
-
         self.maps[map_info.map_id] = map_info
 
         # Set as default if this is the first map

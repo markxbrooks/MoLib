@@ -15,8 +15,8 @@ from molib.xtal.map.spec import DensityMapSpec
 from molib.xtal.map.info import MapInfo, MapRenderSettings, MapPolaritySettings, MapProcessingSettings
 from molib.xtal.map.render.mode import IsosurfaceMapRenderMode
 
-DEFAULT_2FOFC_SIGMA_LEVEL = 0.2
-DEFAULT_FOFC_SIGMA_LEVEL = 1.0
+DEFAULT_2FOFC_SIGMA_LEVEL = 1.0
+DEFAULT_FOFC_SIGMA_LEVEL = 2.5
 
 
 def default_sigma_level_for_map(
