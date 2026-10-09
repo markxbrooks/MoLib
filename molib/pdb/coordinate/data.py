@@ -91,6 +91,14 @@ class CoordinateData(LogMixin):
             if self.coords is not None:
                 self._kdtree = cKDTree(self.coords)
 
+    @property
+    def coords_available(self) -> bool | Any:
+        return hasattr(self, "coords") and self.coords is not None
+
+    @property
+    def atom_ids_available(self) -> bool | Any:
+        return hasattr(self, "atom_ids") and self.atom_ids is not None
+
     def get_atom_info_for_ligand_identification(
         self, atom_index: int
     ) -> tuple[int, AtomData] | tuple[None, None]:

@@ -10,7 +10,7 @@ from biopandas.pdb import PandasPdb
 from numpy import dtype, ndarray
 
 from decologr import Decologr as log
-from elmo.ui.widgets.gl.mol.base import format_tuple
+from elmo.ui.widgets.gl.mol.format_tuple import format_tuple
 from molib.core.entity import MolEntityType
 
 
