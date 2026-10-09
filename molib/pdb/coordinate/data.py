@@ -143,11 +143,11 @@ class CoordinateData:
 
             if 0 <= index < len(atom_df):
                 atom_row = atom_df.iloc[index]
-                atom_name = atom_row.get("atom_name")
-                residue_name = atom_row.get("residue_name")
-                residue_id = atom_row.get("residue_number")
-                chain_id = atom_row.get("chain_id")
-                record_type = atom_row.get("record_type", None)
+                atom_name = str(atom_row.get("atom_name"))
+                residue_name = str(atom_row.get("residue_name"))
+                residue_id = int(atom_row.get("residue_number"))
+                chain_id = str(atom_row.get("chain_id"))
+                record_type = str(atom_row.get("record_type", None))
                 atom_data = AtomData(atom_row=atom_row,
                                      atom_name=atom_name,
                                      residue_name=residue_name,
