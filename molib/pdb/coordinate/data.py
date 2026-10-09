@@ -3,7 +3,7 @@ CoordinateData
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import gemmi
 import numpy as np
@@ -12,7 +12,7 @@ from scipy.spatial import cKDTree
 
 from elmo.chem.amino_acids import is_amino_acid
 from molib.pdb.calculate.atom_data import AtomData
-from decologr import Decologr as log
+from decologr import Decologr as log, LogMixin
 
 
 @dataclass
@@ -62,7 +62,7 @@ class CoordinateData:
 
 
 @dataclass
-class CoordinateData:
+class CoordinateData(LogMixin):
     """Structured data extracted from a PDB file."""
 
     active: bool = False
@@ -115,6 +115,25 @@ class CoordinateData:
         except Exception as e:
             log.warning(f"Could not get atom data for ligand identification: {e}")
             return None, None
+
+    def get_dataframe(self) -> pd.DataFrame | None:
+        return getattr(self, "df", None)
+
+    def dataframe_property_available_for_atom_index(self, atom_index: int, property_name: str) -> bool | Any:
+        cdf = self.get_dataframe()
+        return cdf is not None and property_name in cdf.columns and 0 <= int(atom_index) < len(cdf)
+
+    def get_property_for_atom_index(self: CoordinateData, atom_index: int, property_name: str):
+        cdf = self.get_dataframe()
+        if self.dataframe_property_available_for_atom_index(atom_index, property_name):
+            value = cdf.iloc[int(atom_index)][property_name]
+            if value is not None:
+                result = str(value)
+                self.log_message(
+                    f"atom_index: {atom_index} property {property_name} result {result}"
+                )
+                return result
+        return None
 
     def data_from_index(self, index: int) -> AtomData | None:
         """
