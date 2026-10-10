@@ -3,8 +3,11 @@ VolumeStatistics and VolumeData
 
 For the analysis of Electron Density data
 """
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -29,6 +32,9 @@ except ImportError:
             log.debug(message)
 from molib.xtal.map.map_type import MapType
 from molib.xtal.map.density import MAP_NEGATIVE_RATIO_THRESHOLD
+
+_NORMAL_MAP_KEYWORDS = ("2fo-fc", "2fofc", "2fo", "2fofcwt", "2mfo")
+_DIFFERENCE_MAP_KEYWORDS = ("fo-fc", "difference", "diff", "fofc", "delfwt")
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,8 +144,12 @@ class VolumeData:
         return self.statistics.is_mean_near_zero
 
     def detect_type(self) -> MapType:
-        """Infer the map type from volume statistics."""
+        """Infer map type from volume statistics only (no labels / metadata).
 
+        Callers that also have crystallographic or MapInfo labels should use
+        :func:`resolve_map_type`, which applies a metadata-first policy and by
+        default refuses to treat Fo-Fc from statistics alone.
+        """
         stats = self.statistics
 
         if not (
@@ -150,9 +160,75 @@ class VolumeData:
         ):
             return MapType.UNKNOWN
 
+        if stats.max_value == 0.0:
+            return MapType.UNKNOWN
+
         negative_ratio = abs(stats.min_value) / stats.max_value
 
         if negative_ratio > MAP_NEGATIVE_RATIO_THRESHOLD:
             return MapType.DIFFERENCE
 
         return MapType.NORMAL
+
+
+def _map_type_from_label(raw: str | None) -> MapType | None:
+    """Parse a crystallographic / file label string into a map type, if known."""
+    if not raw:
+        return None
+    label = str(raw).strip().lower().replace("_", "-")
+    if not label:
+        return None
+    # Prefer more specific 2Fo-Fc tokens before generic fo-fc substrings.
+    if any(keyword in label for keyword in _NORMAL_MAP_KEYWORDS):
+        return MapType.NORMAL
+    if any(keyword in label for keyword in _DIFFERENCE_MAP_KEYWORDS):
+        return MapType.DIFFERENCE
+    try:
+        coerced = MapType.coerce(raw)
+    except ValueError:
+        return None
+    if coerced is MapType.UNKNOWN:
+        return None
+    return coerced
+
+
+def resolve_map_type(
+    volume_data: VolumeData | None,
+    *,
+    crystallographic_info: Any | None = None,
+    map_type_hint: MapType | str | None = None,
+    allow_statistical_difference: bool = False,
+) -> MapType:
+    """Resolve map type from hint, crystallographic metadata, then volume stats.
+
+    :param volume_data: Optional volume + statistics container
+    :param crystallographic_info: Object with optional ``map_type`` string attribute
+    :param map_type_hint: Explicit type (e.g. active ``MapInfo.map_type``)
+    :param allow_statistical_difference: When False (default), statistical
+        inference never returns :attr:`MapType.DIFFERENCE` — real 2Fo-Fc maps
+        often have strong negative lobes and must not be painted as Fo-Fc
+        without column / MapInfo labels
+    :return: Resolved :class:`MapType`
+    """
+    if map_type_hint is not None:
+        try:
+            hinted = MapType.coerce(map_type_hint)
+        except ValueError:
+            hinted = None
+        if hinted is not None and hinted is not MapType.UNKNOWN:
+            return hinted
+
+    if crystallographic_info is not None:
+        meta = _map_type_from_label(getattr(crystallographic_info, "map_type", None))
+        if meta is not None:
+            return meta
+
+    if volume_data is None:
+        return MapType.UNKNOWN
+
+    inferred = volume_data.detect_type()
+    if inferred is MapType.DIFFERENCE and not allow_statistical_difference:
+        return MapType.NORMAL
+    if inferred is MapType.UNKNOWN:
+        return MapType.NORMAL
+    return inferred

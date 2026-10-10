@@ -373,6 +373,61 @@ class CrystallographicInfo:
         log.info(f"📐 Grid origin: {self.grid.origin}")
         log.info(f"📐 Axis order: {self.grid.axis_order}")
 
+    @classmethod
+    def from_grid(
+            cls,
+            grid: gemmi.FloatGrid,
+            map_type: str = "CCP4_MAP",
+    ) -> "CrystallographicInfo":
+        """Build crystallographic metadata from a Gemmi density grid."""
+        grid_spacing, grid_origin = _calculate_proper_grid_spacing(grid)
+        space_group = str(grid.spacegroup)
+
+        return cls(
+            unit_cell=UnitCell(
+                a=grid.unit_cell.a,
+                b=grid.unit_cell.b,
+                c=grid.unit_cell.c,
+                alpha=grid.unit_cell.alpha,
+                beta=grid.unit_cell.beta,
+                gamma=grid.unit_cell.gamma,
+                space_group=space_group,
+            ),
+            space_group=space_group,
+            grid=MapGrid(
+                dimensions=tuple(grid.shape),
+                origin=grid_origin,
+                spacing=grid_spacing,
+                axis_order=_axis_order_from_gemmi(grid.axis_order),
+            ),
+            transforms=CoordinateTransforms(
+                frac_to_orth=get_grid_fractional_to_orthogonal_matrix(grid),
+                orth_to_frac=get_grid_orthogonal_to_fractional_matrix(grid),
+            ),
+            map_type=map_type,
+        )
+
+    @staticmethod
+    def grid_to_xyz_array(
+            grid: gemmi.FloatGrid,
+    ) -> np.ndarray:
+        """Return a copy of the grid data in canonical XYZ axis order."""
+        array = np.array(grid, copy=True)
+
+        try:
+            axis_order = AxisOrder.from_gemmi(grid.axis_order)
+        except ValueError:
+            log.warning(
+                "Unknown grid axis order %r; assuming XYZ",
+                grid.axis_order,
+            )
+            return array
+
+        if axis_order is not AxisOrder.XYZ:
+            array = axis_order.transpose_to_xyz(array)
+
+        return array
+
     def log_summary(self) -> None:
         """Log the contents of this crystallographic information."""
 
@@ -513,7 +568,7 @@ def load_density_map(
 
         # The returned array is guaranteed to be in X, Y, Z axis order
         # (numpy axis 0 -> X), matching the origin/spacing convention.
-        crystallographic_info = crystallographic_info_from_grid(grid, map_type=map_type)
+        crystallographic_info = CrystallographicInfo.from_grid(grid, map_type=map_type)
         crystallographic_info.grid.dimensions = tuple(np_array.shape)
         crystallographic_info.grid.axis_order = axis_order
 
@@ -527,7 +582,7 @@ def load_density_map(
 
 
 def crystallographic_info_from_grid(
-    grid: FloatGrid, map_type: str = "CCP4_MAP"
+    grid: gemmi.FloatGrid, map_type: str = "CCP4_MAP"
 ) -> CrystallographicInfo:
     """Create crystallographic information from a Gemmi map grid."""
 

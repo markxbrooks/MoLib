@@ -29,7 +29,7 @@ from molib.xtal.uglymol.map.helpers import (
 from molib.xtal.map.density import (
     AxisOrder,
     CrystallographicInfo,
-    crystallographic_info_from_grid,
+    # crystallographic_info_from_grid,
 )
 from molib.xtal.map.map_type import MapType
 
@@ -110,6 +110,7 @@ def _log_density_statistics(volume: np.ndarray) -> None:
             f"value={volume[finite].flat[0]}"
         )
 
+
 @dataclass
 class DensityMapData:
     """Loaded electron-density map and its crystallographic metadata.
@@ -122,7 +123,6 @@ class DensityMapData:
     crystallographic_info: CrystallographicInfo
     source: str = ""
     map_type: MapType | None = None
-
 
 
 @dataclass
@@ -409,14 +409,14 @@ def load_density_map_from_columns(
     log.info(f"ℹ️ Gemmi grid nu/nv/nw: {grid.nu}/{grid.nv}/{grid.nw}")
 
     crystallographic_info = normalize_crystallographic_info_from_dict(
-        crystallographic_info_from_grid(grid, map_type=xtal_map_type)
+        CrystallographicInfo.from_grid(grid, map_type=xtal_map_type)
     )
     crystallographic_info.log_summary()
 
     # Convert to a NumPy array in the canonical XYZ axis order. The
     # spacing, origin, and transformations come from
     # crystallographic_info_from_grid() -- no manual overrides here.
-    np_array = _grid_to_xyz_array(grid, crystallographic_info)
+    np_array = crystallographic_info.grid_to_xyz_array(grid)
     log.info(f"ℹ️ Loaded MTZ map shape: {np_array.shape}")
     _log_density_statistics(np_array)
 
@@ -651,16 +651,11 @@ def _density_map_data_from_ccp4(
     """Build the canonical :class:`DensityMapData` from a CCP4 grid."""
     grid = ccp4_map.grid
 
-    crystallographic_info = crystallographic_info_from_grid(grid)
-    if not isinstance(crystallographic_info, CrystallographicInfo):
-        raise TypeError(f"Invalid crystallographic info: {type(crystallographic_info)}")
-    crystallographic_info = normalize_crystallographic_info_from_dict(
-        crystallographic_info
-    )
+    crystallographic_info = CrystallographicInfo.from_grid(grid)
 
     crystallographic_info.log_grid_metadata()
 
-    volume = _grid_to_xyz_array(grid, crystallographic_info)
+    volume = crystallographic_info.grid_to_xyz_array(grid)
     log.info(f"ℹ️ Loaded CCP4 map shape: {volume.shape}")
     _log_density_statistics(volume)
 
@@ -1940,7 +1935,7 @@ def load_density_map_with_extent(
     f_label="FWT",
     phi_label="PHWT",
     sample_rate=0.0,
-) -> tuple[ndarray[Any, dtype[Any]], CrystallographicInfo] | None:
+) -> DensityMapData | None:
     """
     Load density map using Gemmi's set_extent() to cover structure with margin.
     This is much more efficient than post-processing filtering.
@@ -2008,20 +2003,18 @@ def load_density_map_with_extent(
         grid = ccp4_map.grid
 
         # Extract crystallographic information
-        crystallographic_info = crystallographic_info_from_grid(grid)
-        if not isinstance(crystallographic_info, CrystallographicInfo):
-            raise TypeError(f"Invalid crystallographic info: {type(crystallographic_info)}")
+        crystallographic_info = CrystallographicInfo.from_grid(grid)
         # Convert to NumPy array
-        np_array = _grid_to_xyz_array(grid, crystallographic_info)
+        volume = crystallographic_info.grid_to_xyz_array(grid)
 
         log.info("✅ Map loaded with extent:")
-        log.info(f"   Shape: {np_array.shape}")
-        log.info(f"   Non-zero voxels: {np.count_nonzero(np_array):,}")
+        log.info(f"   Shape: {volume.shape}")
+        log.info(f"   Non-zero voxels: {np.count_nonzero(volume):,}")
         log.info(f"   Margin: {margin}Å")
         log.info(f"   Grid origin: {crystallographic_info.grid.origin}")
         log.info(f"   Grid spacing: {crystallographic_info.grid.spacing}")
 
-        return np_array, crystallographic_info
+        return DensityMapData(volume=volume, crystallographic_info=crystallographic_info)
 
     except Exception as e:
         log.error(f"❌ Error loading map with extent: {e}")
