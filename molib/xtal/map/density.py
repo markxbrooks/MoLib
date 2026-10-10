@@ -3,13 +3,12 @@ Utilities for loading and processing electron density maps from MTZ and CCP4 fil
 """
 from __future__ import annotations
 
-from typing import Any
 import gemmi
 import numpy as np
 from gemmi import Mtz
-from numpy import ndarray, dtype
 
 from molib.xtal.map.crystal import CrystallographicInfo
+from molib.xtal.map.helper import DensityMapData
 from molib.xtal.map.map_type import MapSource
 from decologr import Decologr as log
 
@@ -60,7 +59,7 @@ def load_density_map(
     phi_label: str = "PH2FOFCWT",
     sample_rate: float = 0.0,
     map_type: MapSource = MapSource.CCP4_MAP
-) -> tuple[ndarray[Any, dtype[Any]], CrystallographicInfo] | None | Any:
+) -> DensityMapData | None:
     try:
         mtz = gemmi.read_mtz_file(mtz_path)
 
@@ -92,7 +91,7 @@ def load_density_map(
 
         crystallographic_info.log_summary()
 
-        return np_array, crystallographic_info
+        return DensityMapData(volume=np_array, crystallographic_info=crystallographic_info)
     except Exception as e:
         log.error(f"❌ Could not load map from {mtz_path}: {e}")
         return None
@@ -103,7 +102,7 @@ def get_labels_for_col_type(col_type: str, mtz: Mtz) -> list[str]:
     return [col.label for col in mtz.columns if col.type == col_type]
 
 
-def log_available_phi_labels(phi_label: str, phi_labels: list[str]) -> Any:
+def log_available_phi_labels(phi_label: str, phi_labels: list[str]) -> None:
     """Log available PHI labels"""
     log.error(f"❌ Requested PHI label '{phi_label}' not found in MTZ file")
     log.error(f"Available PHI labels: {phi_labels}")
@@ -115,10 +114,9 @@ def log_available_phi_labels(phi_label: str, phi_labels: list[str]) -> Any:
             if common in phi_labels:
                 log.info(f"💡 Suggested PHI label: {common}")
                 break
-    return None
 
 
-def log_available_f_labels(f_label: str, f_labels: list[str]) -> Any:
+def log_available_f_labels(f_label: str, f_labels: list[str]) -> None:
     """Log available F labels"""
     log.error(f"❌ Requested F label '{f_label}' not found in MTZ file")
     log.error(f"Available F labels: {f_labels}")
@@ -130,4 +128,3 @@ def log_available_f_labels(f_label: str, f_labels: list[str]) -> Any:
             if common in f_labels:
                 log.info(f"💡 Suggested F label: {common}")
                 break
-    return None
