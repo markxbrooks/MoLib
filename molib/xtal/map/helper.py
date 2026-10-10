@@ -3,12 +3,13 @@ Utilities for loading and processing electron density maps from MTZ and CCP4 fil
 """
 from pathlib import Path
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import faulthandler
 import os
 import pathlib
 import re
+
 from numpy import dtype, ndarray
 from typing import Callable, Any
 
@@ -21,6 +22,7 @@ from molib.xtal.ccp4.mtz.errors import MtzColumnNotFoundError
 from molib.xtal.info.resolve import normalize_crystallographic_info_from_dict
 from molib.xtal.map.builders.processing import build_map_processing_settings
 from molib.xtal.map.builders.density import build_density_map_spec
+from molib.xtal.map.info import MapProcessingSettings
 from molib.xtal.map.spec import DensityMapSpec
 from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
@@ -86,7 +88,7 @@ def _select_map_columns(mtz_path: str, map_type: MapType) -> tuple[str, str]:
     )
 
 
-def _log_density_statistics(volume: np.ndarray) -> None:
+def log_density_statistics(volume: np.ndarray) -> None:
     """Log density statistics immediately after gridding to catch stale/constant data."""
     if volume is None or volume.size == 0:
         log.error("❌ Generated density volume is empty")
@@ -123,10 +125,25 @@ class DensityMapData:
     crystallographic_info: CrystallographicInfo
     source: str = ""
     map_type: MapType | None = None
+    margin: float | None = None
+
+    def log_map_data(self):
+        log.info("✅ Map loaded with extent:")
+        log.info(f"   Shape: {self.volume.shape}")
+        log_density_statistics(self.volume)
+        log.info(f"   Non-zero voxels: {np.count_nonzero(self.volume):,}")
+        if self.margin:
+            log.info(f"   Margin: {self.margin}Å")
+        if self.map_type:
+            log.info(f"   Map type: {self.map_type}")
+        if self.source:
+            log.info(f"   Source: {self.source}")
+        log.info(f"   Grid origin: {self.crystallographic_info.grid.origin}")
+        log.info(f"   Grid spacing: {self.crystallographic_info.grid.spacing}")
 
 
 @dataclass
-class SimpleHeader:
+class CCP4MiniHeader:
     """Minimal CCP4 header view used by the symmetry-expansion helpers."""
 
     nsymbt: int
@@ -138,7 +155,7 @@ class SimpleHeader:
     nzstart: int = 0
 
 
-def _build_header_from_ccp4_map(ccp4_map: gemmi.Ccp4Map) -> SimpleHeader:
+def _build_header_from_ccp4_map(ccp4_map: gemmi.Ccp4Map) -> CCP4MiniHeader:
     """Build a ``SimpleHeader`` from a gemmi Ccp4Map (or test mock).
 
     Prefers parsing the raw CCP4 header bytes, then falls back to the
@@ -149,10 +166,10 @@ def _build_header_from_ccp4_map(ccp4_map: gemmi.Ccp4Map) -> SimpleHeader:
         import struct
 
         if hasattr(ccp4_map, "ccp4_header") and isinstance(
-            ccp4_map.ccp4_header, (bytes, bytearray)
+                ccp4_map.ccp4_header, (bytes, bytearray)
         ):
             header_ints = struct.unpack("<256i", ccp4_map.ccp4_header[:1024])
-            header = SimpleHeader(
+            header = CCP4MiniHeader(
                 nsymbt=header_ints[23],
                 nx=header_ints[7],
                 ny=header_ints[8],
@@ -177,13 +194,23 @@ def _build_header_from_ccp4_map(ccp4_map: gemmi.Ccp4Map) -> SimpleHeader:
             if len(shape) == 3
             else ORIGIN
         )
-        header = SimpleHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
+        header = CCP4MiniHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
     return header
 
 
-def _read_symmetry_ops(
-    map_path: str, header
-) -> tuple[bytes, int, list, list, list]:
+@dataclass
+class CCP4Map:
+    """CCP4 Map"""
+    buffer: bytes = None
+    nsymbt: int = None
+    n_grid: list[Any] = field(default_factory=list)
+    start: list[Any] = field(default_factory=list)
+    end: list[Any] = field(default_factory=list)
+
+
+def read_symmetry_ops(
+        map_path: str, header: CCP4MiniHeader
+) -> CCP4Map:
     """Read the raw CCP4 bytes and derive (buffer, nsymbt, n_grid, start, end)."""
     with open(map_path, "rb") as f:
         map_buffer = f.read()
@@ -191,7 +218,7 @@ def _read_symmetry_ops(
     n_grid = [header.nx, header.ny, header.nz]
     start = [header.nxstart, header.nystart, header.nzstart]
     end = [start[0] + n_grid[0], start[1] + n_grid[1], start[2] + n_grid[2]]
-    return map_buffer, nsymbt, n_grid, start, end
+    return CCP4Map(buffer=map_buffer, nsymbt=nsymbt, n_grid=n_grid, start=start, end=end)
 
 
 def _parse_symmetry_matrix(symop: str, n_grid: list) -> list:
@@ -203,14 +230,14 @@ def _parse_symmetry_matrix(symop: str, n_grid: list) -> list:
 
 
 def _apply_symmetry_mates(
-    volume: np.ndarray,
-    expanded_volume: np.ndarray,
-    map_buffer: bytes,
-    nsymbt: int,
-    n_grid: list,
-    start: list,
-    end: list,
-    center_offset: list,
+        volume: np.ndarray,
+        expanded_volume: np.ndarray,
+        map_buffer: bytes,
+        nsymbt: int,
+        n_grid: list,
+        start: list,
+        end: list,
+        center_offset: list,
 ) -> int:
     """Apply every symmetry mate from ``map_buffer`` into ``expanded_volume``.
 
@@ -280,13 +307,13 @@ def _xyz_to_dict(value) -> dict:
 
 
 def _apply_mask_and_finalize(
-    density_map: np.ndarray,
-    mask: np.ndarray,
-    progress_callback,
-    cutoff_distance: float,
-    label: str,
-    extra_log_fn=None,
-    guard_division: bool = True,
+        density_map: np.ndarray,
+        mask: np.ndarray,
+        progress_callback,
+        cutoff_distance: float,
+        label: str,
+        extra_log_fn=None,
+        guard_division: bool = True,
 ) -> np.ndarray:
     """Zero masked-out voxels, then log carve statistics and finalize."""
     carved_density = density_map.copy()
@@ -301,7 +328,7 @@ def _apply_mask_and_finalize(
         reduction_factor = 0
     else:
         reduction_factor = (
-            (original_nonzero - carved_nonzero) / original_nonzero * 100
+                (original_nonzero - carved_nonzero) / original_nonzero * 100
         )
 
     log.info(f"✅ {label}:")
@@ -319,8 +346,8 @@ def _apply_mask_and_finalize(
 
 
 def _grid_to_xyz_array(
-    grid: gemmi.FloatGrid,
-    crystallographic_info: CrystallographicInfo | None = None,
+        grid: gemmi.FloatGrid,
+        crystallographic_info: CrystallographicInfo | None = None,
 ) -> np.ndarray:
     """Return a NumPy array of the grid in the canonical X, Y, Z axis order.
 
@@ -351,12 +378,12 @@ def _grid_to_xyz_array(
 
 
 def load_density_map_from_columns(
-    mtz_path: str,
-    f_label: str,
-    phi_label: str,
-    *,
-    map_type: MapType | str | None = None,
-    sample_rate: float = 0.0,
+        mtz_path: str,
+        f_label: str,
+        phi_label: str,
+        *,
+        map_type: MapType | str | None = None,
+        sample_rate: float = 0.0,
 ) -> DensityMapData | None:
     """Grid explicit F/PHI columns into a canonical :class:`DensityMapData`.
 
@@ -418,18 +445,18 @@ def load_density_map_from_columns(
     # crystallographic_info_from_grid() -- no manual overrides here.
     np_array = crystallographic_info.grid_to_xyz_array(grid)
     log.info(f"ℹ️ Loaded MTZ map shape: {np_array.shape}")
-    _log_density_statistics(np_array)
-
-    return DensityMapData(
+    density_map_data = DensityMapData(
         volume=np_array,
         crystallographic_info=crystallographic_info,
         source=mtz_path,
         map_type=resolved_map_type,
     )
+    density_map_data.log_map_data()
+    return density_map_data
 
 
 def load_mtz_file(
-    spec: MtzFileSpec,
+        spec: MtzFileSpec,
 ) -> tuple[DensityMapData | None, DensityMapData | None]:
     """Load the 2Fo-Fc (map) and Fo-Fc (difference) maps from an MTZ file spec.
 
@@ -455,8 +482,8 @@ load_maps_from_mtz_file_spec = load_mtz_file
 
 
 def _load_spec_map(
-    mtz_path: str,
-    coefficients: MtzColumnPair,
+        mtz_path: str,
+        coefficients: MtzColumnPair,
 ) -> DensityMapData | None:
     """Grid one map from an :class:`MtzColumnPair`, returning None when absent.
 
@@ -477,8 +504,8 @@ def _load_spec_map(
 
 
 def _resolve_centroid(
-    centroid: tuple[float, float, float] | None,
-    crystallographic_info: CrystallographicInfo,
+        centroid: tuple[float, float, float] | None,
+        crystallographic_info: CrystallographicInfo,
 ) -> tuple[float, float, float]:
     """Return the caller-provided centroid or fall back to the unit-cell center.
 
@@ -520,9 +547,9 @@ def _log_grid_consistency(map_data: DensityMapData, label: str) -> DensityMapDat
 
 
 def _load_mtz_density_map(
-    map_path: pathlib.Path,
-    *,
-    mtz_spec: MtzDensitySpec | None = None,
+        map_path: pathlib.Path,
+        *,
+        mtz_spec: MtzDensitySpec | None = None,
 ) -> DensityMapData | None:
     """Grid an MTZ file into a canonical :class:`DensityMapData`.
 
@@ -561,17 +588,17 @@ def _load_mtz_density_map(
 
 
 def _load_ccp4_density_map(
-    map_path: pathlib.Path,
-    *,
-    pdb_path: pathlib.Path | None = None,
-    expand_symmetry: bool,
-    convert_to_cartesian: bool,
-    carve_density: bool,
-    carve_cutoff: float,
-    carve_density_centroid: bool,
-    centroid: tuple[float, float, float] | None,
-    centroid_cutoff: float,
-    progress_callback: Callable | None,
+        map_path: pathlib.Path,
+        *,
+        pdb_path: pathlib.Path | None = None,
+        expand_symmetry: bool,
+        convert_to_cartesian: bool,
+        carve_density: bool,
+        carve_cutoff: float,
+        carve_density_centroid: bool,
+        centroid: tuple[float, float, float] | None,
+        centroid_cutoff: float,
+        progress_callback: Callable | None,
 ) -> DensityMapData | None:
     """Load a CCP4 map (``.map``/``.ccp4``) into a canonical :class:`DensityMapData`.
 
@@ -645,32 +672,29 @@ def _load_ccp4_density_map(
 
 
 def _density_map_data_from_ccp4(
-    ccp4_map: gemmi.Ccp4Map,
-    source: str,
+        ccp4_map: gemmi.Ccp4Map,
+        source: str,
 ) -> DensityMapData:
     """Build the canonical :class:`DensityMapData` from a CCP4 grid."""
     grid = ccp4_map.grid
 
     crystallographic_info = CrystallographicInfo.from_grid(grid)
-
-    crystallographic_info.log_grid_metadata()
-
     volume = crystallographic_info.grid_to_xyz_array(grid)
-    log.info(f"ℹ️ Loaded CCP4 map shape: {volume.shape}")
-    _log_density_statistics(volume)
-
-    return DensityMapData(
+    density_map_data = DensityMapData(
         volume=volume,
         crystallographic_info=crystallographic_info,
         source=source,
     )
+    density_map_data.crystallographic_info.log_grid_metadata()
+    density_map_data.log_map_data()
+    return density_map_data
 
 
 def _expand_ccp4_symmetry_op(
-    map_data: DensityMapData,
-    map_path: str,
-    pdb_path: str,
-    header,
+        map_data: DensityMapData,
+        map_path: str,
+        pdb_path: str,
+        header,
 ) -> DensityMapData:
     """Apply symmetry expansion to the map object when operations exist."""
     if header.nsymbt <= 0:
@@ -690,11 +714,11 @@ def _expand_ccp4_symmetry_op(
 
 
 def _carve_protein_density(
-    map_data: DensityMapData,
-    pdb_path,
-    carve_density: bool,
-    carve_cutoff: float,
-    progress_callback,
+        map_data: DensityMapData,
+        pdb_path,
+        carve_density: bool,
+        carve_cutoff: float,
+        progress_callback,
 ) -> DensityMapData:
     """Carve density around the protein structure when requested."""
     log.parameter("carve_density", carve_density)
@@ -717,10 +741,10 @@ def _carve_protein_density(
 
 
 def _carve_centroid_density(
-    map_data: DensityMapData,
-    centroid: tuple[float, float, float] | None,
-    centroid_cutoff: float,
-    progress_callback,
+        map_data: DensityMapData,
+        centroid: tuple[float, float, float] | None,
+        centroid_cutoff: float,
+        progress_callback,
 ) -> DensityMapData:
     """Carve density around the (resolved) centroid."""
     centroid = _resolve_centroid(centroid, map_data.crystallographic_info)
@@ -789,16 +813,15 @@ def resolve_pdb_path(map_path: Path, pdb_path: str | Path | None) -> Path:
 
 
 def load_ccp4_map_optimized(
-    map_path: str,
-    pdb_path: str = None,
-    expand_symmetry: bool = True,
-    convert_to_cartesian: bool = False,
-    carve_density: bool = True,
-    carve_cutoff: float = 4.0,
-    progress_callback: Callable = None,
-    carve_density_centroid: bool = False,
-    centroid: tuple[float, float, float] | None = None,
-    centroid_cutoff: float = 15.0,
+        map_path: str,
+        pdb_path: str = None,
+        expand_symmetry: bool = True,
+        carve_density: bool = True,
+        carve_cutoff: float = 4.0,
+        progress_callback: Callable = None,
+        carve_density_centroid: bool = False,
+        centroid: tuple[float, float, float] | None = None,
+        centroid_cutoff: float = 15.0,
 ) -> DensityMapData | None:
     """
     Load a CCP4 map file using Gemmi with optimized symmetry expansion and optional density carving.
@@ -825,18 +848,18 @@ def load_ccp4_map_optimized(
             map_path=map_path,
             pdb_path=pdb_path,
             expand_symmetry=expand_symmetry,
-            carve_density=carve_density,
-            carve_cutoff=carve_cutoff,
-            carve_density_centroid=carve_density_centroid,
+            processing=MapProcessingSettings(carve_density=carve_density,
+                                             carve_cutoff=carve_cutoff,
+                                             carve_density_centroid=carve_density_centroid,
+                                             centroid_cutoff=centroid_cutoff),
             centroid=centroid,
-            centroid_cutoff=centroid_cutoff,
             progress_callback=progress_callback,
         )
     )
 
 
 def carve_density_with_gemmi(
-    ccp4_map: gemmi.Ccp4Map, pdb_path: str, cutoff: float, progress_callback=None
+        ccp4_map: gemmi.Ccp4Map, pdb_path: str, cutoff: float, progress_callback=None
 ):
     """
     Carve density: keep voxels within `cutoff` Å of any atom, zero others.
@@ -987,16 +1010,17 @@ def carve_density_with_gemmi(
         log.warning("Returning original map without carving")
         return ccp4_map
 
+
 def load_ccp4_map(
-    map_path: str,
-    expand_symmetry: bool = True,
-    convert_to_cartesian: bool = False,
-    carve_density: bool = True,
-    carve_cutoff: float = 4.0,
-    progress_callback=None,
-    carve_density_centroid: bool = False,
-    pdb_centroid_or_clicked_position: tuple[float, float, float] | None = None,
-    centroid_cutoff: float = 15.0,
+        map_path: str,
+        expand_symmetry: bool = True,
+        convert_to_cartesian: bool = False,
+        carve_density: bool = True,
+        carve_cutoff: float = 4.0,
+        progress_callback=None,
+        carve_density_centroid: bool = False,
+        pdb_centroid_or_clicked_position: tuple[float, float, float] | None = None,
+        centroid_cutoff: float = 15.0,
 ) -> DensityMapData | None:
     """Load a CCP4 map using Gemmi.
 
@@ -1017,9 +1041,9 @@ def load_ccp4_map(
 
 
 def load_ccp4_maps(
-    *map_paths: str,
-    expand_symmetry: bool = False,
-    pdb_paths: list[str] | None = None,
+        *map_paths: str,
+        expand_symmetry: bool = False,
+        pdb_paths: list[str] | None = None,
 ) -> list["DensityMapData"] | None:
     """
     Load multiple CCP4 map files at once with optimized symmetry expansion.
@@ -1051,7 +1075,7 @@ def load_ccp4_maps(
 
         loaded_maps = []
         for i, map_path in enumerate(map_paths):
-            log.info(f"📁 Loading map {i+1}/{len(map_paths)}: {map_path}")
+            log.info(f"📁 Loading map {i + 1}/{len(map_paths)}: {map_path}")
 
             # Try to find corresponding PDB file
             pdb_path = None
@@ -1074,11 +1098,11 @@ def load_ccp4_maps(
                 result = load_ccp4_map(map_path, expand_symmetry=expand_symmetry)
 
             if result is None:
-                log.error(f"❌ Failed to load map {i+1}: {map_path}")
+                log.error(f"❌ Failed to load map {i + 1}: {map_path}")
                 return None
 
             loaded_maps.append(result)
-            log.info(f"✅ Successfully loaded map {i+1}: {map_path}")
+            log.info(f"✅ Successfully loaded map {i + 1}: {map_path}")
 
         log.info(f"🎉 Successfully loaded all {len(map_paths)} maps")
         return loaded_maps
@@ -1089,7 +1113,7 @@ def load_ccp4_maps(
 
 
 def load_mtz_maps(
-    *mtz_paths: str, sample_rate=0.0
+        *mtz_paths: str, sample_rate=0.0
 ) -> list["DensityMapData"] | None:
     """
     Load multiple MTZ files at once (similar to UglyMol's V.load_ccp4_maps).
@@ -1118,15 +1142,15 @@ def load_mtz_maps(
 
         loaded_maps = []
         for i, mtz_path in enumerate(mtz_paths):
-            log.info(f"📁 Loading MTZ map {i+1}/{len(mtz_paths)}: {mtz_path}")
+            log.info(f"📁 Loading MTZ map {i + 1}/{len(mtz_paths)}: {mtz_path}")
 
             result = load_density_map_auto_mtz(mtz_path, sample_rate=sample_rate)
             if result is None:
-                log.error(f"❌ Failed to load MTZ map {i+1}: {mtz_path}")
+                log.error(f"❌ Failed to load MTZ map {i + 1}: {mtz_path}")
                 return None
 
             loaded_maps.append(result)
-            log.info(f"✅ Successfully loaded MTZ map {i+1}: {mtz_path}")
+            log.info(f"✅ Successfully loaded MTZ map {i + 1}: {mtz_path}")
 
         log.info(f"🎉 Successfully loaded all {len(mtz_paths)} MTZ maps")
         return loaded_maps
@@ -1137,10 +1161,10 @@ def load_mtz_maps(
 
 
 def load_density_map_auto_mtz(
-    mtz_path: str,
-    *,
-    map_type: MapType | str = MapType.NORMAL,
-    sample_rate: float = 0.0,
+        mtz_path: str,
+        *,
+        map_type: MapType | str = MapType.NORMAL,
+        sample_rate: float = 0.0,
 ) -> DensityMapData | None:
     """
     Load a density map from an MTZ file for a specific map type.
@@ -1193,12 +1217,12 @@ def load_density_map_auto_mtz(
 
 
 def load_density_map_with_columns(
-    mtz_path: str,
-    f_column: str,
-    phi_column: str,
-    sample_rate: float = 0.0,
-    *,
-    map_type: MapType | str | None = None,
+        mtz_path: str,
+        f_column: str,
+        phi_column: str,
+        sample_rate: float = 0.0,
+        *,
+        map_type: MapType | str | None = None,
 ) -> DensityMapData | None:
     """
     Load density map from MTZ file with specific F and PHI column selections.
@@ -1299,7 +1323,7 @@ def _find_corresponding_pdb_file(map_path: str) -> str | None:
 
 
 def expand_ccp4_symmetry_optimized(
-    volume: np.ndarray, map_path: str, header, pdb_path: str = None
+        volume: np.ndarray, map_path: str, header, pdb_path: str = None
 ) -> np.ndarray:
     """
     Optimized CCP4 map expansion using symmetry operations.
@@ -1318,7 +1342,8 @@ def expand_ccp4_symmetry_optimized(
         log.info(f"🔄 Optimized symmetry expansion for {map_path}")
 
         # Read the raw file to access symmetry operations
-        map_buffer, nsymbt, n_grid, start, end = _read_symmetry_ops(map_path, header)
+        ccp4_map = read_symmetry_ops(map_path, header)
+        buffer, nsymbt, n_grid, start, end = ccp4_map
         if nsymbt == 0:
             log.info("ℹ️ No symmetry operations to expand")
             return volume
@@ -1344,9 +1369,9 @@ def expand_ccp4_symmetry_optimized(
 
         # Copy original volume to center of expanded volume
         expanded_volume[
-            center_offset[0] : center_offset[0] + volume.shape[0],
-            center_offset[1] : center_offset[1] + volume.shape[1],
-            center_offset[2] : center_offset[2] + volume.shape[2],
+            center_offset[0]: center_offset[0] + volume.shape[0],
+            center_offset[1]: center_offset[1] + volume.shape[1],
+            center_offset[2]: center_offset[2] + volume.shape[2],
         ] = volume
 
         log.info(f"📊 Original volume shape: {volume.shape}")
@@ -1392,7 +1417,9 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         log.info(f"🔄 Expanding symmetry for {map_path}")
 
         # Read the raw file to access symmetry operations
-        map_buffer, nsymbt, n_grid, start, end = _read_symmetry_ops(map_path, header)
+        # map_buffer, nsymbt, n_grid, start, end = _read_symmetry_ops(map_path, header)
+        ccp4_map = read_symmetry_ops(map_path, header)
+        map_buffer, nsymbt, n_grid, start, end = ccp4_map
         if nsymbt == 0:
             log.info("ℹ️ No symmetry operations to expand")
             return volume
@@ -1406,9 +1433,9 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         # Copy original volume to center of expanded volume
         center_offset = [n // 2 for n in expanded_shape]
         expanded_volume[
-            center_offset[0] : center_offset[0] + volume.shape[0],
-            center_offset[1] : center_offset[1] + volume.shape[1],
-            center_offset[2] : center_offset[2] + volume.shape[2],
+            center_offset[0]: center_offset[0] + volume.shape[0],
+            center_offset[1]: center_offset[1] + volume.shape[1],
+            center_offset[2]: center_offset[2] + volume.shape[2],
         ] = volume
 
         log.info(f"📊 Original volume shape: {volume.shape}")
@@ -1436,15 +1463,15 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
 
 
 def apply_symmetry_to_volume(
-    source_volume: np.ndarray,
-    target_volume: np.ndarray,
-    mat: list,
-    ax: int,
-    ay: int,
-    az: int,
-    start: list,
-    end: list,
-    center_offset: list,
+        source_volume: np.ndarray,
+        target_volume: np.ndarray,
+        mat: list,
+        ax: int,
+        ay: int,
+        az: int,
+        start: list,
+        end: list,
+        center_offset: list,
 ):
     """
     Apply a symmetry operation to create a symmetry mate in the target volume.
@@ -1471,10 +1498,10 @@ def apply_symmetry_to_volume(
                 xyz = [0, 0, 0]
                 for j in range(3):
                     xyz[j] = (
-                        it[ax] * mat[j][0]
-                        + it[ay] * mat[j][1]
-                        + it[az] * mat[j][2]
-                        + mat[j][3]
+                            it[ax] * mat[j][0]
+                            + it[ay] * mat[j][1]
+                            + it[az] * mat[j][2]
+                            + mat[j][3]
                     )
 
                 # Convert to target volume coordinates
@@ -1484,15 +1511,15 @@ def apply_symmetry_to_volume(
 
                 # Check bounds and copy value
                 if (
-                    0 <= target_x < target_volume.shape[0]
-                    and 0 <= target_y < target_volume.shape[1]
-                    and 0 <= target_z < target_volume.shape[2]
+                        0 <= target_x < target_volume.shape[0]
+                        and 0 <= target_y < target_volume.shape[1]
+                        and 0 <= target_z < target_volume.shape[2]
                 ):
                     target_volume[target_x, target_y, target_z] = source_volume[x, y, z]
 
 
 def _calculate_optimal_expansion_bounds(
-    volume: np.ndarray, header, map_path: str, pdb_path: str, n_grid: list, start: list
+        volume: np.ndarray, header, map_path: str, pdb_path: str, n_grid: list, start: list
 ) -> dict:
     """
     Calculate optimal expansion bounds based on molecular coordinates and symmetry operations.
@@ -1526,7 +1553,9 @@ def _calculate_optimal_expansion_bounds(
         log.info(f"Found {len(atoms)} atoms in PDB structure")
 
         # Get symmetry operations
-        map_buffer, nsymbt, n_grid, _, _ = _read_symmetry_ops(map_path, header)
+        # map_buffer, nsymbt, n_grid, _, _ = _read_symmetry_ops(map_path, header)
+        ccp4_map = read_symmetry_ops(map_path, header)
+        map_buffer, nsymbt, n_grid, _, _ = ccp4_map
         symmetry_operations = []
 
         for i in range(0, nsymbt, 80):
@@ -1553,22 +1582,22 @@ def _calculate_optimal_expansion_bounds(
                 # Apply transformation matrix
                 x, y, z = coord
                 new_x = (
-                    symop_matrix[0][0] * x
-                    + symop_matrix[0][1] * y
-                    + symop_matrix[0][2] * z
-                    + symop_matrix[0][3]
+                        symop_matrix[0][0] * x
+                        + symop_matrix[0][1] * y
+                        + symop_matrix[0][2] * z
+                        + symop_matrix[0][3]
                 )
                 new_y = (
-                    symop_matrix[1][0] * x
-                    + symop_matrix[1][1] * y
-                    + symop_matrix[1][2] * z
-                    + symop_matrix[1][3]
+                        symop_matrix[1][0] * x
+                        + symop_matrix[1][1] * y
+                        + symop_matrix[1][2] * z
+                        + symop_matrix[1][3]
                 )
                 new_z = (
-                    symop_matrix[2][0] * x
-                    + symop_matrix[2][1] * y
-                    + symop_matrix[2][2] * z
-                    + symop_matrix[2][3]
+                        symop_matrix[2][0] * x
+                        + symop_matrix[2][1] * y
+                        + symop_matrix[2][2] * z
+                        + symop_matrix[2][3]
                 )
                 sym_coords[i] = [new_x, new_y, new_z]
 
@@ -1624,12 +1653,12 @@ def _calculate_optimal_expansion_bounds(
 
 
 def carve_density_around_position(
-    density_map: np.ndarray,
-    position: tuple[float, float, float],
-    grid_origin: dict,  # Dictionary with 'x', 'y', 'z' keys for grid origin in Å
-    grid_spacing: dict,  # Dictionary with 'x', 'y', 'z' keys for grid spacing in Å
-    cutoff_distance: float = 15.0,  # Distance in Ångströms to include around the centroid
-    progress_callback=None,  # Callback function for progress tracking
+        density_map: np.ndarray,
+        position: tuple[float, float, float],
+        grid_origin: dict,  # Dictionary with 'x', 'y', 'z' keys for grid origin in Å
+        grid_spacing: dict,  # Dictionary with 'x', 'y', 'z' keys for grid spacing in Å
+        cutoff_distance: float = 15.0,  # Distance in Ångströms to include around the centroid
+        progress_callback=None,  # Callback function for progress tracking
 ) -> np.ndarray:
     """
     Carve out electron density within a specified distance of a centroid.
@@ -1720,12 +1749,12 @@ def carve_density_around_position(
 
 
 def carve_density_around_protein(
-    density_map: np.ndarray,
-    pdb_path: str,
-    grid_origin: dict,
-    grid_spacing: dict,
-    cutoff_distance: float = 4.0,
-    progress_callback=None,
+        density_map: np.ndarray,
+        pdb_path: str,
+        grid_origin: dict,
+        grid_spacing: dict,
+        cutoff_distance: float = 4.0,
+        progress_callback=None,
 ) -> np.ndarray:
     """
     Carve out electron density within a specified distance of protein atoms.
@@ -1929,12 +1958,12 @@ def carve_density_around_protein(
 
 
 def load_density_map_with_extent(
-    mtz_path: str,
-    pdb_path: str,
-    margin: float = 13.0,
-    f_label="FWT",
-    phi_label="PHWT",
-    sample_rate=0.0,
+        mtz_path: str,
+        pdb_path: str,
+        margin: float = 13.0,
+        f_label="FWT",
+        phi_label="PHWT",
+        sample_rate=0.0,
 ) -> DensityMapData | None:
     """
     Load density map using Gemmi's set_extent() to cover structure with margin.
@@ -2007,14 +2036,9 @@ def load_density_map_with_extent(
         # Convert to NumPy array
         volume = crystallographic_info.grid_to_xyz_array(grid)
 
-        log.info("✅ Map loaded with extent:")
-        log.info(f"   Shape: {volume.shape}")
-        log.info(f"   Non-zero voxels: {np.count_nonzero(volume):,}")
-        log.info(f"   Margin: {margin}Å")
-        log.info(f"   Grid origin: {crystallographic_info.grid.origin}")
-        log.info(f"   Grid spacing: {crystallographic_info.grid.spacing}")
-
-        return DensityMapData(volume=volume, crystallographic_info=crystallographic_info)
+        density_map_data = DensityMapData(volume=volume, crystallographic_info=crystallographic_info, margin=margin)
+        density_map_data.log_map_data()
+        return density_map_data
 
     except Exception as e:
         log.error(f"❌ Error loading map with extent: {e}")
@@ -2025,11 +2049,11 @@ def load_density_map_with_extent(
 
 
 def filter_density_sphere(
-    density_map: np.ndarray,
-    grid_origin: dict,
-    grid_spacing: dict,
-    center_coords: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    radius: float = 13.0,
+        density_map: np.ndarray,
+        grid_origin: dict,
+        grid_spacing: dict,
+        center_coords: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        radius: float = 13.0,
 ) -> np.ndarray:
     """
     Filter density map to show only values within a sphere of specified radius around center coordinates.
@@ -2064,9 +2088,9 @@ def filter_density_sphere(
         # Calculate distances from center for all points at once
         center_x, center_y, center_z = center_coords
         distances_squared = (
-            (x_coords - center_x) ** 2
-            + (y_coords - center_y) ** 2
-            + (z_coords - center_z) ** 2
+                (x_coords - center_x) ** 2
+                + (y_coords - center_y) ** 2
+                + (z_coords - center_z) ** 2
         )
         distances = np.sqrt(distances_squared)
 
@@ -2083,7 +2107,7 @@ def filter_density_sphere(
 
         if original_nonzero > 0:
             reduction_factor = (
-                (original_nonzero - filtered_nonzero) / original_nonzero * 100
+                    (original_nonzero - filtered_nonzero) / original_nonzero * 100
             )
         else:
             reduction_factor = 0.0
