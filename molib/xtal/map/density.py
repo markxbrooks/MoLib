@@ -325,7 +325,13 @@ class UnitCell:
 
 @dataclass(slots=True)
 class MapGrid:
-    """MapGrid"""
+    """Geometry associated with a canonical XYZ density array.
+
+    ``origin`` is the Cartesian position of index ``(0, 0, 0)``; ``spacing``
+    is the Cartesian step along each array axis for the axis-aligned
+    ``origin + index * spacing`` model used by carving and similar tools.
+    """
+
     dimensions: tuple[int, int, int]
     origin: GridOrigin
     spacing: GridSpacing

@@ -34,6 +34,7 @@ from molib.xtal.uglymol.map.helpers import (
 from molib.xtal.map.density import (
     AxisOrder,
     CrystallographicInfo,
+    MapGrid,
     # crystallographic_info_from_grid,
 )
 from molib.xtal.map.map_type import MapType
@@ -42,6 +43,11 @@ from molib.xtal.map.map_type import MapType
 faulthandler.enable()
 
 ORIGIN = (0.0, 0.0, 0.0)
+
+# Z-slab thickness for carve distance queries (avoids full-volume meshgrid).
+_CARVE_SLAB_SIZE = 32
+
+ProgressCallback = Callable[[int, int, str], None]
 
 _TWO_FO_FC_CANDIDATES = (
     ("FWT", "PHWT"),
@@ -273,6 +279,39 @@ class CCP4Map:
     end: tuple[int, int, int]
 
 
+@dataclass(frozen=True, slots=True)
+class VolumeGeometry:
+    """Grid geometry required for symmetry expansion (XYZ convention)."""
+
+    n_grid: tuple[int, int, int]
+    start: tuple[int, int, int]
+    end: tuple[int, int, int]
+    center_offset: tuple[int, int, int]
+
+    @classmethod
+    def from_ccp4_map(
+        cls,
+        ccp4_map: CCP4Map,
+        center_offset: tuple[int, int, int] | list[int],
+    ) -> "VolumeGeometry":
+        """Build geometry from file metadata plus an expansion center offset."""
+        offset = tuple(int(x) for x in center_offset)
+        if len(offset) != 3:
+            raise ValueError(
+                f"center_offset must have length 3, got {len(offset)}"
+            )
+        return cls(
+            n_grid=ccp4_map.n_grid,
+            start=ccp4_map.start,
+            end=ccp4_map.end,
+            center_offset=(offset[0], offset[1], offset[2]),
+        )
+
+
+# Helper volumes are canonical XYZ after grid_to_xyz_array.
+CANONICAL_AXIS_ORDER = AxisOrder.XYZ
+
+
 def read_symmetry_ops(
         map_path: str, header: CCP4MiniHeader
 ) -> CCP4Map:
@@ -311,59 +350,80 @@ def read_symmetry_ops(
 
 
 def _parse_symmetry_matrix(symop: str, n_grid: list) -> list:
-    """Parse a CCP4 symmetry text line into a grid-scaled 4x4 matrix."""
+    """Parse a CCP4 symmetry text line into a grid-scaled 3x4 matrix."""
     symop_matrix = parse_symmetry_operator_to_matrix(symop)
     for j in range(3):
         symop_matrix[j][3] = round(symop_matrix[j][3] * n_grid[j])
     return symop_matrix
 
 
-def _apply_symmetry_mates(
-        volume: np.ndarray,
-        expanded_volume: np.ndarray,
-        map_buffer: bytes,
-        nsymbt: int,
-        n_grid: list,
-        start: list,
-        end: list,
-        center_offset: list,
-) -> int:
-    """Apply every symmetry mate from ``map_buffer`` into ``expanded_volume``.
+def _as_4x4_transform(mat: list | np.ndarray) -> np.ndarray:
+    """Normalize a 3x4 or 4x4 transform to a float64 4x4 matrix."""
+    arr = np.asarray(mat, dtype=np.float64)
+    if arr.shape == (4, 4):
+        return arr
+    if arr.shape == (3, 4):
+        out = np.eye(4, dtype=np.float64)
+        out[:3, :] = arr
+        return out
+    raise ValueError(f"Expected 3x4 or 4x4 transform, got {arr.shape}")
 
-    Returns the number of symmetry operations applied.
+
+def _apply_symmetry_operation(
+    volume: np.ndarray,
+    expanded_volume: np.ndarray,
+    matrix: list | np.ndarray,
+    geometry: VolumeGeometry,
+) -> None:
+    """Apply a symmetry operation using canonical XYZ coordinates."""
+    apply_symmetry_to_volume(
+        volume,
+        expanded_volume,
+        _as_4x4_transform(matrix),
+        geometry,
+    )
+
+
+def _apply_symmetry_mates(
+    volume: np.ndarray,
+    expanded_volume: np.ndarray,
+    ccp4_map: CCP4Map,
+    geometry: VolumeGeometry,
+) -> int:
+    """Apply non-identity symmetry operations to the expanded volume.
+
+    :param volume: Source density volume (XYZ)
+    :param expanded_volume: Destination volume receiving mates
+    :param ccp4_map: Raw CCP4 buffer and ``nsymbt``
+    :param geometry: XYZ grid geometry including center offset
+    :return: Number of symmetry operations successfully applied
     """
     symmetry_count = 0
-    for i in range(0, nsymbt, 80):
-        symop = extract_symop_text(map_buffer, i)
-        symop = symop.strip()
+    for offset in range(0, ccp4_map.nsymbt, 80):
+        symop = extract_symop_text(ccp4_map.buffer, offset).strip()
 
-        # Skip identity operation
-        if re.match(r"^\s*x\s*,\s*y\s*,\s*z\s*$", symop, re.I):
+        if re.fullmatch(r"x\s*,\s*y\s*,\s*z", symop, re.IGNORECASE):
             continue
 
         try:
-            # Parse symmetry operation
-            symop_matrix = _parse_symmetry_matrix(symop, n_grid)
-
-            log.info(f"🔄 Applying symmetry: {symop}")
-
-            # Apply symmetry operation to create symmetry mate
-            apply_symmetry_to_volume(
+            symop_matrix = _parse_symmetry_matrix(
+                symop,
+                list(geometry.n_grid),
+            )
+            log.info("Applying symmetry: %s", symop)
+            _apply_symmetry_operation(
                 volume,
                 expanded_volume,
                 symop_matrix,
-                0,
-                1,
-                2,  # Default axis order
-                start,
-                end,
-                center_offset,
+                geometry,
             )
             symmetry_count += 1
-
-        except Exception as e:
-            log.warning(f"⚠️ Failed to apply symmetry operation '{symop}': {e}")
-            continue
+        except (ValueError, IndexError, TypeError) as exc:
+            log.warning(
+                "Failed to apply symmetry operation %r: %s",
+                symop,
+                exc,
+            )
 
     return symmetry_count
 
@@ -796,10 +856,9 @@ def _carve_protein_density(
         map_data.volume = carve_density_around_protein(
             map_data.volume,
             pdb_path,
-            map_data.crystallographic_info.grid.origin,
-            map_data.crystallographic_info.grid.spacing,
+            map_data.crystallographic_info.grid,
             carve_cutoff,
-            progress_callback,
+            progress_callback=progress_callback,
         )
         log.info(
             f"✅ Density carving complete - new shape: {map_data.volume.shape}"
@@ -823,10 +882,9 @@ def _carve_centroid_density(
     map_data.volume = carve_density_around_position(
         map_data.volume,
         centroid,
-        map_data.crystallographic_info.grid.origin,
-        map_data.crystallographic_info.grid.spacing,
+        map_data.crystallographic_info.grid,
         centroid_cutoff,
-        progress_callback,
+        progress_callback=progress_callback,
     )
     log.info(f"✅ Centroid carving complete - new shape: {map_data.volume.shape}")
     return map_data
@@ -1412,21 +1470,21 @@ def expand_ccp4_symmetry_optimized(
 
         # Read the raw file to access symmetry operations
         ccp4_map = read_symmetry_ops(map_path, header)
-        map_buffer = ccp4_map.buffer
-        nsymbt = ccp4_map.nsymbt
-        n_grid = list(ccp4_map.n_grid)
-        start = list(ccp4_map.start)
-        end = list(ccp4_map.end)
-        if nsymbt == 0:
+        if ccp4_map.nsymbt == 0:
             log.info("ℹ️ No symmetry operations to expand")
             return volume
 
-        log.info(f"📐 Found {nsymbt} bytes of symmetry operations")
+        log.info(f"📐 Found {ccp4_map.nsymbt} bytes of symmetry operations")
 
         # Calculate optimal expansion bounds based on molecular coordinates
         if pdb_path and os.path.exists(pdb_path):
             optimal_bounds = _calculate_optimal_expansion_bounds(
-                volume, header, map_path, pdb_path, n_grid, start
+                volume,
+                header,
+                map_path,
+                pdb_path,
+                list(ccp4_map.n_grid),
+                list(ccp4_map.start),
             )
         else:
             # Fallback to original 2x expansion
@@ -1439,6 +1497,7 @@ def expand_ccp4_symmetry_optimized(
         expanded_shape = optimal_bounds["shape"]
         expanded_volume = np.zeros(expanded_shape, dtype=volume.dtype)
         center_offset = optimal_bounds["offset"]
+        geometry = VolumeGeometry.from_ccp4_map(ccp4_map, center_offset)
 
         # Copy original volume to center of expanded volume
         expanded_volume[
@@ -1453,16 +1512,11 @@ def expand_ccp4_symmetry_optimized(
             f"📊 Expansion factor: {expanded_shape[0] * expanded_shape[1] * expanded_shape[2] / (volume.shape[0] * volume.shape[1] * volume.shape[2]):.1f}x"
         )
 
-        # Process each symmetry operation
         symmetry_count = _apply_symmetry_mates(
             volume,
             expanded_volume,
-            map_buffer,
-            nsymbt,
-            n_grid,
-            start,
-            end,
-            center_offset,
+            ccp4_map,
+            geometry,
         )
         log.info(f"✅ Applied {symmetry_count} symmetry operations")
         return expanded_volume
@@ -1490,16 +1544,11 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
 
         # Read the raw file to access symmetry operations
         ccp4_map = read_symmetry_ops(map_path, header)
-        map_buffer = ccp4_map.buffer
-        nsymbt = ccp4_map.nsymbt
-        n_grid = list(ccp4_map.n_grid)
-        start = list(ccp4_map.start)
-        end = list(ccp4_map.end)
-        if nsymbt == 0:
+        if ccp4_map.nsymbt == 0:
             log.info("ℹ️ No symmetry operations to expand")
             return volume
 
-        log.info(f"📐 Found {nsymbt} bytes of symmetry operations")
+        log.info(f"📐 Found {ccp4_map.nsymbt} bytes of symmetry operations")
 
         # Create expanded volume (2x larger to accommodate symmetry mates)
         expanded_shape = [n * 2 for n in volume.shape]
@@ -1507,6 +1556,7 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
 
         # Copy original volume to center of expanded volume
         center_offset = [n // 2 for n in expanded_shape]
+        geometry = VolumeGeometry.from_ccp4_map(ccp4_map, center_offset)
         expanded_volume[
             center_offset[0]: center_offset[0] + volume.shape[0],
             center_offset[1]: center_offset[1] + volume.shape[1],
@@ -1516,16 +1566,11 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         log.info(f"📊 Original volume shape: {volume.shape}")
         log.info(f"📊 Expanded volume shape: {expanded_shape}")
 
-        # Process each symmetry operation
         symmetry_count = _apply_symmetry_mates(
             volume,
             expanded_volume,
-            map_buffer,
-            nsymbt,
-            n_grid,
-            start,
-            end,
-            center_offset,
+            ccp4_map,
+            geometry,
         )
 
         log.info(f"✅ Applied {symmetry_count} symmetry operations")
@@ -1538,59 +1583,51 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
 
 
 def apply_symmetry_to_volume(
-        source_volume: np.ndarray,
-        target_volume: np.ndarray,
-        mat: list,
-        ax: int,
-        ay: int,
-        az: int,
-        start: list,
-        end: list,
-        center_offset: list,
-):
+    source_volume: np.ndarray,
+    target_volume: np.ndarray,
+    transform: np.ndarray,
+    geometry: VolumeGeometry,
+) -> None:
+    """Apply a symmetry transform to a source volume in XYZ order.
+
+    Volumes are assumed to use canonical crystallographic XYZ array axes
+    (:data:`CANONICAL_AXIS_ORDER`). Fractional coordinates are truncated with
+    ``int()`` toward zero (same policy as the prior implementation).
+
+    :param source_volume: Source density (3D)
+    :param target_volume: Destination density (3D)
+    :param transform: 4x4 symmetry transform
+    :param geometry: Grid ``start`` and ``center_offset`` (XYZ)
     """
-    Apply a symmetry operation to create a symmetry mate in the target volume.
+    transform = np.asarray(transform, dtype=np.float64)
+    if transform.shape != (4, 4):
+        raise ValueError(
+            f"Expected a 4x4 symmetry transform, got {transform.shape}"
+        )
+    if source_volume.ndim != 3 or target_volume.ndim != 3:
+        raise ValueError("Source and target volumes must be 3D arrays")
 
-    Args:
-        source_volume: Source volume data
-        target_volume: Target volume to fill with symmetry mate
-        mat: 4x4 transformation matrix
-        ax, ay, az: Axis mapping
-        start, end: Grid boundaries
-        center_offset: Offset to center of target volume
-    """
-    # Get source volume dimensions
-    src_shape = source_volume.shape
+    start = geometry.start
+    center_offset = geometry.center_offset
+    rotation = transform[:3, :3]
+    translation = transform[:3, 3]
 
-    # Iterate through source volume coordinates
-    for z in range(src_shape[2]):
-        for y in range(src_shape[1]):
-            for x in range(src_shape[0]):
-                # Get original grid coordinates
-                it = [x + start[0], y + start[1], z + start[2]]
-
-                # Apply symmetry transformation
-                xyz = [0, 0, 0]
-                for j in range(3):
-                    xyz[j] = (
-                            it[ax] * mat[j][0]
-                            + it[ay] * mat[j][1]
-                            + it[az] * mat[j][2]
-                            + mat[j][3]
-                    )
-
-                # Convert to target volume coordinates
-                target_x = int(xyz[0]) + center_offset[0]
-                target_y = int(xyz[1]) + center_offset[1]
-                target_z = int(xyz[2]) + center_offset[2]
-
-                # Check bounds and copy value
-                if (
-                        0 <= target_x < target_volume.shape[0]
-                        and 0 <= target_y < target_volume.shape[1]
-                        and 0 <= target_z < target_volume.shape[2]
-                ):
-                    target_volume[target_x, target_y, target_z] = source_volume[x, y, z]
+    for x, y, z in np.ndindex(source_volume.shape):
+        grid_xyz = (
+            x + start[0],
+            y + start[1],
+            z + start[2],
+        )
+        transformed = rotation @ grid_xyz + translation
+        target_xyz = (
+            int(transformed[0]) + center_offset[0],
+            int(transformed[1]) + center_offset[1],
+            int(transformed[2]) + center_offset[2],
+        )
+        if all(
+            0 <= target_xyz[i] < target_volume.shape[i] for i in range(3)
+        ):
+            target_volume[target_xyz] = source_volume[x, y, z]
 
 
 def _calculate_optimal_expansion_bounds(
@@ -1655,27 +1692,7 @@ def _calculate_optimal_expansion_bounds(
             # Apply symmetry operation to coordinates
             sym_coords = np.zeros_like(coords)
             for i, coord in enumerate(coords):
-                # Apply transformation matrix
-                x, y, z = coord
-                new_x = (
-                        symop_matrix[0][0] * x
-                        + symop_matrix[0][1] * y
-                        + symop_matrix[0][2] * z
-                        + symop_matrix[0][3]
-                )
-                new_y = (
-                        symop_matrix[1][0] * x
-                        + symop_matrix[1][1] * y
-                        + symop_matrix[1][2] * z
-                        + symop_matrix[1][3]
-                )
-                new_z = (
-                        symop_matrix[2][0] * x
-                        + symop_matrix[2][1] * y
-                        + symop_matrix[2][2] * z
-                        + symop_matrix[2][3]
-                )
-                sym_coords[i] = [new_x, new_y, new_z]
+                apply_transformation_matrix(coord, i, sym_coords, symop_matrix)
 
             all_coords.append(sym_coords)
 
@@ -1728,309 +1745,220 @@ def _calculate_optimal_expansion_bounds(
         }
 
 
-def carve_density_around_position(
-        density_map: np.ndarray,
-        position: tuple[float, float, float],
-        grid_origin: dict,  # Dictionary with 'x', 'y', 'z' keys for grid origin in Å
-        grid_spacing: dict,  # Dictionary with 'x', 'y', 'z' keys for grid spacing in Å
-        cutoff_distance: float = 15.0,  # Distance in Ångströms to include around the centroid
-        progress_callback=None,  # Callback function for progress tracking
+def apply_transformation_matrix(coord: tuple[int, Any],
+                                i: int,
+                                sym_coords: ndarray[Any, dtype[Any]],
+                                symop_matrix: Any):
+    """ Apply transformation matrix """
+    x, y, z = coord
+    new_x = (
+            symop_matrix[0][0] * x
+            + symop_matrix[0][1] * y
+            + symop_matrix[0][2] * z
+            + symop_matrix[0][3]
+    )
+    new_y = (
+            symop_matrix[1][0] * x
+            + symop_matrix[1][1] * y
+            + symop_matrix[1][2] * z
+            + symop_matrix[1][3]
+    )
+    new_z = (
+            symop_matrix[2][0] * x
+            + symop_matrix[2][1] * y
+            + symop_matrix[2][2] * z
+            + symop_matrix[2][3]
+    )
+    sym_coords[i] = [new_x, new_y, new_z]
+
+
+def _carve_density_near_coordinates(
+    density_map: np.ndarray,
+    reference_coordinates: np.ndarray,
+    grid: MapGrid,
+    cutoff_distance: float,
+    *,
+    progress_callback: ProgressCallback | None = None,
+    finalize_label: str = "Density carving complete",
 ) -> np.ndarray:
-    """
-    Carve out electron density within a specified distance of a centroid.
+    """Retain density within ``cutoff_distance`` of reference Cartesian points.
 
-    Args:
-        density_map: 3D numpy array of electron density
-        position: Tuple of (x, y, z) coordinates of the centroid in Å
-        grid_origin: Dictionary with 'x', 'y', 'z' keys for grid origin in Å
-        grid_spacing: Dictionary with 'x', 'y', 'z' keys for grid spacing in Å
-        cutoff_distance: Distance in Ångströms to include around centroid (default: 15.0)
-        progress_callback: Callback function for progress tracking
-    Returns:
-        Carved density map with zeros outside the cutoff distance
-    """
-    try:
-        import numpy as np
-        from scipy.spatial.distance import cdist
+    Processes the volume in Z-slabs to avoid allocating a full-volume
+    coordinate mesh. Uses :class:`scipy.spatial.cKDTree` for nearest-neighbor
+    distances.
 
-        log.info(
-            f"🔪 Carving density within {cutoff_distance}Å of centroid at {position}"
+    Geometry contract (canonical XYZ volumes):
+
+    1. ``grid.axis_order`` is :attr:`AxisOrder.XYZ`.
+    2. ``grid.dimensions`` matches ``density_map.shape``.
+    3. ``grid.origin`` is the Cartesian position of index ``(0, 0, 0)``.
+    4. ``grid.spacing`` is the Cartesian step along each array axis under the
+       axis-aligned model ``origin + index * spacing``.
+
+    For strongly non-orthogonal unit cells this axis-aligned model is an
+    approximation; full-cell / ``frac_to_orth`` voxel placement is not applied
+    here.
+
+    :param density_map: 3D density array in canonical XYZ order
+    :param reference_coordinates: ``(N, 3)`` Cartesian reference points
+    :param grid: Map grid geometry matching ``density_map``
+    :param cutoff_distance: Retention radius in Å (finite, non-negative)
+    :param progress_callback: Optional ``(value, maximum, message)`` callback
+    :param finalize_label: Label passed to :func:`_apply_mask_and_finalize`
+    :return: New carved density array (non-mutating)
+    """
+    from scipy.spatial import cKDTree
+
+    if not np.isfinite(cutoff_distance) or cutoff_distance < 0.0:
+        raise ValueError(
+            f"cutoff_distance must be finite and >= 0, got {cutoff_distance!r}"
+        )
+    if density_map.ndim != 3:
+        raise ValueError(
+            f"density_map must be 3D, got shape {density_map.shape}"
+        )
+    if tuple(density_map.shape) != tuple(grid.dimensions):
+        raise ValueError(
+            f"density_map shape {density_map.shape} does not match "
+            f"grid.dimensions {grid.dimensions}"
+        )
+    if grid.axis_order is not AxisOrder.XYZ:
+        raise ValueError(
+            f"Carving requires canonical XYZ volumes, got axis_order="
+            f"{grid.axis_order!r}"
         )
 
-        # Normalize origin/spacing to dicts (accepts GridOrigin/GridSpacing or dicts)
-        grid_origin = _xyz_to_dict(grid_origin)
-        grid_spacing = _xyz_to_dict(grid_spacing)
-
-        if progress_callback:
-            progress_callback(10, 100, "Processing centroid coordinates...")
-        # Validate centroid coordinates
-        if len(position) != 3:
-            log.error(
-                f"❌ Invalid centroid coordinates: {position}. Expected 3 values (x, y, z)"
-            )
-            if progress_callback:
-                progress_callback(100, 100, "Invalid centroid - no carving needed")
-            return density_map
-
-        # Convert centroid to numpy array
-        centroid_coords = np.array([position])
-        log.info(f"Centroid coordinates: {position}")
-
-        if progress_callback:
-            progress_callback(20, 100, "Creating coordinate grid...")
-
-        # Create coordinate grid for the density map
-        grid_shape = density_map.shape
-        log.info(f"Grid shape: {grid_shape}")
-
-        # Generate grid coordinates
-        x = grid_origin["x"] + np.arange(grid_shape[0]) * grid_spacing["x"]
-        y = grid_origin["y"] + np.arange(grid_shape[1]) * grid_spacing["y"]
-        z = grid_origin["z"] + np.arange(grid_shape[2]) * grid_spacing["z"]
-        X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
-        grid_coords = np.column_stack((X.ravel(), Y.ravel(), Z.ravel()))
-
-        if progress_callback:
-            progress_callback(40, 100, "Calculating distances to centroid...")
-
-        # Calculate distances from each grid point to centroid
-        log.info("Calculating distances from grid points to centroid...")
-        distances = cdist(grid_coords, centroid_coords)
-        min_distances = np.min(distances, axis=1)
-
-        if progress_callback:
-            progress_callback(60, 100, "Creating density mask...")
-
-        # Create mask for points within cutoff distance
-        mask = min_distances <= cutoff_distance
-        mask = mask.reshape(grid_shape)
-
-        if progress_callback:
-            progress_callback(80, 100, "Applying density mask...")
-
-        # Apply mask to density map and finalize
-        return _apply_mask_and_finalize(
-            density_map,
-            mask,
-            progress_callback,
-            cutoff_distance,
-            "Density carving around centroid complete",
-            extra_log_fn=lambda: log.info(f"   Centroid: {position}"),
+    refs = np.asarray(reference_coordinates, dtype=np.float64)
+    if refs.ndim != 2 or refs.shape[1] != 3 or refs.shape[0] < 1:
+        raise ValueError(
+            f"reference_coordinates must have shape (N, 3) with N>=1, "
+            f"got {refs.shape}"
         )
 
-    except Exception as e:
-        log.error(f"❌ Error carving density around centroid: {e}")
-        log.warning("Returning original density map")
-        return density_map
+    if progress_callback is not None:
+        progress_callback(20, 100, "Building reference spatial index...")
+
+    tree = cKDTree(refs)
+    nx, ny, nz = density_map.shape
+    origin = np.asarray(grid.origin.to_tuple(), dtype=np.float64)
+    spacing = np.asarray(grid.spacing.to_tuple(), dtype=np.float64)
+
+    mask = np.zeros(density_map.shape, dtype=bool)
+    x_coords = origin[0] + np.arange(nx, dtype=np.float64) * spacing[0]
+    y_coords = origin[1] + np.arange(ny, dtype=np.float64) * spacing[1]
+
+    if progress_callback is not None:
+        progress_callback(40, 100, "Carving density slabs...")
+
+    for z0 in range(0, nz, _CARVE_SLAB_SIZE):
+        z1 = min(z0 + _CARVE_SLAB_SIZE, nz)
+        z_coords = origin[2] + np.arange(z0, z1, dtype=np.float64) * spacing[2]
+        X, Y, Z = np.meshgrid(x_coords, y_coords, z_coords, indexing="ij")
+        slab_coords = np.column_stack(
+            (X.ravel(), Y.ravel(), Z.ravel()),
+        )
+        min_distances, _ = tree.query(slab_coords, k=1)
+        mask[:, :, z0:z1] = (
+            min_distances.reshape(nx, ny, z1 - z0) <= cutoff_distance
+        )
+
+    if progress_callback is not None:
+        progress_callback(80, 100, "Applying density mask...")
+
+    return _apply_mask_and_finalize(
+        density_map,
+        mask,
+        progress_callback,
+        cutoff_distance,
+        finalize_label,
+    )
+
+
+def carve_density_around_position(
+    density_map: np.ndarray,
+    position: tuple[float, float, float],
+    grid: MapGrid,
+    cutoff_distance: float = 15.0,
+    *,
+    progress_callback: ProgressCallback | None = None,
+) -> np.ndarray:
+    """Retain density within a cutoff of a Cartesian position.
+
+    :param density_map: 3D density array (XYZ)
+    :param position: ``(x, y, z)`` Cartesian point in Å
+    :param grid: Matching :class:`MapGrid` geometry
+    :param cutoff_distance: Retention radius in Å
+    :param progress_callback: Optional progress callback
+    :return: New carved density array
+    """
+    if len(position) != 3:
+        raise ValueError(
+            f"Invalid position {position!r}; expected 3 Cartesian coordinates"
+        )
+    log.info(
+        "Carving density within %.3fÅ of position %s",
+        cutoff_distance,
+        position,
+    )
+    log.info("   Centroid: %s", position)
+    if progress_callback is not None:
+        progress_callback(10, 100, "Processing position coordinates...")
+    reference_coordinates = np.asarray([position], dtype=np.float64)
+    return _carve_density_near_coordinates(
+        density_map,
+        reference_coordinates,
+        grid,
+        cutoff_distance,
+        progress_callback=progress_callback,
+        finalize_label="Density carving around centroid complete",
+    )
 
 
 def carve_density_around_protein(
-        density_map: np.ndarray,
-        pdb_path: str,
-        grid_origin: dict,
-        grid_spacing: dict,
-        cutoff_distance: float = 4.0,
-        progress_callback=None,
+    density_map: np.ndarray,
+    pdb_path: str,
+    grid: MapGrid,
+    cutoff_distance: float = 4.0,
+    *,
+    progress_callback: ProgressCallback | None = None,
 ) -> np.ndarray:
+    """Retain density within a cutoff of protein atoms.
+
+    :param density_map: 3D density array (XYZ)
+    :param pdb_path: Path to a PDB/mmCIF structure
+    :param grid: Matching :class:`MapGrid` geometry
+    :param cutoff_distance: Retention radius in Å
+    :param progress_callback: Optional progress callback
+    :return: New carved density array
+    :raises ValueError: If the structure contains no atoms
     """
-    Carve out electron density within a specified distance of protein atoms.
+    log.info(
+        "Carving density within %.3fÅ of protein structure %s",
+        cutoff_distance,
+        pdb_path,
+    )
+    if progress_callback is not None:
+        progress_callback(10, 100, "Loading protein structure...")
 
-    Args:
-        density_map: 3D numpy array of electron density
-        pdb_path: Path to PDB file containing protein structure
-        grid_origin: Dictionary with 'x', 'y', 'z' keys for grid origin in Å
-        grid_spacing: Dictionary with 'x', 'y', 'z' keys for grid spacing in Å
-        cutoff_distance: Distance in Ångströms to include around protein (default: 4.0)
-        progress_callback: Callback function for progress tracking
+    structure = gemmi.read_structure(pdb_path)
 
-    Returns:
-        Carved density map with zeros outside the cutoff distance
-    """
-    try:
-        import gemmi
-        import numpy as np
-        from scipy.spatial.distance import cdist
+    if progress_callback is not None:
+        progress_callback(20, 100, "Extracting atomic coordinates...")
 
-        log.info(f"🔪 Carving density within {cutoff_distance}Å of protein structure")
+    atoms = _collect_atom_coordinates(structure)
+    if not atoms:
+        raise ValueError(f"No atom coordinates found in {pdb_path}")
 
-        # Normalize origin/spacing to dicts (accepts GridOrigin/GridSpacing or dicts)
-        grid_origin = _xyz_to_dict(grid_origin)
-        grid_spacing = _xyz_to_dict(grid_spacing)
-
-        if progress_callback:
-            progress_callback(10, 100, "Loading PDB structure...")
-
-        # Load PDB structure
-        pdb = gemmi.read_structure(pdb_path)
-
-        if progress_callback:
-            progress_callback(20, 100, "Extracting atomic coordinates...")
-
-        # Get all atomic coordinates
-        atoms = _collect_atom_coordinates(pdb)
-
-        if not atoms:
-            log.warning("No atoms found in PDB, returning original density map")
-            if progress_callback:
-                progress_callback(100, 100, "No atoms found - no carving needed")
-            return density_map
-
-        coords = np.array(atoms, dtype=np.float64)
-        log.info(f"Found {len(atoms)} atoms in protein structure")
-
-        if progress_callback:
-            progress_callback(40, 100, "Creating coordinate grid...")
-
-        # Create coordinate grid for the density map
-        grid_shape = density_map.shape
-
-        # Defensive programming: ensure all values are proper Python floats
-        # This prevents SIGBUS error from numpy scalar type issues
-        try:
-            log.info("DEBUG: Starting coordinate generation...")
-            log.info(f"DEBUG: grid_shape = {grid_shape}")
-            log.info(f"DEBUG: grid_origin = {grid_origin}")
-            log.info(f"DEBUG: grid_spacing = {grid_spacing}")
-
-            origin_x = float(grid_origin["x"])
-            origin_y = float(grid_origin["y"])
-            origin_z = float(grid_origin["z"])
-            spacing_x = float(grid_spacing["x"])
-            spacing_y = float(grid_spacing["y"])
-            spacing_z = float(grid_spacing["z"])
-
-            log.info(
-                f"DEBUG: Converted values - origin: ({origin_x}, {origin_y}, {origin_z}), spacing: ({spacing_x}, {spacing_y}, {spacing_z})"
-            )
-
-        except (KeyError, TypeError, ValueError) as e:
-            log.error(f"❌ Error accessing grid origin/spacing values: {e}")
-            log.error(
-                f"   grid_origin keys: {list(grid_origin.keys()) if isinstance(grid_origin, dict) else 'Not a dict'}"
-            )
-            log.error(
-                f"   grid_spacing keys: {list(grid_spacing.keys()) if isinstance(grid_spacing, dict) else 'Not a dict'}"
-            )
-            raise ValueError(f"Invalid grid origin or spacing data: {e}")
-
-        # Generate coordinate arrays with explicit float64 dtype for memory alignment
-        log.info("DEBUG: Creating coordinate arrays...")
-        try:
-            x = origin_x + np.arange(grid_shape[0], dtype=np.float64) * spacing_x
-            log.info(f"DEBUG: Created x array with shape {x.shape}, dtype {x.dtype}")
-        except Exception as e:
-            log.error(f"❌ Error creating x array: {e}")
-            raise
-
-        try:
-            y = origin_y + np.arange(grid_shape[1], dtype=np.float64) * spacing_y
-            log.info(f"DEBUG: Created y array with shape {y.shape}, dtype {y.dtype}")
-        except Exception as e:
-            log.error(f"❌ Error creating y array: {e}")
-            raise
-
-        try:
-            z = origin_z + np.arange(grid_shape[2], dtype=np.float64) * spacing_z
-            log.info(f"DEBUG: Created z array with shape {z.shape}, dtype {z.dtype}")
-        except Exception as e:
-            log.error(f"❌ Error creating z array: {e}")
-            raise
-
-        # Create meshgrid with explicit dtype
-        log.info("DEBUG: Creating meshgrid...")
-        try:
-            X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
-            log.info(
-                f"DEBUG: Created meshgrid - X: {X.shape}, Y: {Y.shape}, Z: {Z.shape}"
-            )
-        except Exception as e:
-            log.error(f"❌ Error creating meshgrid: {e}")
-            raise
-
-        # Stack coordinates with explicit dtype to prevent memory alignment issues
-        log.info("DEBUG: Stacking coordinates...")
-        try:
-            grid_coords = np.column_stack((X.ravel(), Y.ravel(), Z.ravel())).astype(
-                np.float64
-            )
-            log.info(
-                f"DEBUG: Created grid_coords with shape {grid_coords.shape}, dtype {grid_coords.dtype}"
-            )
-            log.info(
-                f"DEBUG: grid_coords is contiguous: {grid_coords.flags.c_contiguous}"
-            )
-        except Exception as e:
-            log.error(f"❌ Error stacking coordinates: {e}")
-            raise
-
-        if progress_callback:
-            progress_callback(60, 100, "Calculating distances to atoms...")
-
-        # Calculate distances from each grid point to nearest atom using spatial indexing
-        log.info(
-            "Calculating distances from grid points to protein atoms using spatial indexing..."
-        )
-
-        try:
-            from scipy.spatial import cKDTree
-
-            # Build KDTree for fast nearest neighbor queries
-            log.info("DEBUG: Building KDTree for atoms...")
-            atom_tree = cKDTree(coords)
-            log.info(f"DEBUG: KDTree built for {len(coords)} atoms")
-
-            # Query nearest neighbors for all grid points
-            log.info("DEBUG: Querying nearest neighbors...")
-            min_distances, _ = atom_tree.query(grid_coords, k=1)
-            log.info(
-                f"DEBUG: Nearest neighbor query completed - shape: {min_distances.shape}, dtype: {min_distances.dtype}"
-            )
-
-        except ImportError:
-            log.warning(
-                "⚠️ scipy.spatial.cKDTree not available, falling back to cdist (slower)"
-            )
-            # Fallback to original cdist approach
-            try:
-                grid_coords_contiguous = np.ascontiguousarray(
-                    grid_coords, dtype=np.float64
-                )
-                coords_contiguous = np.ascontiguousarray(coords, dtype=np.float64)
-
-                log.info("DEBUG: Using cdist fallback...")
-                distances = cdist(grid_coords_contiguous, coords_contiguous)
-                min_distances = np.min(distances, axis=1)
-                log.info(
-                    f"DEBUG: cdist fallback completed - shape: {min_distances.shape}"
-                )
-            except Exception as e:
-                log.error(f"❌ Error in cdist fallback: {e}")
-                raise
-        except Exception as e:
-            log.error(f"❌ Error in spatial indexing: {e}")
-            raise
-
-        if progress_callback:
-            progress_callback(80, 100, "Applying density mask...")
-
-        # Create mask for points within cutoff distance
-        mask = min_distances <= cutoff_distance
-        mask = mask.reshape(grid_shape)
-
-        # Apply mask to density map and finalize
-        return _apply_mask_and_finalize(
-            density_map,
-            mask,
-            progress_callback,
-            cutoff_distance,
-            "Density carving complete",
-            guard_division=False,
-        )
-
-    except Exception as e:
-        log.error(f"❌ Error carving density around protein: {e}")
-        log.warning("Returning original density map")
-        return density_map
+    reference_coordinates = np.asarray(atoms, dtype=np.float64)
+    log.info("Found %d atoms in protein structure", len(atoms))
+    return _carve_density_near_coordinates(
+        density_map,
+        reference_coordinates,
+        grid,
+        cutoff_distance,
+        progress_callback=progress_callback,
+        finalize_label="Density carving complete",
+    )
 
 
 def load_density_map_with_extent(
