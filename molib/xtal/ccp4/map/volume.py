@@ -75,9 +75,10 @@ class VolumeStatistics(LogMixin):
             "max_value": self.max_value,
         }
 
-    def log_stats(self):
+    def log_stats(self) -> None:
+        """Log a numerical summary only (does not assert map identity)."""
         self.log_info(
-            f"Auto-detected density map (treating as 2Fo-Fc): "
+            f"Volume statistics: "
             f"mean={self.mean:.3f}, "
             f"range=[{self.min_value:.3f}, {self.max_value:.3f}], "
             f"std={self.std:.3f}",
@@ -85,12 +86,18 @@ class VolumeStatistics(LogMixin):
 
     @property
     def mean_threshold(self) -> float:
-        """Threshold used to determine whether the mean is near zero."""
+        """Heuristic threshold: two standard deviations (not a formal test)."""
         return 2.0 * self.std
 
     @property
     def is_mean_near_zero(self) -> bool:
-        """Whether the mean is within two standard deviations of zero."""
+        """Heuristic: whether the mean is near zero.
+
+        For zero-variance volumes (``std == 0``), returns True only when the
+        mean itself is exactly zero. Otherwise uses ``mean_threshold``.
+        """
+        if self.std == 0.0:
+            return self.mean == 0.0
         return abs(self.mean) < self.mean_threshold
 
     @property
@@ -104,8 +111,11 @@ class VolumeStatistics(LogMixin):
         return self.min_value < 0.0
 
     @property
-    def symmetry_ratio(self) -> float:
-        """Ratio of the smaller to the larger absolute range."""
+    def range_balance_ratio(self) -> float:
+        """Ratio of the smaller to the larger absolute signed range.
+
+        This measures extrema balance, not distributional symmetry.
+        """
         positive_range = self.max_value
         negative_range = abs(self.min_value)
 
@@ -118,9 +128,20 @@ class VolumeStatistics(LogMixin):
         )
 
     @property
+    def has_balanced_signed_range(self) -> bool:
+        """Whether positive/negative extrema are not too disproportionate."""
+        return self.range_balance_ratio > 0.3
+
+    # Temporary aliases for one-release compatibility.
+    @property
+    def symmetry_ratio(self) -> float:
+        """Deprecated alias for :attr:`range_balance_ratio`."""
+        return self.range_balance_ratio
+
+    @property
     def is_symmetric(self) -> bool:
-        """Whether positive and negative ranges are approximately symmetric."""
-        return self.symmetry_ratio > 0.3
+        """Deprecated alias for :attr:`has_balanced_signed_range`."""
+        return self.has_balanced_signed_range
 
 
 @dataclass(slots=True)
@@ -128,10 +149,11 @@ class VolumeData:
     """Volume array plus derived :class:`VolumeStatistics`."""
 
     volume: np.ndarray
-    statistics: VolumeStatistics = field(init=False)
+    statistics: VolumeStatistics | None = None
 
     def __post_init__(self) -> None:
-        self.statistics = VolumeStatistics.from_array(self.volume)
+        if self.statistics is None:
+            self.statistics = VolumeStatistics.from_array(self.volume)
 
     @property
     def mean_threshold(self) -> float:
@@ -146,9 +168,10 @@ class VolumeData:
     def detect_type(self) -> MapType:
         """Infer map type from volume statistics only (no labels / metadata).
 
-        Callers that also have crystallographic or MapInfo labels should use
-        :func:`resolve_map_type`, which applies a metadata-first policy and by
-        default refuses to treat Fo-Fc from statistics alone.
+        This is a heuristic only. Callers that also have crystallographic or
+        MapInfo labels should use :func:`resolve_map_type`, which applies a
+        metadata-first policy and by default refuses to treat Fo-Fc from
+        statistics alone.
         """
         stats = self.statistics
 
@@ -156,7 +179,7 @@ class VolumeData:
             stats.is_mean_near_zero
             and stats.has_positive_values
             and stats.has_negative_values
-            and stats.is_symmetric
+            and stats.has_balanced_signed_range
         ):
             return MapType.UNKNOWN
 

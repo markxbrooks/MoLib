@@ -124,61 +124,163 @@ def log_density_statistics(volume: np.ndarray) -> None:
 class DensityMapData:
     """Loaded electron-density map and its crystallographic metadata.
 
-    ``volume.shape`` is always kept in lock-step with
-    ``crystallographic_info.grid.dimensions`` (see :func:`_log_grid_consistency`).
+    ``volume`` is the sole canonical density array. Statistics are cached in
+    ``_volume_stats`` and exposed via :attr:`volume_stats` /
+    :attr:`volume_data` (read-only derived views).
 
-    ``volume_data`` / ``volume_stats`` are derived from ``volume`` when omitted
-    at construction time (see :meth:`__post_init__`).
+    When ``crystallographic_info`` is present, ``volume.shape`` must match
+    ``crystallographic_info.grid.dimensions`` (XYZ convention). Pipeline steps
+    that intentionally reshape must sync grid metadata before constructing or
+    replacing the volume (see :func:`_log_grid_consistency`).
+
+    ``margin`` is the Gemmi ``set_extent`` margin in Å when extent-based loading
+    was used; otherwise ``None``.
     """
 
     volume: np.ndarray
     crystallographic_info: CrystallographicInfo | None = None
-    volume_data: VolumeData | None = None
-    volume_stats: VolumeStatistics | None = None
     source: str = ""
     map_type: MapType | None = None
     margin: float | None = None
+    _volume_stats: VolumeStatistics = field(init=False, repr=False)
+    _volume_data: VolumeData | None = field(init=False, default=None, repr=False)
 
     def __post_init__(self) -> None:
-        """Ensure :attr:`volume_data` and :attr:`volume_stats` match ``volume``."""
-        if self.volume is None:
-            self.volume_data = None
-            self.volume_stats = None
-            return
-        if self.volume_data is None or self.volume_data.volume is not self.volume:
-            self.volume_data = VolumeData(self.volume)
-        if self.volume_stats is None:
-            self.volume_stats = self.volume_data.statistics
+        """Validate volume/grid and cache derived statistics."""
+        self._validate_volume(self.volume)
+        self._volume_stats = VolumeStatistics.from_array(self.volume)
+        self._volume_data = None
+        self._validate_grid_consistency()
 
-    def with_volume(self, volume: np.ndarray) -> "DensityMapData":
-        """Return a copy of this map with a replaced volume and refreshed stats.
+    @property
+    def volume_stats(self) -> VolumeStatistics:
+        """Statistics snapshot for the current :attr:`volume`."""
+        return self._volume_stats
+
+    @property
+    def volume_data(self) -> VolumeData:
+        """:class:`VolumeData` view sharing :attr:`volume` and cached stats."""
+        cached = self._volume_data
+        if cached is None or cached.volume is not self.volume:
+            self._volume_data = VolumeData(
+                self.volume,
+                statistics=self._volume_stats,
+            )
+        return self._volume_data
+
+    def replace_volume(
+        self,
+        volume: np.ndarray,
+        crystallographic_info: CrystallographicInfo | None = None,
+    ) -> None:
+        """Replace the volume in place and refresh derived statistics.
 
         :param volume: Replacement density array
-        :return: New :class:`DensityMapData` preserving crystallographic metadata
+        :param crystallographic_info: Optional updated metadata. Required when
+            ``volume.shape`` differs from the current grid dimensions.
+        :raises ValueError: If the replacement is incompatible with retained
+            crystallographic metadata
         """
+        self._validate_volume(volume)
+        info = (
+            self.crystallographic_info
+            if crystallographic_info is None
+            else crystallographic_info
+        )
+        self._validate_replacement_grid(volume, info)
+        self.volume = volume
+        self.crystallographic_info = info
+        self._volume_stats = VolumeStatistics.from_array(volume)
+        self._volume_data = None
+
+    def with_volume(
+        self,
+        volume: np.ndarray,
+        crystallographic_info: CrystallographicInfo | None = None,
+    ) -> "DensityMapData":
+        """Return a copy with a replaced volume and refreshed stats.
+
+        :param volume: Replacement density array
+        :param crystallographic_info: Optional updated metadata. When omitted,
+            the current crystallographic info is retained only if compatible
+            with ``volume.shape``.
+        :return: New :class:`DensityMapData`
+        :raises ValueError: If shape/frame is incompatible without new metadata
+        """
+        info = (
+            self.crystallographic_info
+            if crystallographic_info is None
+            else crystallographic_info
+        )
+        self._validate_volume(volume)
+        self._validate_replacement_grid(volume, info)
         return DensityMapData(
             volume=volume,
-            crystallographic_info=self.crystallographic_info,
+            crystallographic_info=info,
             source=self.source,
             map_type=self.map_type,
             margin=self.margin,
         )
 
-    def log_map_data(self):
+    @staticmethod
+    def _validate_volume(volume: np.ndarray) -> None:
+        """Require a non-empty finite 3D density array."""
+        if not isinstance(volume, np.ndarray):
+            raise TypeError(
+                f"Density volume must be a NumPy array; got {type(volume)!r}"
+            )
+        if volume.ndim != 3:
+            raise ValueError(
+                f"Expected a 3D density volume; got shape {volume.shape}"
+            )
+        if volume.size == 0:
+            raise ValueError("Density volume must not be empty")
+        if not np.isfinite(volume).all():
+            raise ValueError("Density volume contains non-finite values")
+
+    def _validate_grid_consistency(self) -> None:
+        """Validate volume shape against crystallographic grid metadata."""
+        self._validate_replacement_grid(
+            self.volume,
+            self.crystallographic_info,
+        )
+
+    def _validate_replacement_grid(
+        self,
+        volume: np.ndarray,
+        crystallographic_info: CrystallographicInfo | None,
+    ) -> None:
+        """Ensure replacement volume is compatible with grid metadata."""
+        if crystallographic_info is None:
+            return
+        grid = getattr(crystallographic_info, "grid", None)
+        if grid is None:
+            return
+        dimensions = getattr(grid, "dimensions", None)
+        if dimensions is None:
+            return
+        volume_shape = tuple(int(x) for x in volume.shape)
+        grid_dims = tuple(int(x) for x in dimensions)
+        if volume_shape != grid_dims:
+            raise ValueError(
+                "Replacement volume shape is incompatible with crystallographic "
+                f"grid dimensions (XYZ); volume={volume_shape}, grid={grid_dims}. "
+                "Supply updated crystallographic_info when the grid changes."
+            )
+
+    def log_map_data(self) -> None:
+        """Log a structured summary of this loaded map."""
+        stats = self.volume_stats
         log.info("✅ Map loaded with extent:")
         log.info(f"   Shape: {self.volume.shape}")
-        if self.volume_stats is not None:
-            log.info(
-                f"   mean={self.volume_stats.mean:.3f}, "
-                f"std={self.volume_stats.std:.3f}, "
-                f"range=[{self.volume_stats.min_value:.3f}, "
-                f"{self.volume_stats.max_value:.3f}]"
-            )
-        else:
-            log_density_statistics(self.volume)
+        log.info(
+            f"   mean={stats.mean:.3f}, "
+            f"std={stats.std:.3f}, "
+            f"range=[{stats.min_value:.3f}, {stats.max_value:.3f}]"
+        )
         log.info(f"   Non-zero voxels: {np.count_nonzero(self.volume):,}")
-        if self.margin:
-            log.info(f"   Margin: {self.margin}Å")
+        if self.margin is not None:
+            log.info(f"   Margin: {self.margin}Å (Gemmi set_extent)")
         if self.map_type:
             log.info(f"   Map type: {self.map_type}")
         if self.source:
@@ -691,15 +793,19 @@ def _resolve_centroid(
 
 
 def _log_grid_consistency(map_data: DensityMapData, label: str) -> DensityMapData:
-    """Enforce and log the ``volume.shape == grid.dimensions`` invariant.
+    """Sync grid metadata after an intentional pipeline reshape.
 
-    The canonical pipeline must keep the metadata grid dimensions in lock-step
-    with the volume array: the renderer computes ``cart = (vertex / dims) @
-    frac_to_orth.T + origin``, so a desync (e.g. after symmetry expansion)
-    silently misplaces the density.
+    Pipeline steps that change ``volume.shape`` (e.g. symmetry expansion) must
+    update ``grid.dimensions`` here before returning a validated
+    :class:`DensityMapData`. Domain-object construction itself raises on
+    mismatch rather than silently rewriting metadata.
     """
-    volume_shape = tuple(map_data.volume.shape)
-    grid_dims = tuple(map_data.crystallographic_info.grid.dimensions)
+    if map_data.crystallographic_info is None:
+        return map_data
+    volume_shape = tuple(int(x) for x in map_data.volume.shape)
+    grid_dims = tuple(
+        int(x) for x in map_data.crystallographic_info.grid.dimensions
+    )
     if volume_shape != grid_dims:
         log.info(
             f"🔗 Grid dims invariant: {label} changed volume shape {grid_dims} -> "
@@ -874,9 +980,25 @@ def _expand_ccp4_symmetry_op(
         header,
         pdb_path,
     )
-    map_data.volume = expanded
     log.info(f"✅ Symmetry expanded - new shape: {expanded.shape}")
-    return _log_grid_consistency(map_data, "symmetry expansion")
+    # Intentional reshape: sync grid dims to the new array, then replace.
+    info = map_data.crystallographic_info
+    if info is not None:
+        volume_shape = tuple(int(x) for x in expanded.shape)
+        grid_dims = tuple(int(x) for x in info.grid.dimensions)
+        if volume_shape != grid_dims:
+            log.info(
+                f"🔗 Grid dims invariant: symmetry expansion changed volume "
+                f"shape {grid_dims} -> {volume_shape}; syncing metadata"
+            )
+            info.grid.dimensions = volume_shape
+        else:
+            log.info(
+                f"🔗 Grid dims invariant: symmetry expansion consistent "
+                f"({volume_shape})"
+            )
+    map_data.replace_volume(expanded, crystallographic_info=info)
+    return map_data
 
 
 def _carve_protein_density(
@@ -890,12 +1012,13 @@ def _carve_protein_density(
     log.parameter("carve_density", carve_density)
     if carve_density and pdb_path and os.path.exists(pdb_path):
         log.info(f"🔪 Carving density within {carve_cutoff}Å of protein structure...")
-        map_data.volume = carve_density_around_protein(
+        carved = carve_density_around_protein(
             map_data,
             pdb_path,
             carve_cutoff,
             progress_callback=progress_callback,
         )
+        map_data.replace_volume(carved)
         log.info(
             f"✅ Density carving complete - new shape: {map_data.volume.shape}"
         )
@@ -915,12 +1038,13 @@ def _carve_centroid_density(
     log.info(
         f"🔪 Carving density within {centroid_cutoff}Å of centroid {centroid}..."
     )
-    map_data.volume = carve_density_around_position(
+    carved = carve_density_around_position(
         map_data,
         centroid,
         centroid_cutoff,
         progress_callback=progress_callback,
     )
+    map_data.replace_volume(carved)
     log.info(f"✅ Centroid carving complete - new shape: {map_data.volume.shape}")
     return map_data
 
