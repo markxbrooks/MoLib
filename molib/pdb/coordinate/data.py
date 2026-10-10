@@ -91,6 +91,13 @@ class CoordinateData(LogMixin):
             if self.coords is not None:
                 self._kdtree = cKDTree(self.coords)
 
+    def atom_index_valid(self, atom_index: int) -> bool | Any:
+        """is the atom index valid"""
+        return atom_index is None or atom_index < 0 or atom_index >= len(self.coords)
+
+    def atom_position(self, atom_index: int) -> Any:
+        return self.coords[atom_index]
+
     @property
     def coords_available(self) -> bool | Any:
         return hasattr(self, "coords") and self.coords is not None
