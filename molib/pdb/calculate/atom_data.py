@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pandas import Series
 
 from decologr import Decologr as log
+from elmo.chem.amino_acids import is_amino_acid
 
 
 @dataclass
@@ -26,3 +27,9 @@ class AtomData:
     @property
     def is_hetatm(self) -> bool:
         return self.record_type == "HETATM" if self.record_type is not None else False
+
+    @property
+    def residue_name_available(self) -> str | bool:
+        return (self.residue_name
+                and (not is_amino_acid(self.residue_name))
+                and (len(str(self.residue_name)) <= 3))
