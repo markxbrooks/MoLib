@@ -8,7 +8,7 @@ import numpy as np
 from gemmi import Mtz
 
 from molib.xtal.map.crystal import CrystallographicInfo
-from molib.xtal.map.helper import DensityMapData
+# from molib.xtal.map.helper import DensityMapData
 from molib.xtal.map.map_type import MapSource
 from decologr import Decologr as log
 
@@ -59,7 +59,7 @@ def load_density_map(
     phi_label: str = "PH2FOFCWT",
     sample_rate: float = 0.0,
     map_type: MapSource = MapSource.CCP4_MAP
-) -> DensityMapData | None:
+) -> "DensityMapData" | None:
     try:
         mtz = gemmi.read_mtz_file(mtz_path)
 
