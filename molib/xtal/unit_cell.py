@@ -220,22 +220,22 @@ def extract_unit_cell_from_ccp4(ccp4_data: gemmi.Ccp4Map) -> "UnitCell":
         return None
 
 
-def validate_unit_cell(unit_cell_info: "UnitCell") -> bool:
+def validate_unit_cell(unit_cell: "UnitCell") -> bool:
     """
     Validate unit cell parameters.
 
     Args:
-        unit_cell_info: Dictionary containing unit cell parameters
+        unit_cell: Dictionary containing unit cell parameters
 
     Returns:
         True if valid, False otherwise
     """
-    if not unit_cell_info:
+    if not unit_cell:
         return False
 
     # Check if values are reasonable
     for key in ["a", "b", "c"]:
-        value = getattr(unit_cell_info, key)
+        value = getattr(unit_cell, key)
         if not isinstance(value, (int, float)) or value <= 0 or value > 1000:
             log.warning(
                 f"Invalid unit cell length {key}: {value}",
@@ -245,7 +245,7 @@ def validate_unit_cell(unit_cell_info: "UnitCell") -> bool:
             return False
 
     for key in ["alpha", "beta", "gamma"]:
-        value = getattr(unit_cell_info, key)
+        value = getattr(unit_cell, key)
         if not isinstance(value, (int, float)) or value <= 0 or value >= 180:
             log.warning(
                 f"Invalid unit cell angle {key}: {value}",
