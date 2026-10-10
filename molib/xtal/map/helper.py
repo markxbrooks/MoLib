@@ -20,6 +20,7 @@ import gemmi
 import numpy as np
 from decologr import Decologr as log
 from molib.xtal.ccp4.map.globals import CCP4_HEADER_SIZE
+from molib.xtal.ccp4.map.volume import VolumeStatistics, VolumeData
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec, MtzDensitySpec
 from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
 from molib.xtal.ccp4.mtz.errors import MtzColumnNotFoundError
@@ -125,18 +126,56 @@ class DensityMapData:
 
     ``volume.shape`` is always kept in lock-step with
     ``crystallographic_info.grid.dimensions`` (see :func:`_log_grid_consistency`).
+
+    ``volume_data`` / ``volume_stats`` are derived from ``volume`` when omitted
+    at construction time (see :meth:`__post_init__`).
     """
 
     volume: np.ndarray
-    crystallographic_info: CrystallographicInfo
+    crystallographic_info: CrystallographicInfo | None = None
+    volume_data: VolumeData | None = None
+    volume_stats: VolumeStatistics | None = None
     source: str = ""
     map_type: MapType | None = None
     margin: float | None = None
 
+    def __post_init__(self) -> None:
+        """Ensure :attr:`volume_data` and :attr:`volume_stats` match ``volume``."""
+        if self.volume is None:
+            self.volume_data = None
+            self.volume_stats = None
+            return
+        if self.volume_data is None or self.volume_data.volume is not self.volume:
+            self.volume_data = VolumeData(self.volume)
+        if self.volume_stats is None:
+            self.volume_stats = self.volume_data.statistics
+
+    def with_volume(self, volume: np.ndarray) -> "DensityMapData":
+        """Return a copy of this map with a replaced volume and refreshed stats.
+
+        :param volume: Replacement density array
+        :return: New :class:`DensityMapData` preserving crystallographic metadata
+        """
+        return DensityMapData(
+            volume=volume,
+            crystallographic_info=self.crystallographic_info,
+            source=self.source,
+            map_type=self.map_type,
+            margin=self.margin,
+        )
+
     def log_map_data(self):
         log.info("✅ Map loaded with extent:")
         log.info(f"   Shape: {self.volume.shape}")
-        log_density_statistics(self.volume)
+        if self.volume_stats is not None:
+            log.info(
+                f"   mean={self.volume_stats.mean:.3f}, "
+                f"std={self.volume_stats.std:.3f}, "
+                f"range=[{self.volume_stats.min_value:.3f}, "
+                f"{self.volume_stats.max_value:.3f}]"
+            )
+        else:
+            log_density_statistics(self.volume)
         log.info(f"   Non-zero voxels: {np.count_nonzero(self.volume):,}")
         if self.margin:
             log.info(f"   Margin: {self.margin}Å")
@@ -144,8 +183,9 @@ class DensityMapData:
             log.info(f"   Map type: {self.map_type}")
         if self.source:
             log.info(f"   Source: {self.source}")
-        log.info(f"   Grid origin: {self.crystallographic_info.grid.origin}")
-        log.info(f"   Grid spacing: {self.crystallographic_info.grid.spacing}")
+        if self.crystallographic_info is not None:
+            log.info(f"   Grid origin: {self.crystallographic_info.grid.origin}")
+            log.info(f"   Grid spacing: {self.crystallographic_info.grid.spacing}")
 
 
 @dataclass(slots=True)
