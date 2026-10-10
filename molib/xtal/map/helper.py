@@ -13,6 +13,7 @@ import re
 import struct
 
 from numpy import dtype, ndarray
+from numpy.typing import NDArray
 from typing import Callable, Any
 
 import gemmi
@@ -34,7 +35,6 @@ from molib.xtal.uglymol.map.helpers import (
 from molib.xtal.map.density import (
     AxisOrder,
     CrystallographicInfo,
-    MapGrid,
     # crystallographic_info_from_grid,
 )
 from molib.xtal.map.map_type import MapType
@@ -854,9 +854,8 @@ def _carve_protein_density(
     if carve_density and pdb_path and os.path.exists(pdb_path):
         log.info(f"🔪 Carving density within {carve_cutoff}Å of protein structure...")
         map_data.volume = carve_density_around_protein(
-            map_data.volume,
+            map_data,
             pdb_path,
-            map_data.crystallographic_info.grid,
             carve_cutoff,
             progress_callback=progress_callback,
         )
@@ -880,9 +879,8 @@ def _carve_centroid_density(
         f"🔪 Carving density within {centroid_cutoff}Å of centroid {centroid}..."
     )
     map_data.volume = carve_density_around_position(
-        map_data.volume,
+        map_data,
         centroid,
-        map_data.crystallographic_info.grid,
         centroid_cutoff,
         progress_callback=progress_callback,
     )
@@ -1773,9 +1771,8 @@ def apply_transformation_matrix(coord: tuple[int, Any],
 
 
 def _carve_density_near_coordinates(
-    density_map: np.ndarray,
-    reference_coordinates: np.ndarray,
-    grid: MapGrid,
+    map_data: DensityMapData,
+    reference_coordinates: NDArray[np.float64],
     cutoff_distance: float,
     *,
     progress_callback: ProgressCallback | None = None,
@@ -1787,10 +1784,13 @@ def _carve_density_near_coordinates(
     coordinate mesh. Uses :class:`scipy.spatial.cKDTree` for nearest-neighbor
     distances.
 
+    Geometry is taken from ``map_data.crystallographic_info.grid`` so the
+    density array and its coordinate system cannot drift apart.
+
     Geometry contract (canonical XYZ volumes):
 
     1. ``grid.axis_order`` is :attr:`AxisOrder.XYZ`.
-    2. ``grid.dimensions`` matches ``density_map.shape``.
+    2. ``grid.dimensions`` matches ``map_data.volume.shape``.
     3. ``grid.origin`` is the Cartesian position of index ``(0, 0, 0)``.
     4. ``grid.spacing`` is the Cartesian step along each array axis under the
        axis-aligned model ``origin + index * spacing``.
@@ -1799,15 +1799,17 @@ def _carve_density_near_coordinates(
     approximation; full-cell / ``frac_to_orth`` voxel placement is not applied
     here.
 
-    :param density_map: 3D density array in canonical XYZ order
+    :param map_data: Density volume plus crystallographic metadata
     :param reference_coordinates: ``(N, 3)`` Cartesian reference points
-    :param grid: Map grid geometry matching ``density_map``
     :param cutoff_distance: Retention radius in Å (finite, non-negative)
     :param progress_callback: Optional ``(value, maximum, message)`` callback
     :param finalize_label: Label passed to :func:`_apply_mask_and_finalize`
-    :return: New carved density array (non-mutating)
+    :return: New carved density array (does not mutate ``map_data.volume``)
     """
     from scipy.spatial import cKDTree
+
+    density_map = map_data.volume
+    grid = map_data.crystallographic_info.grid
 
     if not np.isfinite(cutoff_distance) or cutoff_distance < 0.0:
         raise ValueError(
@@ -1875,18 +1877,16 @@ def _carve_density_near_coordinates(
 
 
 def carve_density_around_position(
-    density_map: np.ndarray,
+    map_data: DensityMapData,
     position: tuple[float, float, float],
-    grid: MapGrid,
     cutoff_distance: float = 15.0,
     *,
     progress_callback: ProgressCallback | None = None,
 ) -> np.ndarray:
     """Retain density within a cutoff of a Cartesian position.
 
-    :param density_map: 3D density array (XYZ)
+    :param map_data: Density volume plus crystallographic metadata
     :param position: ``(x, y, z)`` Cartesian point in Å
-    :param grid: Matching :class:`MapGrid` geometry
     :param cutoff_distance: Retention radius in Å
     :param progress_callback: Optional progress callback
     :return: New carved density array
@@ -1905,9 +1905,8 @@ def carve_density_around_position(
         progress_callback(10, 100, "Processing position coordinates...")
     reference_coordinates = np.asarray([position], dtype=np.float64)
     return _carve_density_near_coordinates(
-        density_map,
+        map_data,
         reference_coordinates,
-        grid,
         cutoff_distance,
         progress_callback=progress_callback,
         finalize_label="Density carving around centroid complete",
@@ -1915,18 +1914,16 @@ def carve_density_around_position(
 
 
 def carve_density_around_protein(
-    density_map: np.ndarray,
+    map_data: DensityMapData,
     pdb_path: str,
-    grid: MapGrid,
     cutoff_distance: float = 4.0,
     *,
     progress_callback: ProgressCallback | None = None,
 ) -> np.ndarray:
     """Retain density within a cutoff of protein atoms.
 
-    :param density_map: 3D density array (XYZ)
+    :param map_data: Density volume plus crystallographic metadata
     :param pdb_path: Path to a PDB/mmCIF structure
-    :param grid: Matching :class:`MapGrid` geometry
     :param cutoff_distance: Retention radius in Å
     :param progress_callback: Optional progress callback
     :return: New carved density array
@@ -1952,9 +1949,8 @@ def carve_density_around_protein(
     reference_coordinates = np.asarray(atoms, dtype=np.float64)
     log.info("Found %d atoms in protein structure", len(atoms))
     return _carve_density_near_coordinates(
-        density_map,
+        map_data,
         reference_coordinates,
-        grid,
         cutoff_distance,
         progress_callback=progress_callback,
         finalize_label="Density carving complete",
