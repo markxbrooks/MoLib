@@ -15,15 +15,14 @@ from decologr import Decologr as log
 from molib.xtal.map.unit_cell import UnitCell, normalize_unit_cell_from_dict
 
 
-def extract_unit_cell_dict_from_pdb(pdb_data: PandasPdb) -> Optional[Dict[str, Any]]:
+def extract_unit_cell_dict_from_pdb(
+    pdb_data: PandasPdb,
+) -> Optional[UnitCell | Dict[str, Any]]:
     """
     Extract unit cell information from a PDB file.
 
-    Args:
-        pdb_data: PandasPdb object or similar containing PDB data
-
-    Returns:
-        Dictionary containing unit cell parameters or None if not found
+    :param pdb_data: PandasPdb object or similar containing PDB data
+    :returns: Parsed cell (:class:`UnitCell` or dict), or ``None`` if missing
     """
     try:
         # Check if we have CRYST1 information in the OTHERS section
@@ -56,29 +55,28 @@ def extract_unit_cell_dict_from_pdb(pdb_data: PandasPdb) -> Optional[Dict[str, A
         return None
 
 
-def extract_unit_cell_from_pdb(pdb_data: PandasPdb) -> UnitCell:
-    """extract unit cell from pdb"""
+def extract_unit_cell_from_pdb(pdb_data: PandasPdb) -> Optional[UnitCell]:
+    """Extract and normalize a :class:`UnitCell` from PDB ``CRYST1`` data."""
     unit_cell_dict = extract_unit_cell_dict_from_pdb(pdb_data)
-    unit_cell = normalize_unit_cell_from_dict(unit_cell_dict)
-    return unit_cell
+    return normalize_unit_cell_from_dict(unit_cell_dict)
 
 
-def _parse_cryst1_line(cryst1_line: str) -> "UnitCell" :
+def _parse_cryst1_line(cryst1_line: str) -> Optional[UnitCell]:
     """
-    Parse a CRYST1 line from a PDB file.
+    Parse a CRYST1 line (or BioPandas ``OTHERS.entry`` fragment) from a PDB file.
 
     CRYST1 format: CRYST1 a b c alpha beta gamma space_group z
     Example: CRYST1   63.100   50.170  111.070  90.00  96.19  90.00 P 1 21 1      4
 
-    Args:
-        cryst1_line: The CRYST1 line from the PDB file
+    BioPandas often stores only the fields after the record name in ``entry``.
 
-    Returns:
-        Dictionary containing unit cell parameters
+    :param cryst1_line: Full CRYST1 record or cell/space-group fragment
+    :returns: Parsed :class:`UnitCell`, or ``None`` if the line is invalid
     """
     try:
-        # Split the line and extract numeric values
-        parts = cryst1_line.split()
+        parts = str(cryst1_line).split()
+        if parts and parts[0].upper() == "CRYST1":
+            parts = parts[1:]
 
         if len(parts) < 6:
             log.warning(
@@ -88,7 +86,6 @@ def _parse_cryst1_line(cryst1_line: str) -> "UnitCell" :
             )
             return None
 
-        # Extract unit cell parameters
         a = float(parts[0])
         b = float(parts[1])
         c = float(parts[2])
@@ -96,16 +93,23 @@ def _parse_cryst1_line(cryst1_line: str) -> "UnitCell" :
         beta = float(parts[4])
         gamma = float(parts[5])
 
-        # Extract space group if available
-        space_group = parts[6] if len(parts) > 6 else "Unknown"
-        from molib.xtal.map.density import UnitCell
-        unit_cell_info = UnitCell(a=a,
-                                  b=b,
-                                  c=c,
-                                  alpha=alpha,
-                                  beta=beta,
-                                  gamma=gamma,
-                                  space_group=space_group, source="PDB_CRYST1")
+        # Remaining tokens: space group words, optional trailing Z integer.
+        rest = parts[6:]
+        if rest and rest[-1].isdigit():
+            space_group = " ".join(rest[:-1]) or "Unknown"
+        else:
+            space_group = " ".join(rest) or "Unknown"
+
+        unit_cell_info = UnitCell(
+            a=a,
+            b=b,
+            c=c,
+            alpha=alpha,
+            beta=beta,
+            gamma=gamma,
+            space_group=space_group,
+            source="PDB_CRYST1",
+        )
 
         log.info(
             f"✅ Extracted unit cell from PDB: a={a:.2f}, b={b:.2f}, c={c:.2f} Å",
@@ -137,7 +141,6 @@ def extract_unit_cell_from_mtz(mtz_data: gemmi.Mtz) -> "UnitCell":
         if hasattr(mtz_data, "unit_cell"):
             unit_cell = mtz_data.unit_cell
             space_group = str(unit_cell.spacegroup) if hasattr(unit_cell, "spacegroup") else "Unknown"
-            from molib.xtal.map.density import UnitCell
             unit_cell_info = UnitCell(a=unit_cell.a,
                                       b=unit_cell.b,
                                       c=unit_cell.c,
@@ -186,7 +189,6 @@ def extract_unit_cell_from_ccp4(ccp4_data: gemmi.Ccp4Map) -> "UnitCell":
             unit_cell = ccp4_data.grid.unit_cell
 
             space_group = str(unit_cell.spacegroup) if hasattr(unit_cell, "spacegroup") else "Unknown"
-            from molib.xtal.map.density import UnitCell
             unit_cell_info = UnitCell(a=unit_cell.a,
                                       b=unit_cell.b,
                                       c=unit_cell.c,

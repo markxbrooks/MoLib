@@ -177,10 +177,17 @@ class UnitCell(LogMixin):
 
 
 def normalize_unit_cell_from_dict(
-        unit_cell_info: dict[Any, Any] | UnitCell
-) -> "UnitCell":
-    """normalize unit cell from dict"""
-    if not isinstance(unit_cell_info, UnitCell):
-        if isinstance(unit_cell_info, dict):
-            unit_cell_info = UnitCell.from_dict(unit_cell_info)
-    return unit_cell_info
+        unit_cell_info: dict[Any, Any] | UnitCell | None
+) -> UnitCell | None:
+    """Normalize a mapping or :class:`UnitCell` into a :class:`UnitCell`.
+
+    :param unit_cell_info: Cell parameters, an existing cell, or ``None``
+    :returns: A :class:`UnitCell`, or ``None`` when *unit_cell_info* is empty
+    """
+    if unit_cell_info is None:
+        return None
+    if isinstance(unit_cell_info, UnitCell):
+        return unit_cell_info
+    if isinstance(unit_cell_info, dict):
+        return UnitCell.from_dict(unit_cell_info)
+    return None
