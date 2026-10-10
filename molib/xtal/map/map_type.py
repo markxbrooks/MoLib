@@ -6,6 +6,7 @@ from enum import Enum
 class MapSource(str, Enum):
     """Map Source """
 
+    MTZ = "MTZ"
     CCP4_MAP = "CCP4_MAP"
     PHENIX_MAP = "PHENIX_MAP"
     O_MAP = "O_MAP"
