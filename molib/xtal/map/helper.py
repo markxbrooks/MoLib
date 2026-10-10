@@ -3,12 +3,14 @@ Utilities for loading and processing electron density maps from MTZ and CCP4 fil
 """
 from pathlib import Path
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import faulthandler
 import os
 import pathlib
 import re
+import struct
 
 from numpy import dtype, ndarray
 from typing import Callable, Any
@@ -16,6 +18,7 @@ from typing import Callable, Any
 import gemmi
 import numpy as np
 from decologr import Decologr as log
+from molib.xtal.ccp4.map.globals import CCP4_HEADER_SIZE
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec, MtzDensitySpec
 from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
 from molib.xtal.ccp4.mtz.errors import MtzColumnNotFoundError
@@ -142,83 +145,169 @@ class DensityMapData:
         log.info(f"   Grid spacing: {self.crystallographic_info.grid.spacing}")
 
 
-@dataclass
+@dataclass(slots=True)
 class CCP4MiniHeader:
-    """Minimal CCP4 header view used by the symmetry-expansion helpers."""
+    """CCP4 header fields required for symmetry expansion.
+
+    Distinguishes CRS storage axes (``nc``/``nr``/``ns``, starts, MAPC/MAPR/MAPS)
+    from crystallographic XYZ sampling (``nx``/``ny``/``nz``).
+
+    Parsing assumes a standard little-endian 1024-byte CCP4 header.
+    """
 
     nsymbt: int
+    nc: int = 0
+    nr: int = 0
+    ns: int = 0
     nx: int = 0
     ny: int = 0
     nz: int = 0
-    nxstart: int = 0
-    nystart: int = 0
-    nzstart: int = 0
+    ncstart: int = 0
+    nrstart: int = 0
+    nsstart: int = 0
+    mapc: int = 1
+    mapr: int = 2
+    maps: int = 3
+
+
+def _validate_map_crs(mapc: int, mapr: int, maps: int) -> None:
+    """Require MAPC/MAPR/MAPS to be a permutation of 1, 2, 3."""
+    if sorted((mapc, mapr, maps)) != [1, 2, 3]:
+        raise ValueError(
+            "Invalid axis mapping: MAPC, MAPR, MAPS must be unique and in [1, 2, 3]"
+        )
+
+
+def _crs_to_xyz_start_size(
+    header: CCP4MiniHeader,
+) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """Remap CRS starts and storage sizes into crystallographic XYZ.
+
+    :param header: Mini-header with CRS fields and MAPC/MAPR/MAPS
+    :return: ``(xyz_start, xyz_size)`` for use with XYZ-ordered volumes
+    """
+    _validate_map_crs(header.mapc, header.mapr, header.maps)
+    xyz_start = [0, 0, 0]
+    xyz_size = [0, 0, 0]
+    xyz_start[header.mapc - 1] = int(header.ncstart)
+    xyz_start[header.mapr - 1] = int(header.nrstart)
+    xyz_start[header.maps - 1] = int(header.nsstart)
+    xyz_size[header.mapc - 1] = int(header.nc)
+    xyz_size[header.mapr - 1] = int(header.nr)
+    xyz_size[header.maps - 1] = int(header.ns)
+    return (xyz_start[0], xyz_start[1], xyz_start[2]), (
+        xyz_size[0],
+        xyz_size[1],
+        xyz_size[2],
+    )
 
 
 def _build_header_from_ccp4_map(ccp4_map: gemmi.Ccp4Map) -> CCP4MiniHeader:
-    """Build a ``SimpleHeader`` from a gemmi Ccp4Map (or test mock).
+    """Build a :class:`CCP4MiniHeader` from a gemmi Ccp4Map (or test mock).
 
     Prefers parsing the raw CCP4 header bytes, then falls back to the
     ``header.nsymbt`` / ``grid.shape`` attributes used by mocks.
     """
-    header = None
-    try:
-        import struct
-
-        if hasattr(ccp4_map, "ccp4_header") and isinstance(
-                ccp4_map.ccp4_header, (bytes, bytearray)
-        ):
-            header_ints = struct.unpack("<256i", ccp4_map.ccp4_header[:1024])
-            header = CCP4MiniHeader(
-                nsymbt=header_ints[23],
-                nx=header_ints[7],
-                ny=header_ints[8],
-                nz=header_ints[9],
-                nxstart=header_ints[4],
-                nystart=header_ints[5],
-                nzstart=header_ints[6],
+    raw = getattr(ccp4_map, "ccp4_header", None)
+    if isinstance(raw, (bytes, bytearray)):
+        if len(raw) < CCP4_HEADER_SIZE:
+            raise ValueError(
+                f"CCP4 header is shorter than {CCP4_HEADER_SIZE} bytes "
+                f"(got {len(raw)})"
             )
-    except Exception:
-        header = None
-
-    if header is None:
-        nsymbt = 0
-        if hasattr(ccp4_map, "header") and hasattr(ccp4_map.header, "nsymbt"):
-            try:
-                nsymbt = int(ccp4_map.header.nsymbt)
-            except Exception:
-                nsymbt = 0
-        shape = getattr(ccp4_map.grid, "shape", ORIGIN)
-        nx, ny, nz = (
-            (int(shape[0]), int(shape[1]), int(shape[2]))
-            if len(shape) == 3
-            else ORIGIN
+        header_ints = struct.unpack(
+            "<256i",
+            bytes(raw[:CCP4_HEADER_SIZE]),
         )
-        header = CCP4MiniHeader(nsymbt=nsymbt, nx=nx, ny=ny, nz=nz)
-    return header
+        header = CCP4MiniHeader(
+            nsymbt=int(header_ints[23]),
+            nc=int(header_ints[0]),
+            nr=int(header_ints[1]),
+            ns=int(header_ints[2]),
+            ncstart=int(header_ints[4]),
+            nrstart=int(header_ints[5]),
+            nsstart=int(header_ints[6]),
+            nx=int(header_ints[7]),
+            ny=int(header_ints[8]),
+            nz=int(header_ints[9]),
+            mapc=int(header_ints[16]),
+            mapr=int(header_ints[17]),
+            maps=int(header_ints[18]),
+        )
+        _validate_map_crs(header.mapc, header.mapr, header.maps)
+        return header
+
+    nsymbt = 0
+    if hasattr(ccp4_map, "header") and hasattr(ccp4_map.header, "nsymbt"):
+        try:
+            nsymbt = int(ccp4_map.header.nsymbt)
+        except (TypeError, ValueError):
+            nsymbt = 0
+    shape = getattr(getattr(ccp4_map, "grid", None), "shape", ORIGIN)
+    if len(shape) == 3:
+        nc, nr, ns = int(shape[0]), int(shape[1]), int(shape[2])
+    else:
+        nc, nr, ns = 0, 0, 0
+    return CCP4MiniHeader(
+        nsymbt=nsymbt,
+        nc=nc,
+        nr=nr,
+        ns=ns,
+        nx=nc,
+        ny=nr,
+        nz=ns,
+        mapc=1,
+        mapr=2,
+        maps=3,
+    )
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class CCP4Map:
-    """CCP4 Map"""
-    buffer: bytes = None
-    nsymbt: int = None
-    n_grid: list[Any] = field(default_factory=list)
-    start: list[Any] = field(default_factory=list)
-    end: list[Any] = field(default_factory=list)
+    """Raw CCP4 data and symmetry-expansion geometry in XYZ convention."""
+
+    buffer: bytes
+    nsymbt: int
+    n_grid: tuple[int, int, int]
+    start: tuple[int, int, int]
+    end: tuple[int, int, int]
 
 
 def read_symmetry_ops(
         map_path: str, header: CCP4MiniHeader
 ) -> CCP4Map:
-    """Read the raw CCP4 bytes and derive (buffer, nsymbt, n_grid, start, end)."""
+    """Read raw CCP4 data and return symmetry-expansion metadata.
+
+    ``n_grid`` is XYZ sampling (NX/NY/NZ) for scaling fractional translations.
+    ``start``/``end`` are CRS starts/sizes remapped into crystallographic XYZ
+    via MAPC/MAPR/MAPS so they match XYZ-ordered NumPy volumes.
+
+    Symmetry-record offsets passed to :func:`extract_symop_text` start at 0;
+    that helper adds the 1024-byte main-header offset internally.
+    """
     with open(map_path, "rb") as f:
         map_buffer = f.read()
-    nsymbt = header.nsymbt
-    n_grid = [header.nx, header.ny, header.nz]
-    start = [header.nxstart, header.nystart, header.nzstart]
-    end = [start[0] + n_grid[0], start[1] + n_grid[1], start[2] + n_grid[2]]
-    return CCP4Map(buffer=map_buffer, nsymbt=nsymbt, n_grid=n_grid, start=start, end=end)
+    if header.nsymbt < 0:
+        raise ValueError(f"Invalid NSYMBT value: {header.nsymbt}")
+    if len(map_buffer) < CCP4_HEADER_SIZE + header.nsymbt:
+        raise ValueError(
+            "CCP4 file is shorter than its declared header and "
+            "symmetry-record region"
+        )
+    n_grid = (int(header.nx), int(header.ny), int(header.nz))
+    xyz_start, xyz_size = _crs_to_xyz_start_size(header)
+    end = (
+        xyz_start[0] + xyz_size[0],
+        xyz_start[1] + xyz_size[1],
+        xyz_start[2] + xyz_size[2],
+    )
+    return CCP4Map(
+        buffer=map_buffer,
+        nsymbt=int(header.nsymbt),
+        n_grid=n_grid,
+        start=xyz_start,
+        end=end,
+    )
 
 
 def _parse_symmetry_matrix(symop: str, n_grid: list) -> list:
@@ -291,13 +380,13 @@ def _collect_atom_coordinates(pdb) -> list[list[float]]:
 
 
 def _xyz_to_dict(value) -> dict:
-    """Accept ``GridOrigin``/``GridSpacing`` dataclasses or ``{"x", "y", "z"}`` dicts.
+    """Accept ``GridOrigin``/``GridSpacing`` dataclasses or ``{"x", "y", "z"}`` mappings.
 
     Returns a plain ``{"x": float, "y": float, "z": float}`` dict so carving
     code is agnostic to whether the crystallographic metadata came from the
     normalized dataclasses or a legacy dict.
     """
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {k: float(value[k]) for k in ("x", "y", "z")}
     return {
         "x": float(value.x),
@@ -324,13 +413,14 @@ def _apply_mask_and_finalize(
 
     original_nonzero = np.count_nonzero(density_map)
     carved_nonzero = np.count_nonzero(carved_density)
-    if guard_division and original_nonzero == 0:
+    # Always guard: empty maps must not divide by zero (ignore flag).
+    _ = guard_division
+    if original_nonzero == 0:
         reduction_factor = 0
     else:
         reduction_factor = (
                 (original_nonzero - carved_nonzero) / original_nonzero * 100
         )
-
     log.info(f"✅ {label}:")
     if extra_log_fn:
         extra_log_fn()
@@ -345,36 +435,14 @@ def _apply_mask_and_finalize(
     return carved_density
 
 
-def _grid_to_xyz_array(
-        grid: gemmi.FloatGrid,
-        crystallographic_info: CrystallographicInfo | None = None,
-) -> np.ndarray:
-    """Return a NumPy array of the grid in the canonical X, Y, Z axis order.
+def _grid_to_xyz_array(grid: gemmi.FloatGrid) -> np.ndarray:
+    """Return a copy of the density grid in canonical XYZ order.
 
-    Gemmi stores the array with shape (nu, nv, nw); when the grid's axis
-    order is not XYZ the array must be transposed so that ``array[i, j, k]``
-    is the density at (X, Y, Z). Grids whose axis order is unknown are left
-    in their native order (assumed XYZ).
-
-    When ``crystallographic_info`` is given, its grid dimensions and axis
-    order are synced to the returned XYZ array so the metadata always
-    describes the canonical volume.
+    Pure conversion helper: does not mutate crystallographic metadata.
+    Call :meth:`CrystallographicInfo.sync_to_xyz_volume` after conversion
+    when metadata must match the returned array.
     """
-    array = np.array(grid, copy=True)
-    try:
-        axis_order = AxisOrder.from_gemmi(grid.axis_order)
-    except ValueError:
-        log.warning(
-            "⚠️ Unknown grid axis order %r; assuming XYZ",
-            grid.axis_order,
-        )
-        return array
-    if axis_order is not AxisOrder.XYZ:
-        array = axis_order.transpose_to_xyz(array)
-    if crystallographic_info is not None:
-        crystallographic_info.grid.axis_order = AxisOrder.XYZ
-        crystallographic_info.grid.dimensions = tuple(array.shape)
-    return array
+    return CrystallographicInfo.grid_to_xyz_array(grid)
 
 
 def load_density_map_from_columns(
@@ -440,10 +508,10 @@ def load_density_map_from_columns(
     )
     crystallographic_info.log_summary()
 
-    # Convert to a NumPy array in the canonical XYZ axis order. The
-    # spacing, origin, and transformations come from
-    # crystallographic_info_from_grid() -- no manual overrides here.
-    np_array = crystallographic_info.grid_to_xyz_array(grid)
+    # Convert to a NumPy array in the canonical XYZ axis order, then sync
+    # metadata so axis_order/dimensions match the returned volume.
+    np_array = CrystallographicInfo.grid_to_xyz_array(grid)
+    crystallographic_info.sync_to_xyz_volume(np_array)
     log.info(f"ℹ️ Loaded MTZ map shape: {np_array.shape}")
     density_map_data = DensityMapData(
         volume=np_array,
@@ -679,7 +747,8 @@ def _density_map_data_from_ccp4(
     grid = ccp4_map.grid
 
     crystallographic_info = CrystallographicInfo.from_grid(grid)
-    volume = crystallographic_info.grid_to_xyz_array(grid)
+    volume = CrystallographicInfo.grid_to_xyz_array(grid)
+    crystallographic_info.sync_to_xyz_volume(volume)
     density_map_data = DensityMapData(
         volume=volume,
         crystallographic_info=crystallographic_info,
@@ -1343,7 +1412,11 @@ def expand_ccp4_symmetry_optimized(
 
         # Read the raw file to access symmetry operations
         ccp4_map = read_symmetry_ops(map_path, header)
-        buffer, nsymbt, n_grid, start, end = ccp4_map
+        map_buffer = ccp4_map.buffer
+        nsymbt = ccp4_map.nsymbt
+        n_grid = list(ccp4_map.n_grid)
+        start = list(ccp4_map.start)
+        end = list(ccp4_map.end)
         if nsymbt == 0:
             log.info("ℹ️ No symmetry operations to expand")
             return volume
@@ -1391,7 +1464,6 @@ def expand_ccp4_symmetry_optimized(
             end,
             center_offset,
         )
-
         log.info(f"✅ Applied {symmetry_count} symmetry operations")
         return expanded_volume
 
@@ -1417,9 +1489,12 @@ def expand_ccp4_symmetry(volume: np.ndarray, map_path: str, header) -> np.ndarra
         log.info(f"🔄 Expanding symmetry for {map_path}")
 
         # Read the raw file to access symmetry operations
-        # map_buffer, nsymbt, n_grid, start, end = _read_symmetry_ops(map_path, header)
         ccp4_map = read_symmetry_ops(map_path, header)
-        map_buffer, nsymbt, n_grid, start, end = ccp4_map
+        map_buffer = ccp4_map.buffer
+        nsymbt = ccp4_map.nsymbt
+        n_grid = list(ccp4_map.n_grid)
+        start = list(ccp4_map.start)
+        end = list(ccp4_map.end)
         if nsymbt == 0:
             log.info("ℹ️ No symmetry operations to expand")
             return volume
@@ -1553,9 +1628,10 @@ def _calculate_optimal_expansion_bounds(
         log.info(f"Found {len(atoms)} atoms in PDB structure")
 
         # Get symmetry operations
-        # map_buffer, nsymbt, n_grid, _, _ = _read_symmetry_ops(map_path, header)
         ccp4_map = read_symmetry_ops(map_path, header)
-        map_buffer, nsymbt, n_grid, _, _ = ccp4_map
+        map_buffer = ccp4_map.buffer
+        nsymbt = ccp4_map.nsymbt
+        n_grid = list(ccp4_map.n_grid)
         symmetry_operations = []
 
         for i in range(0, nsymbt, 80):
@@ -2031,12 +2107,16 @@ def load_density_map_with_extent(
         # Get the modified grid
         grid = ccp4_map.grid
 
-        # Extract crystallographic information
+        # Extract crystallographic information and XYZ volume
         crystallographic_info = CrystallographicInfo.from_grid(grid)
-        # Convert to NumPy array
-        volume = crystallographic_info.grid_to_xyz_array(grid)
+        volume = CrystallographicInfo.grid_to_xyz_array(grid)
+        crystallographic_info.sync_to_xyz_volume(volume)
 
-        density_map_data = DensityMapData(volume=volume, crystallographic_info=crystallographic_info, margin=margin)
+        density_map_data = DensityMapData(
+            volume=volume,
+            crystallographic_info=crystallographic_info,
+            margin=margin,
+        )
         density_map_data.log_map_data()
         return density_map_data
 

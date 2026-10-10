@@ -411,7 +411,12 @@ class CrystallographicInfo:
     def grid_to_xyz_array(
             grid: gemmi.FloatGrid,
     ) -> np.ndarray:
-        """Return a copy of the grid data in canonical XYZ axis order."""
+        """Return a copy of the grid data in canonical XYZ axis order.
+
+        Pure conversion: does not mutate this object's grid metadata.
+        Call :meth:`sync_to_xyz_volume` after conversion when metadata must
+        describe the returned array.
+        """
         array = np.array(grid, copy=True)
 
         try:
@@ -427,6 +432,16 @@ class CrystallographicInfo:
             array = axis_order.transpose_to_xyz(array)
 
         return array
+
+    def sync_to_xyz_volume(self, volume: np.ndarray) -> None:
+        """Align ``grid.axis_order`` and ``grid.dimensions`` with an XYZ volume.
+
+        Call after :meth:`grid_to_xyz_array` (or equivalent) so metadata matches
+        the NumPy volume used for carving/rendering. Does not recompute
+        spacing or origin.
+        """
+        self.grid.axis_order = AxisOrder.XYZ
+        self.grid.dimensions = tuple(int(x) for x in volume.shape)
 
     def log_summary(self) -> None:
         """Log the contents of this crystallographic information."""
@@ -561,21 +576,15 @@ def load_density_map(
             sample_rate=sample_rate,
         )
 
-        axis_order = _axis_order_from_gemmi(grid.axis_order)
-        np_array = axis_order.transpose_to_xyz(
-            np.array(grid, copy=True),
-        )
-
         # The returned array is guaranteed to be in X, Y, Z axis order
         # (numpy axis 0 -> X), matching the origin/spacing convention.
         crystallographic_info = CrystallographicInfo.from_grid(grid, map_type=map_type)
-        crystallographic_info.grid.dimensions = tuple(np_array.shape)
-        crystallographic_info.grid.axis_order = axis_order
+        np_array = CrystallographicInfo.grid_to_xyz_array(grid)
+        crystallographic_info.sync_to_xyz_volume(np_array)
 
         crystallographic_info.log_summary()
 
         return np_array, crystallographic_info
-
     except Exception as e:
         log.error(f"❌ Could not load map from {mtz_path}: {e}")
         return None
