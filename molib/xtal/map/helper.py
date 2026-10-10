@@ -1162,6 +1162,19 @@ def load_ccp4_map(
     return load_density_map(spec)
 
 
+def load_ccp4_map_from_processing(file_path: str, processing: MapProcessingSettings,
+                                  progress_callback: Callable[[Any, Any, Any], None]) -> DensityMapData | None:
+    return load_ccp4_map(
+        file_path,
+        convert_to_cartesian=processing.convert_to_cartesian,
+        expand_symmetry=False,
+        carve_density=processing.carve_density,
+        progress_callback=progress_callback,
+        carve_density_centroid=processing.carve_density_centroid,
+        pdb_centroid_or_clicked_position=self.state.mol.scene.pdb_centroid_or_clicked_position,
+        centroid_cutoff=processing.centroid_cutoff,
+    )
+
 def load_ccp4_maps(
         *map_paths: str,
         expand_symmetry: bool = False,
