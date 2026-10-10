@@ -10,10 +10,12 @@ import gemmi
 import numpy as np
 from gemmi import FloatGrid, Mtz
 from numpy import ndarray, dtype
+import math
+from collections.abc import Mapping
 
-from molib.xtal.unit_cell import format_unit_cell_display
+from molib.xtal.unit_cell import format_unit_cell_display, extract_unit_cell_dict_from_pdb
 from picogl.core.mixin.vec3 import Vec3Mixin
-from decologr import Decologr as log
+from decologr import Decologr as log, LogMixin
 
 MAP_NEGATIVE_RATIO_THRESHOLD = 0.7
 
@@ -236,7 +238,7 @@ def _axis_order_from_gemmi(axis_order: gemmi.AxisOrder) -> AxisOrder:
 
 
 @dataclass(slots=True)
-class UnitCell:
+class UnitCell(LogMixin):
     """UnitCell"""
     a: float
     b: float
@@ -286,7 +288,6 @@ class UnitCell:
             "source": self.source,
         }
 
-
     @property
     def fractional_center(self) -> tuple[float, float, float]:
         """Return the geometric center in fractional coordinates."""
@@ -321,6 +322,81 @@ class UnitCell:
         display = format_unit_cell_display(self)
 
         return display
+
+    def check_consistency(
+            self,
+            pandas_pdb,
+            *,
+            length_tolerance: float = 0.01,
+            angle_tolerance: float = 0.01,
+    ) -> bool:
+        """Check whether the current unit cell matches the PDB unit cell.
+
+        Lengths are compared in Å; angles are compared in degrees.
+        """
+        parameters = ("a", "b", "c", "alpha", "beta", "gamma")
+
+        try:
+            extracted_info = extract_unit_cell_dict_from_pdb(pandas_pdb)
+
+            if not isinstance(extracted_info, Mapping):
+                self.log_info("Cannot validate unit cell: no cell parameters found")
+                return False
+
+            for key in parameters:
+                current = getattr(self, key, None)
+                extracted = extracted_info.get(key)
+
+                if current is None or extracted is None:
+                    self.log_info(
+                        f"Cannot validate unit cell: missing parameter '{key}'"
+                    )
+                    return False
+
+                try:
+                    current = float(current)
+                    extracted = float(extracted)
+                except (TypeError, ValueError):
+                    self.log_info(
+                        f"Cannot validate unit cell: invalid parameter '{key}'"
+                    )
+                    return False
+
+                if not math.isfinite(current) or not math.isfinite(extracted):
+                    self.log_info(
+                        f"Cannot validate unit cell: non-finite parameter '{key}'"
+                    )
+                    return False
+
+                tolerance = (
+                    length_tolerance
+                    if key in ("a", "b", "c")
+                    else angle_tolerance
+                )
+
+                if abs(current - extracted) > tolerance:
+                    self.log_info(
+                        f"Unit cell parameter '{key}' differs: "
+                        f"{current:.4f} vs {extracted:.4f} "
+                        f"(tolerance {tolerance})"
+                    )
+                    return False
+
+            return True
+
+        except Exception:
+            log.exception("Error checking unit cell consistency")
+            return False
+
+
+def normalize_unit_cell_from_dict(
+        unit_cell_info: dict[Any, Any] | UnitCell
+) -> "UnitCell":
+    """normalize unit cell from dict"""
+    if not isinstance(unit_cell_info, UnitCell):
+        if isinstance(unit_cell_info, dict):
+            unit_cell_info = UnitCell.from_dict(unit_cell_info)
+    return unit_cell_info
 
 
 @dataclass(slots=True)

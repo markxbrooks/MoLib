@@ -12,6 +12,7 @@ import gemmi
 from biopandas.pdb import PandasPdb
 
 from decologr import Decologr as log
+from molib.xtal.map.density import normalize_unit_cell_from_dict, UnitCell
 
 
 def extract_unit_cell_dict_from_pdb(pdb_data: PandasPdb) -> Optional[Dict[str, Any]]:
@@ -53,6 +54,13 @@ def extract_unit_cell_dict_from_pdb(pdb_data: PandasPdb) -> Optional[Dict[str, A
             silent=True,
         )
         return None
+
+
+def extract_unit_cell_from_pdb(pdb_data: PandasPdb) -> UnitCell:
+    """extract unit cell from pdb"""
+    unit_cell_dict = extract_unit_cell_dict_from_pdb(pdb_data)
+    unit_cell = normalize_unit_cell_from_dict(unit_cell_dict)
+    return unit_cell
 
 
 def _parse_cryst1_line(cryst1_line: str) -> "UnitCell" :
