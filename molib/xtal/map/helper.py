@@ -150,7 +150,7 @@ class DensityMapData:
         self._validate_volume(self.volume)
         self._volume_stats = VolumeStatistics.from_array(self.volume)
         self._volume_data = None
-        self._validate_grid_consistency()
+        self.validate_grid_consistency()
 
     @property
     def volume_stats(self) -> VolumeStatistics:
@@ -238,7 +238,7 @@ class DensityMapData:
         if not np.isfinite(volume).all():
             raise ValueError("Density volume contains non-finite values")
 
-    def _validate_grid_consistency(self) -> None:
+    def validate_grid_consistency(self) -> None:
         """Validate volume shape against crystallographic grid metadata."""
         self._validate_replacement_grid(
             self.volume,
