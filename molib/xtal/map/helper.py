@@ -183,13 +183,13 @@ class DensityMapData:
         """
         self._validate_volume(volume)
         info = (
-            self.density_map_data.crystallographic_info
+            self.crystallographic_info
             if crystallographic_info is None
             else crystallographic_info
         )
         self._validate_replacement_grid(volume, info)
         self.volume = volume
-        self.density_map_data.crystallographic_info = info
+        self.crystallographic_info = info
         self._volume_stats = VolumeStatistics.from_array(volume)
         self._volume_data = None
 
@@ -208,7 +208,7 @@ class DensityMapData:
         :raises ValueError: If shape/frame is incompatible without new metadata
         """
         info = (
-            self.density_map_data.crystallographic_info
+            self.crystallographic_info
             if crystallographic_info is None
             else crystallographic_info
         )
@@ -242,7 +242,7 @@ class DensityMapData:
         """Validate volume shape against crystallographic grid metadata."""
         self._validate_replacement_grid(
             self.volume,
-            self.density_map_data.crystallographic_info,
+            self.crystallographic_info,
         )
 
     def _validate_replacement_grid(
@@ -285,9 +285,9 @@ class DensityMapData:
             log.info(f"   Map type: {self.map_type}")
         if self.source:
             log.info(f"   Source: {self.source}")
-        if self.density_map_data.crystallographic_info is not None:
-            log.info(f"   Grid origin: {self.density_map_data.crystallographic_info.grid.origin}")
-            log.info(f"   Grid spacing: {self.density_map_data.crystallographic_info.grid.spacing}")
+        if self.crystallographic_info is not None:
+            log.info(f"   Grid origin: {self.crystallographic_info.grid.origin}")
+            log.info(f"   Grid spacing: {self.crystallographic_info.grid.spacing}")
 
 
 @dataclass(slots=True)
