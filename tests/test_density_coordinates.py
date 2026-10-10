@@ -19,11 +19,9 @@ from unittest import TestCase
 from molib.xtal.ccp4.mtz.column_pair import MtzColumnPair
 from molib.xtal.ccp4.mtz.errors import MtzColumnNotFoundError
 from molib.xtal.ccp4.mtz.filespec import MtzFileSpec
-from molib.xtal.map.density import (
-    AxisOrder,
-    crystallographic_info_from_grid,
-    transform_grid_vertices_to_cartesian,
-)
+from molib.xtal.map.cartesian import transform_grid_vertices_to_cartesian
+from molib.xtal.map.crystal import crystallographic_info_from_grid
+from molib.xtal.map.axis import AxisOrder
 from molib.xtal.map.helper import (
     DensityMapData,
     load_ccp4_map,
@@ -325,9 +323,9 @@ class TestLoadMapsFromMtzFileSpec(TestCase):
         self.assertIsInstance(difference_data, DensityMapData)
         self.assertEqual(map_data.map_type, MapType.NORMAL)
         self.assertEqual(difference_data.map_type, MapType.DIFFERENCE)
-        self.assertEqual(map_data.crystallographic_info.map_type, MapType.NORMAL.value)
+        self.assertEqual(map_data.crystallographic_info.map_source, MapType.NORMAL.value)
         self.assertEqual(
-            difference_data.crystallographic_info.map_type, MapType.DIFFERENCE.value
+            difference_data.crystallographic_info.map_source, MapType.DIFFERENCE.value
         )
         self.assertEqual(map_data.volume.shape, difference_data.volume.shape)
         self.assertEqual(
@@ -417,8 +415,8 @@ class TestMapTypeAwareMtzSelection(TestCase):
         self.assertIsInstance(one, DensityMapData)
         self.assertEqual(two.map_type, MapType.NORMAL)
         self.assertEqual(one.map_type, MapType.DIFFERENCE)
-        self.assertEqual(two.crystallographic_info.map_type, MapType.NORMAL.value)
-        self.assertEqual(one.crystallographic_info.map_type, MapType.DIFFERENCE.value)
+        self.assertEqual(two.crystallographic_info.map_source, MapType.NORMAL.value)
+        self.assertEqual(one.crystallographic_info.map_source, MapType.DIFFERENCE.value)
         self.assertEqual(two.volume.shape, one.volume.shape)
         # Guard against the constant-volume regression: a gridded 2Fo-Fc map
         # must contain real electron-density variation.

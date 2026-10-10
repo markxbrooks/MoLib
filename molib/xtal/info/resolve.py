@@ -4,7 +4,8 @@ Resolve CrystallographicInfo to dict
 from typing import Any
 
 from decologr import Decologr as log
-from molib.xtal.map.density import CrystallographicInfo, GridOrigin, GridSpacing
+from molib.xtal.map.crystal import CrystallographicInfo
+from molib.xtal.map.grid import GridSpacing, GridOrigin
 
 
 def normalize_crystallographic_info_to_dict(crystallographic_info: CrystallographicInfo | dict) -> dict:

@@ -11,7 +11,7 @@ from molib.xtal.map.helper import (
     VolumeGeometry,
     _apply_symmetry_mates,
 )
-from molib.xtal.map.density import AxisOrder
+from molib.xtal.map.axis import AxisOrder
 
 
 def _symop_chunk(text: bytes) -> bytes:

@@ -9,7 +9,7 @@ from typing import Optional
 
 import numpy as np
 
-from molib.xtal.map.density import CrystallographicInfo
+from molib.xtal.map.crystal import CrystallographicInfo
 from molib.xtal.map.map_type import MapType
 from molib.xtal.map.render.mode import IsosurfaceMapRenderMode
 from picogl.core.rgbcolor import RGBTuple, RGB

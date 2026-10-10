@@ -10,7 +10,9 @@ import numpy as np
 import pytest
 
 from molib.xtal.ccp4.map.globals import CCP4_HEADER_SIZE
-from molib.xtal.map.density import AxisOrder, CrystallographicInfo, GridOrigin, GridSpacing
+from molib.xtal.map.crystal import CrystallographicInfo
+from molib.xtal.map.axis import AxisOrder
+from molib.xtal.map.grid import GridSpacing, GridOrigin, MapGrid
 from molib.xtal.map.helper import (
     CCP4Map,
     CCP4MiniHeader,
@@ -211,7 +213,8 @@ def test_ccp4_map_requires_fields() -> None:
 
 
 def test_sync_to_xyz_volume_updates_axis_and_dimensions() -> None:
-    from molib.xtal.map.density import CoordinateTransforms, MapGrid, UnitCell
+    from molib.xtal.map.crystal import CoordinateTransforms
+    from molib.xtal.map.unit_cell import UnitCell
 
     info = CrystallographicInfo(
         unit_cell=UnitCell(a=1, b=1, c=1, alpha=90, beta=90, gamma=90),

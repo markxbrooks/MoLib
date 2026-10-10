@@ -8,11 +8,9 @@ from typing import Any
 
 from numpy import ndarray
 
-from molib.xtal.map.builders.processing import build_map_processing_settings
-from molib.xtal.map.density import CrystallographicInfo
+from molib.xtal.map.crystal import CrystallographicInfo
 from molib.xtal.map.map_type import MapType
-from molib.xtal.map.spec import DensityMapSpec
-from molib.xtal.map.info import MapInfo, MapRenderSettings, MapPolaritySettings, MapProcessingSettings
+from molib.xtal.map.info import MapInfo, MapRenderSettings, MapPolaritySettings
 from molib.xtal.map.render.mode import IsosurfaceMapRenderMode
 
 DEFAULT_2FOFC_SIGMA_LEVEL = 1.0

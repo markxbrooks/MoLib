@@ -7,15 +7,10 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from molib.xtal.map.density import (
-    AxisOrder,
-    CoordinateTransforms,
-    CrystallographicInfo,
-    GridOrigin,
-    GridSpacing,
-    MapGrid,
-    UnitCell,
-)
+from molib.xtal.map.crystal import CoordinateTransforms, CrystallographicInfo
+from molib.xtal.map.unit_cell import UnitCell
+from molib.xtal.map.axis import AxisOrder
+from molib.xtal.map.grid import GridSpacing, GridOrigin, MapGrid
 from molib.xtal.map.helper import (
     DensityMapData,
     _CARVE_SLAB_SIZE,

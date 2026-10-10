@@ -32,11 +32,8 @@ from molib.xtal.uglymol.map.helpers import (
     extract_symop_text,
     parse_symmetry_operator_to_matrix,
 )
-from molib.xtal.map.density import (
-    AxisOrder,
-    CrystallographicInfo,
-    # crystallographic_info_from_grid,
-)
+from molib.xtal.map.crystal import CrystallographicInfo
+from molib.xtal.map.axis import AxisOrder
 from molib.xtal.map.map_type import MapType
 
 # Enable faulthandler for debugging SIGBUS crashes on macOS
