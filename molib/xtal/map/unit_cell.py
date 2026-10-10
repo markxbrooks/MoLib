@@ -164,6 +164,17 @@ class UnitCell(LogMixin):
             log.exception("Error checking unit cell consistency")
             return False
 
+    def log_summary(self):
+        self.log_info(
+            f"Unit cell set from {self.source}: "
+            f"a={self.a:.2f}, "
+            f"b={self.b:.2f}, "
+            f"c={self.c:.2f} Å"
+            f"alpha={self.alpha:.2f}, "
+            f"beta={self.beta:.2f}, "
+            f"gamma={self.gamma:.2f} Å"
+        )
+
 
 def normalize_unit_cell_from_dict(
         unit_cell_info: dict[Any, Any] | UnitCell
