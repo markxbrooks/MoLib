@@ -213,3 +213,36 @@ def test_resolution_filter(mtz_path: Path) -> None:
     kept = data.d_spacing[mask]
     assert np.all(kept >= 5.0 - 1e-5)
     assert np.all(kept <= 30.0 + 1e-5)
+
+
+def test_zone_symmetry_axes_p212121_hk0() -> None:
+    from molib.xtal.reflections.symmetry_axes import (
+        resolve_space_group,
+        zone_symmetry_axes,
+    )
+
+    sg = resolve_space_group('<gemmi.SpaceGroup("P 21 21 21")>')
+    assert sg is not None
+    axes = zone_symmetry_axes(sg, ZoneSpec.from_preset(ZonePreset.HK0))
+    labels = {ax.label for ax in axes}
+    assert "2₁" in labels
+    orientations = {ax.orientation for ax in axes}
+    assert "in_plane" in orientations
+    assert "normal" in orientations
+    # a and b screws lie in hk0; c screw is along the zone normal.
+    in_plane_dirs = {ax.direction for ax in axes if ax.orientation == "in_plane"}
+    assert (1, 0, 0) in in_plane_dirs
+    assert (0, 1, 0) in in_plane_dirs
+    normals = [ax for ax in axes if ax.orientation == "normal"]
+    assert len(normals) == 1
+    assert normals[0].direction == (0, 0, 1)
+
+
+def test_zone_symmetry_axes_p4_hk0() -> None:
+    from molib.xtal.reflections.symmetry_axes import zone_symmetry_axes
+
+    axes = zone_symmetry_axes("P 4", ZoneSpec.from_preset(ZonePreset.HK0))
+    normals = [ax for ax in axes if ax.orientation == "normal"]
+    assert len(normals) == 1
+    assert normals[0].order == 4
+    assert normals[0].label == "4"
