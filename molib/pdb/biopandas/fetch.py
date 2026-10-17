@@ -126,6 +126,7 @@ def perform_cif_dict_validation(pandas_pdb: PandasPdb) -> dict | None:
         log.warning("No validation could be performed")
     # Original model
     model = structure[0]
+    log.parameter("structure", structure)
     log.parameter("model", model)
     try:
         # Create symmetry mates

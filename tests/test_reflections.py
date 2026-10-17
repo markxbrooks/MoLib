@@ -246,3 +246,44 @@ def test_zone_symmetry_axes_p4_hk0() -> None:
     assert len(normals) == 1
     assert normals[0].order == 4
     assert normals[0].label == "4"
+
+
+def test_expand_to_zone_p4_fills_h0l_from_0kl() -> None:
+    """P4 maps 0kl observations onto h0l (and vice versa)."""
+    from molib.xtal.reflections.zone_expand import expand_to_zone
+
+    # Spindle-like set: only 0kl reflections observed (h == 0).
+    miller = np.array(
+        [
+            [0, 1, 2],
+            [0, 2, 4],
+            [0, 3, 1],
+            [0, 5, 10],
+            [1, 1, 0],  # not 0kl / not used for h0l without expand
+        ],
+        dtype=np.int32,
+    )
+    zone = ZoneSpec.from_preset(ZonePreset.H0L)
+    raw_mask = zone_membership(miller, zone)
+    # Without expand, only rows with k==0 — none of the 0kl rows.
+    assert int(np.count_nonzero(raw_mask)) == 0
+
+    expanded, sources = expand_to_zone(
+        miller, zone, "P 4", include_friedel=False
+    )
+    assert expanded.shape[0] > 0
+    assert np.all(expanded[:, 1] == 0)  # still h0l
+    # Must recover non-zero h from 0kl via 4-fold about c.
+    assert np.any(expanded[:, 0] != 0)
+    uv = project_to_zone_plane(expanded, zone, unit_cell=None)
+    assert np.any(np.abs(uv[:, 0]) > 0)  # spread along h
+    assert sources.shape[0] == expanded.shape[0]
+
+
+def test_project_h0l_without_cell() -> None:
+    miller = np.array([[1, 0, 2], [-3, 0, 1], [0, 0, 4]], dtype=np.int32)
+    uv = project_to_zone_plane(
+        miller, ZoneSpec.from_preset(ZonePreset.H0L), unit_cell=None
+    )
+    np.testing.assert_allclose(uv[:, 0], miller[:, 0])
+    np.testing.assert_allclose(uv[:, 1], miller[:, 2])
