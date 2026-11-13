@@ -69,10 +69,12 @@ def build_map_info(
     if sigma_level is None:
         sigma_level = default_sigma_level_for_map(resolved_type)
 
+    # Leave ``mode`` unset when no render mode is requested so the map follows
+    # the session default instead of silently overriding it with UNIT_CELL.
     mode = (
         IsosurfaceMapRenderMode.coerce(render_mode)
         if render_mode is not None
-        else IsosurfaceMapRenderMode.UNIT_CELL
+        else None
     )
     type_label = resolved_type.value
     settings = MapPolaritySettings.for_map(

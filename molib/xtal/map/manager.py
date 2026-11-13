@@ -309,9 +309,16 @@ class MapManager(LogMixin):
         log.message("Cleared all maps")
 
     def update_map_visibility(self, map_id: str, is_visible: bool) -> None:
-        """Update map visibility."""
+        """Show or hide one map without affecting the others.
+
+        Writes :attr:`MapInfo.is_visible`. A difference map toggles both Fo–Fc
+        lobes; a normal map toggles its single contour.
+
+        :param map_id: Registered map identifier
+        :param is_visible: Whether that map should be drawn
+        """
         if map_id in self.maps:
-            self.maps[map_id].render.is_visible = is_visible
+            self.maps[map_id].is_visible = bool(is_visible)
             log.message(f"Map {map_id} visibility: {is_visible}")
 
     def update_map_sigma_level(self, map_id: str, sigma_level: float) -> None:

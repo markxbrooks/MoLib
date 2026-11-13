@@ -132,9 +132,16 @@ class MapPolaritySettings:
 
 @dataclass
 class MapRenderSettings:
-    """How the user wants a map displayed (strategy + contour/colour state)."""
+    """How the user wants a map displayed (strategy + contour/colour state).
 
-    mode: IsosurfaceMapRenderMode = IsosurfaceMapRenderMode.UNIT_CELL
+    ``mode`` is ``None`` until a render mode is chosen for this map, either at
+    registration or by the user. ``None`` means "follow the session default":
+    a concrete value here is an explicit per-map override, so defaulting it to
+    a real mode would make every map override the session and leave the
+    session setting unreachable.
+    """
+
+    mode: IsosurfaceMapRenderMode | None = None
     settings: MapPolaritySettings = field(
         default_factory=MapPolaritySettings
     )
