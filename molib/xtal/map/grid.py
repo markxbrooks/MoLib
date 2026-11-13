@@ -169,6 +169,68 @@ def _calculate_proper_grid_spacing(
     return spacing, origin
 
 
+def _owned_matrix_3x3(source) -> np.ndarray:
+    """Copy a 3×3 transform into a newly allocated float64 array.
+
+    Gemmi's ``orth.mat`` buffer must not be passed to LAPACK. ``np.linalg.inv``
+    on that buffer SIGBUS when called from a Qt worker thread on macOS.
+
+    :param source: Gemmi matrix or any 3×3 sequence
+    :return: Owned C-contiguous ``(3, 3)`` array
+    """
+    try:
+        rows = [
+            (float(source[i][0]), float(source[i][1]), float(source[i][2]))
+            for i in range(3)
+        ]
+    except Exception:
+        raw = np.asarray(source, dtype=np.float64).reshape(3, 3)
+        rows = [tuple(float(value) for value in row) for row in raw]
+    return np.array(rows, dtype=np.float64)
+
+
+def _invert_3x3(matrix: np.ndarray) -> np.ndarray:
+    """Invert a 3×3 matrix with the adjugate, without calling LAPACK.
+
+    :param matrix: Square transform
+    :return: Inverse
+    :raises ValueError: If *matrix* is not 3×3 or is singular
+    """
+    if matrix.shape != (3, 3):
+        raise ValueError(f"Expected 3x3 matrix, got {matrix.shape}")
+    a, b, c = matrix[0]
+    d, e, f = matrix[1]
+    g, h, i = matrix[2]
+    det = (
+        a * (e * i - f * h)
+        - b * (d * i - f * g)
+        + c * (d * h - e * g)
+    )
+    if not np.isfinite(det) or abs(det) < MoLibConstant.EPSILON:
+        raise ValueError(f"Matrix is singular (determinant: {det})")
+    inv_det = 1.0 / det
+    return np.array(
+        [
+            [
+                (e * i - f * h) * inv_det,
+                (c * h - b * i) * inv_det,
+                (b * f - c * e) * inv_det,
+            ],
+            [
+                (f * g - d * i) * inv_det,
+                (a * i - c * g) * inv_det,
+                (c * d - a * f) * inv_det,
+            ],
+            [
+                (d * h - e * g) * inv_det,
+                (b * g - a * h) * inv_det,
+                (a * e - b * d) * inv_det,
+            ],
+        ],
+        dtype=np.float64,
+    )
+
+
 def get_grid_fractional_to_orthogonal_matrix(grid: gemmi.FloatGrid) -> np.ndarray:
     """
     Get the transformation matrix from fractional to orthogonal coordinates.
@@ -182,9 +244,7 @@ def get_grid_fractional_to_orthogonal_matrix(grid: gemmi.FloatGrid) -> np.ndarra
         # cell, so we use the cell's standard orthogonalization matrix -- the
         # same frame as the PDB coordinates. primitive_orth_matrix() maps into
         # the primitive-cell frame, which differs for centred space groups.
-        matrix = np.array(grid.unit_cell.orth.mat, dtype=np.float64)
-
-        return matrix
+        return _owned_matrix_3x3(grid.unit_cell.orth.mat)
 
     except Exception as e:
         log.error(f"❌ Error getting fractional to orthogonal matrix: {e}")
@@ -203,19 +263,9 @@ def get_grid_orthogonal_to_fractional_matrix(grid: gemmi.FloatGrid) -> np.ndarra
     """
     try:
         # Invert the fractional->orthogonal matrix (same frame as above).
-        frac_to_orth = np.array(grid.unit_cell.orth.mat, dtype=np.float64)
-
-        # Validate the matrix before inversion to prevent numerical issues.
-        if frac_to_orth.shape != (3, 3):
-            raise ValueError(f"Expected 3x3 matrix, got {frac_to_orth.shape}")
-
-        det = np.linalg.det(frac_to_orth)
-        if abs(det) < MoLibConstant.EPSILON:
-            raise ValueError(f"Matrix is singular (determinant: {det})")
-
-        orth_to_frac = np.linalg.inv(frac_to_orth)
-
-        return np.ascontiguousarray(orth_to_frac, dtype=np.float64)
+        # Do not call np.linalg.inv: Apple Accelerate SIGBUS when that runs
+        # on the density-carving QThread.
+        return _invert_3x3(_owned_matrix_3x3(grid.unit_cell.orth.mat))
 
     except Exception as ex:
         log.error(f"❌ Error getting orthogonal to fractional matrix: {ex}")
