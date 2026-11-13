@@ -122,10 +122,13 @@ class MapPolaritySettings:
 
         if map_type is MapType.NORMAL:
             settings.normal.sigma_level = sigma_level
+            settings.normal.color = RGBTuple.BLUE_ISOSURFACE
         elif map_type is MapType.DIFFERENCE:
             settings.normal.sigma_level = abs(sigma_level)
             settings.positive.sigma_level = abs(sigma_level)
             settings.negative.sigma_level = -abs(sigma_level)
+            settings.positive.color = RGBTuple.GREEN
+            settings.negative.color = RGBTuple.RED
 
         return settings
 

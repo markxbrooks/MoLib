@@ -331,10 +331,38 @@ class MapManager(LogMixin):
             log.message(f"Map {map_id} sigma level: {sigma_level}")
 
     def update_map_color(self, map_id: str, color: Tuple[float, float, float]) -> None:
-        """Update map colour."""
+        """Update the single contour colour of a non-difference map.
+
+        :param map_id: Registered map identifier
+        :param color: RGB triple in ``[0, 1]``
+        """
         if map_id in self.maps:
-            self.maps[map_id].render.color = color
+            self.maps[map_id].color = color
             log.message(f"Map {map_id} colour: {color}")
+
+    def update_map_lobe_color(
+        self,
+        map_id: str,
+        *,
+        positive: Tuple[float, float, float] | None = None,
+        negative: Tuple[float, float, float] | None = None,
+    ) -> None:
+        """Update Fo–Fc positive and negative contour colours.
+
+        :param map_id: Registered map identifier
+        :param positive: Colour for the positive lobe
+        :param negative: Colour for the negative lobe
+        """
+        if map_id not in self.maps:
+            return
+        map_info = self.maps[map_id]
+        if positive is not None:
+            map_info.positive_color = positive
+        if negative is not None:
+            map_info.negative_color = negative
+        log.message(
+            f"Map {map_id} lobe colours: +{positive} -{negative}"
+        )
 
     def update_difference_visibility(
         self,
